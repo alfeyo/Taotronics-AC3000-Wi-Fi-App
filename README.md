@@ -2,6 +2,8 @@
 
 A Flutter-based local control app for TaoTronics AC3000 Mesh Wi-Fi Routers.
 
+[![Download APK](https://img.shields.io/badge/Download-APK-green?style=for-the-badge&logo=android)](https://github.com/alfeyo/Taotronics-AC3000-Wi-Fi-App/raw/main/releases/TaoTronics-Router-App.apk)
+
 ## About
 
 This app provides local network control for TaoTronics AC3000 mesh routers without requiring cloud connectivity or the original vendor app (which is no longer supported/available).
@@ -43,7 +45,7 @@ This project is provided to help owners of TaoTronics AC3000 routers maintain co
 
 ## Download
 
-**[Download APK](releases/TaoTronics-Router-App.apk)** - Ready-to-install Android app
+**[Download APK](https://github.com/alfeyo/Taotronics-AC3000-Wi-Fi-App/raw/main/releases/TaoTronics-Router-App.apk)** - Ready-to-install Android app
 
 To install:
 1. Download the APK file
