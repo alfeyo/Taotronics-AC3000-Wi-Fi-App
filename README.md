@@ -41,6 +41,15 @@ This project is provided to help owners of TaoTronics AC3000 routers maintain co
 - You will not redistribute this software for commercial gain
 - The developers are not responsible for any issues arising from use of this software
 
+## Download
+
+**[Download APK](releases/TaoTronics-Router-App.apk)** - Ready-to-install Android app
+
+To install:
+1. Download the APK file
+2. Enable "Install from unknown sources" in your Android settings
+3. Open the APK file to install
+
 ## Requirements
 
 - Android device (Android 6.0+)
