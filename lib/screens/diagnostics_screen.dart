@@ -260,6 +260,85 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
     );
   }
 
+  Future<void> _scanSubnet() async {
+    if (_isRunning) return;
+    setState(() => _isRunning = true);
+
+    _addEntry(
+      DiagnosticType.info,
+      'Scanning local subnet for MQTT brokers (port 25678)...',
+    );
+
+    try {
+      _wifiIP = await _networkInfo.getWifiIP();
+      _gatewayIP = await _networkInfo.getWifiGatewayIP() ?? _gatewayIP;
+    } catch (_) {}
+
+    final base = _subnetBase();
+    if (base == null) {
+      _addEntry(
+        DiagnosticType.error,
+        'Cannot scan: no device IP or gateway available',
+      );
+      setState(() => _isRunning = false);
+      return;
+    }
+
+    _addEntry(DiagnosticType.info, 'Scanning $base.1 - $base.254');
+
+    final hosts = [for (var i = 1; i <= 254; i++) '$base.$i'];
+    const batchSize = 48;
+    final found = <String>[];
+
+    for (var i = 0; i < hosts.length; i += batchSize) {
+      if (!mounted) return;
+      final batch = hosts.skip(i).take(batchSize).toList();
+      await Future.wait(
+        batch.map((host) async {
+          try {
+            final socket = await Socket.connect(
+              host,
+              25678,
+              timeout: const Duration(milliseconds: 700),
+            );
+            socket.destroy();
+            found.add(host);
+            _addEntry(
+              DiagnosticType.success,
+              'MQTT broker found at $host (port 25678 open)',
+            );
+          } catch (_) {}
+        }),
+      );
+    }
+
+    if (!mounted) return;
+    if (found.isEmpty) {
+      _addEntry(
+        DiagnosticType.error,
+        'No MQTT broker found on $base.0/24 — router is not reachable from this network',
+      );
+    } else {
+      _addEntry(
+        DiagnosticType.success,
+        'Scan complete: ${found.length} host(s) with MQTT port open on $base.0/24',
+      );
+    }
+    setState(() => _isRunning = false);
+  }
+
+  String? _subnetBase() {
+    for (final candidate in [_wifiIP, _gatewayIP]) {
+      if (candidate == null || !candidate.contains('.')) continue;
+      final parts = candidate.split('.');
+      if (parts.length != 4) continue;
+      if (parts.take(3).every((p) => int.tryParse(p) != null)) {
+        return parts.take(3).join('.');
+      }
+    }
+    return null;
+  }
+
   Future<void> _exportDiagnostics() async {
     setState(() => _isExporting = true);
 
@@ -460,6 +539,11 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
         backgroundColor: const Color(0xffc14524),
         foregroundColor: Colors.white,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.travel_explore_rounded),
+            tooltip: 'Scan subnet for router',
+            onPressed: _isRunning ? null : _scanSubnet,
+          ),
           IconButton(
             icon: const Icon(Icons.copy_rounded),
             tooltip: 'Copy to clipboard',
