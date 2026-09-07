@@ -120,12 +120,7 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
       socket.destroy();
       setState(() => _routerReachable = true);
     } catch (_) {
-      try {
-        final result = await InternetAddress.lookup(_gatewayIP!);
-        setState(() => _routerReachable = result.isNotEmpty);
-      } catch (_) {
-        setState(() => _routerReachable = false);
-      }
+      setState(() => _routerReachable = false);
     }
   }
 
@@ -139,7 +134,10 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
         timeout: const Duration(seconds: 3),
       );
       socket.destroy();
-      setState(() => _mqttPortOpen = true);
+      setState(() {
+        _mqttPortOpen = true;
+        _routerReachable = true;
+      });
     } catch (_) {
       setState(() => _mqttPortOpen = false);
     }
