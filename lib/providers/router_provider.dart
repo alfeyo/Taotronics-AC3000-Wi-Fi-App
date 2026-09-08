@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import '../models/mesh_entity.dart';
 import '../models/device_entity.dart';
@@ -7,6 +8,7 @@ import '../models/wireless_network.dart';
 import '../services/router_discovery.dart';
 import '../services/mqtt_service.dart';
 import '../services/auth_pairing_service.dart';
+import '../utils/vendor_zone.dart';
 
 enum RouterDiscoveryState { idle, scanning, routerFound, notFound }
 
@@ -696,7 +698,82 @@ class RouterProvider extends ChangeNotifier {
             .toList();
       }
       notifyListeners();
+      await _refreshNodeSignals();
     }
+  }
+
+  Future<bool> addMeshNode(String serialNumber, String nickName) async {
+    if (!isConnected || serialNumber.isEmpty) return false;
+
+    final deadline = DateTime.now().add(const Duration(seconds: 90));
+    var discovered = false;
+    while (DateTime.now().isBefore(deadline)) {
+      final response = await _mqtt.checkNodeExist(serialNumber);
+      final data = response?['Data'];
+      final checkNode =
+          data is Map<String, dynamic> ? data['CheckNode'] : null;
+      if (checkNode != null && checkNode.toString().isNotEmpty) {
+        discovered = true;
+        break;
+      }
+      await Future.delayed(const Duration(seconds: 3));
+    }
+    if (!discovered) return false;
+
+    final grant = await _mqtt.grantNodeAdd(
+      subNodeSn: serialNumber,
+      nickName: nickName,
+    );
+    final ok = grant != null && grant['ErrorCode'] == 0;
+    if (ok) {
+      await refreshNodes();
+    }
+    return ok;
+  }
+
+  Future<bool> renameNode({
+    required String nodeSn,
+    required String name,
+    required bool isMaster,
+  }) async {
+    if (!isConnected) return false;
+
+    Map<String, dynamic>? response;
+    if (isMaster) {
+      response = await _mqtt.setRouterInfo(
+        nickName: name,
+        timeZoneNumber: timeZoneIndexForOffset(
+          DateTime.now().timeZoneOffset,
+        ),
+        countryCode: countryCodeForLocaleName(Platform.localeName),
+      );
+    } else {
+      response = await _mqtt.setNodeName(nodeSn: nodeSn, name: name);
+    }
+
+    final ok = response != null && response['ErrorCode'] == 0;
+    if (ok) {
+      await refreshNodes();
+    }
+    return ok;
+  }
+
+  Future<void> _refreshNodeSignals() async {
+    if (!_mqtt.isConnected) return;
+    for (final node in _nodes) {
+      if (!node.isOnline) continue;
+      final response = await _mqtt.getNodeDetail(node.sn);
+      if (response == null || response['ErrorCode'] != 0) continue;
+      final data = response['Data'];
+      if (data is Map<String, dynamic> && data['Rssi'] is int) {
+        final rssi = data['Rssi'] as int;
+        node.signalStrength =
+            rssi <= 0
+                ? (rssi + 100).clamp(0, 100)
+                : rssi.clamp(0, 100);
+      }
+    }
+    notifyListeners();
   }
 
   Future<void> refreshWirelessSettings() async {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/router_provider.dart';
 import '../models/device_entity.dart';
+import 'setup_wizard_screen.dart';
 
 class NodesScreen extends StatelessWidget {
   const NodesScreen({super.key});
@@ -15,6 +16,11 @@ class NodesScreen extends StatelessWidget {
         foregroundColor: Colors.black,
         elevation: 0,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.add_circle_outline_rounded),
+            tooltip: 'Add mesh node',
+            onPressed: () => _showAddNodeDialog(context),
+          ),
           Consumer<RouterProvider>(
             builder: (context, provider, child) => IconButton(
               icon: const Icon(Icons.refresh),
@@ -57,6 +63,63 @@ class NodesScreen extends StatelessWidget {
     );
   }
 
+  Future<void> _showAddNodeDialog(BuildContext context) {
+    return showDialog<void>(
+      context: context,
+      builder: (_) => const _AddNodeDialog(),
+    );
+  }
+
+  Future<void> _showRenameDialog(BuildContext context, NodeEntity node) async {
+    final controller = TextEditingController(text: node.displayName);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(node.isMaster ? 'Rename Router' : 'Rename Node'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLength: 32,
+          decoration: const InputDecoration(
+            labelText: 'Name',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.deepOrange,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    final name = controller.text.trim();
+    controller.dispose();
+    if (confirmed != true || name.isEmpty || !context.mounted) return;
+
+    final success = await context
+        .read<RouterProvider>()
+        .renameNode(nodeSn: node.sn, name: name, isMaster: node.isMaster);
+
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(success ? 'Renamed to "$name"' : 'Rename failed'),
+        backgroundColor: success ? Colors.green : Colors.red,
+      ),
+    );
+  }
+
   Widget _buildNodeCard(BuildContext context, NodeEntity node) {
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
@@ -87,11 +150,14 @@ class NodesScreen extends StatelessWidget {
                     children: [
                       Row(
                         children: [
-                          Text(
-                            node.displayName,
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
+                          Flexible(
+                            child: Text(
+                              node.displayName,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ),
                           if (node.isMaster) ...[
@@ -114,6 +180,15 @@ class NodesScreen extends StatelessWidget {
                               ),
                             ),
                           ],
+                          const SizedBox(width: 4),
+                          GestureDetector(
+                            onTap: () => _showRenameDialog(context, node),
+                            child: Icon(
+                              Icons.edit_rounded,
+                              size: 18,
+                              color: Colors.grey.shade500,
+                            ),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 4),
@@ -210,6 +285,105 @@ class NodesScreen extends StatelessWidget {
             fontSize: 12,
             color: Colors.grey.shade600,
           ),
+        ),
+      ],
+    );
+  }
+}
+
+class _AddNodeDialog extends StatefulWidget {
+  const _AddNodeDialog();
+
+  @override
+  State<_AddNodeDialog> createState() => _AddNodeDialogState();
+}
+
+class _AddNodeDialogState extends State<_AddNodeDialog> {
+  @override
+  void initState() {
+    super.initState();
+    final provider = context.read<RouterProvider>();
+    if (provider.wirelessNetworksParsed.isEmpty) {
+      provider.refreshWirelessSettings();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final provider = context.watch<RouterProvider>();
+    final enabled = provider.wirelessNetworksParsed
+        .where((n) => n.ssid.isNotEmpty)
+        .toList();
+    final ssid = enabled.isNotEmpty ? enabled.first.ssid : '';
+    final password = enabled.isNotEmpty ? enabled.first.password : '';
+    final loadingCreds =
+        provider.isConnected &&
+        provider.wirelessLoading &&
+        enabled.isEmpty;
+
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.deepOrange.shade50,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(
+              Icons.add_circle_outline,
+              color: Colors.deepOrange,
+            ),
+          ),
+          const SizedBox(width: 12),
+          const Text('Add Mesh Node'),
+        ],
+      ),
+      content: Text(
+        !provider.isConnected
+            ? 'Connect to your router first, then come back to add a node.'
+            : loadingCreds
+            ? 'Place the new unit near your main router with its LED flashing green (setup mode) and keep your phone close to it.\n\nFetching your current Wi-Fi settings…'
+            : 'Place the new unit near your main router with its LED flashing green (setup mode) and keep your phone close to it.\n\n'
+                  'The wizard opens with your current Wi-Fi name and password pre-filled${ssid.isEmpty ? '' : ' ($ssid)'} — keep them unchanged. After Bluetooth setup, the app waits for the main router to detect the new unit (up to 90 seconds) and adds it to the mesh automatically. Keep the phone on the main Wi-Fi throughout.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed:
+              provider.isConnected && !loadingCreds
+                  ? () {
+                      Navigator.pop(context);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => SetupWizardScreen(
+                            prefillSsid: ssid.isNotEmpty ? ssid : null,
+                            prefillPassword:
+                                password.isNotEmpty ? password : null,
+                          ),
+                        ),
+                      );
+                    }
+                  : null,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.deepOrange,
+            foregroundColor: Colors.white,
+          ),
+          child: loadingCreds
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : const Text('Start Bluetooth Setup'),
         ),
       ],
     );

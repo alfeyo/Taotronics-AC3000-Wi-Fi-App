@@ -2,16 +2,28 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:network_info_plus/network_info_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:provider/provider.dart';
+import '../providers/router_provider.dart';
 import '../services/ble_provisioning_service.dart';
 import 'discovery_screen.dart';
 import 'pairing_screen.dart';
 
 class SetupWizardScreen extends StatefulWidget {
   final bool quickStart;
+  final String? prefillSsid;
+  final String? prefillPassword;
 
-  const SetupWizardScreen({super.key, this.quickStart = true});
+  const SetupWizardScreen({
+    super.key,
+    this.quickStart = true,
+    this.prefillSsid,
+    this.prefillPassword,
+  });
 
-  const SetupWizardScreen.guide({super.key}) : quickStart = false;
+  const SetupWizardScreen.guide({super.key})
+    : quickStart = false,
+      prefillSsid = null,
+      prefillPassword = null;
 
   @override
   State<SetupWizardScreen> createState() => _SetupWizardScreenState();
@@ -55,6 +67,8 @@ class _SetupWizardScreenState extends State<SetupWizardScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _quickSetup = widget.quickStart;
+    _ssidController.text = widget.prefillSsid ?? '';
+    _passwordController.text = widget.prefillPassword ?? '';
     if (_quickSetup) {
       _step = SetupStep.searching;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -104,6 +118,7 @@ class _SetupWizardScreenState extends State<SetupWizardScreen>
       SetupStep.wifi => SetupStep.room,
       SetupStep.creating => SetupStep.wifi,
       SetupStep.connectWifi => SetupStep.wifi,
+      SetupStep.granting => SetupStep.wifi,
       SetupStep.finish => SetupStep.connectWifi,
     };
 
@@ -175,16 +190,25 @@ class _SetupWizardScreenState extends State<SetupWizardScreen>
     try {
       final router = await _ble.provision(ssid: ssid, password: password);
       if (!mounted) return;
-      setState(() {
-        _foundRouter = router;
-        _busy = false;
-        _step = SetupStep.connectWifi;
-        _wifiConnectionVerified = false;
-        _connectedWifiName = null;
-        _wifiCheckMessage =
-            'Open Wi-Fi networks and join the SSID you just created.';
-      });
-      await _checkWifiConnection();
+      if (widget.prefillSsid != null) {
+        setState(() {
+          _foundRouter = router;
+          _busy = false;
+        });
+        _next(SetupStep.granting);
+        _grantNode();
+      } else {
+        setState(() {
+          _foundRouter = router;
+          _busy = false;
+          _step = SetupStep.connectWifi;
+          _wifiConnectionVerified = false;
+          _connectedWifiName = null;
+          _wifiCheckMessage =
+              'Open Wi-Fi networks and join the SSID you just created.';
+        });
+        await _checkWifiConnection();
+      }
     } on PlatformException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -368,6 +392,7 @@ class _SetupWizardScreenState extends State<SetupWizardScreen>
       SetupStep.creating => _creating(),
       SetupStep.connectWifi => _connectWifi(),
       SetupStep.finish => _finish(),
+      SetupStep.granting => _granting(),
     };
   }
 
@@ -551,13 +576,16 @@ class _SetupWizardScreenState extends State<SetupWizardScreen>
 
   Widget _wifi() {
     final detectedRouter = _foundRouter?.serialNumber;
+    final addingNode = widget.prefillSsid != null;
     return _GuidePage(
       title: _quickSetup ? 'Set up TT Router' : 'Create Wi-Fi Network',
       subtitle:
           _error ??
-          (detectedRouter == null || detectedRouter.isEmpty
-              ? 'Choose the Wi-Fi name and password for TT Router.'
-              : 'Pairing-mode router detected: $detectedRouter. Create its Wi-Fi network now.'),
+          (addingNode
+              ? 'Keep the Wi-Fi name and password exactly as pre-filled so this unit joins your existing mesh.'
+              : (detectedRouter == null || detectedRouter.isEmpty
+                    ? 'Choose the Wi-Fi name and password for TT Router.'
+                    : 'Pairing-mode router detected: $detectedRouter. Create its Wi-Fi network now.')),
       art: Column(
         children: [
           TextField(
@@ -659,7 +687,82 @@ class _SetupWizardScreenState extends State<SetupWizardScreen>
     );
   }
 
+  Future<void> _grantNode() async {
+    final serialNumber = _foundRouter?.serialNumber ?? '';
+    if (serialNumber.isEmpty) {
+      setState(() {
+        _error =
+            'The router serial number was not captured during Bluetooth setup.';
+      });
+      return;
+    }
+
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+
+    final ok = await context
+        .read<RouterProvider>()
+        .addMeshNode(serialNumber, _room);
+
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      if (ok) {
+        _step = SetupStep.finish;
+      } else {
+        _error =
+            'The main router could not add the new node. Keep the phone on the main Wi-Fi and the new unit powered on near it, then retry.';
+      }
+    });
+  }
+
+  Widget _granting() {
+    return _GuidePage(
+      title: 'Adding node to mesh',
+      subtitle:
+          _error ??
+          'Waiting for the main router to detect the new unit, then approving it into the mesh. This can take up to 90 seconds.',
+      art: Column(
+        children: [
+          if (_busy)
+            const SizedBox(
+              width: 64,
+              height: 64,
+              child: CircularProgressIndicator(color: Colors.deepOrange),
+            )
+          else
+            _asset('ic_guide_led_check.png', height: 150),
+          const SizedBox(height: 24),
+        ],
+      ),
+      primaryLabel: _busy ? null : 'Retry',
+      onPrimary: _busy ? null : _grantNode,
+    );
+  }
+
   Widget _finish() {
+    if (widget.prefillSsid != null) {
+      return _GuidePage(
+        title: 'Node added to your mesh',
+        subtitle: 'The new unit is now part of your mesh network.',
+        art: Column(
+          children: [
+            _asset('success.png', height: 168),
+            const SizedBox(height: 34),
+            _NetworkDetails(
+              ssid: _ssidController.text.trim(),
+              password: _passwordController.text,
+              room: _room,
+              meshId: _foundRouter?.meshId,
+            ),
+          ],
+        ),
+        primaryLabel: 'Done',
+        onPrimary: () => Navigator.pop(context),
+      );
+    }
     return _GuidePage(
       title: 'Connection setup complete',
       subtitle: 'You can now discover the router on the local network.',
@@ -719,6 +822,7 @@ enum SetupStep {
   wifi,
   creating,
   connectWifi,
+  granting,
   finish,
 }
 
