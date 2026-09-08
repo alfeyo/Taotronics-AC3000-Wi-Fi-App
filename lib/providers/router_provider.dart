@@ -699,6 +699,35 @@ class RouterProvider extends ChangeNotifier {
     }
   }
 
+  Future<bool> addMeshNode(String serialNumber, String nickName) async {
+    if (!isConnected || serialNumber.isEmpty) return false;
+
+    final deadline = DateTime.now().add(const Duration(seconds: 90));
+    var discovered = false;
+    while (DateTime.now().isBefore(deadline)) {
+      final response = await _mqtt.checkNodeExist(serialNumber);
+      final data = response?['Data'];
+      final checkNode =
+          data is Map<String, dynamic> ? data['CheckNode'] : null;
+      if (checkNode != null && checkNode.toString().isNotEmpty) {
+        discovered = true;
+        break;
+      }
+      await Future.delayed(const Duration(seconds: 3));
+    }
+    if (!discovered) return false;
+
+    final grant = await _mqtt.grantNodeAdd(
+      subNodeSn: serialNumber,
+      nickName: nickName,
+    );
+    final ok = grant != null && grant['ErrorCode'] == 0;
+    if (ok) {
+      await refreshNodes();
+    }
+    return ok;
+  }
+
   Future<void> refreshWirelessSettings() async {
     _wirelessLoading = true;
     notifyListeners();

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/router_provider.dart';
 import '../models/device_entity.dart';
+import 'setup_wizard_screen.dart';
 
 class NodesScreen extends StatelessWidget {
   const NodesScreen({super.key});
@@ -15,6 +16,11 @@ class NodesScreen extends StatelessWidget {
         foregroundColor: Colors.black,
         elevation: 0,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.add_circle_outline_rounded),
+            tooltip: 'Add mesh node',
+            onPressed: () => _showAddNodeDialog(context),
+          ),
           Consumer<RouterProvider>(
             builder: (context, provider, child) => IconButton(
               icon: const Icon(Icons.refresh),
@@ -53,6 +59,74 @@ class NodesScreen extends StatelessWidget {
             ),
           );
         },
+      ),
+    );
+  }
+
+  Future<void> _showAddNodeDialog(BuildContext context) async {
+    final provider = context.read<RouterProvider>();
+    if (provider.wirelessNetworksParsed.isEmpty) {
+      await provider.refreshWirelessSettings();
+    }
+    if (!context.mounted) return;
+
+    final enabled = provider.wirelessNetworksParsed
+        .where((n) => n.ssid.isNotEmpty)
+        .toList();
+    final ssid = enabled.isNotEmpty ? enabled.first.ssid : '';
+    final password = enabled.isNotEmpty ? enabled.first.password : '';
+
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.deepOrange.shade50,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.add_circle_outline, color: Colors.deepOrange),
+            ),
+            const SizedBox(width: 12),
+            const Text('Add Mesh Node'),
+          ],
+        ),
+        content: Text(
+          provider.isConnected
+              ? 'Place the new unit near your main router with its LED flashing green (setup mode) and keep your phone close to it.\n\n'
+                    'The wizard opens with your current Wi-Fi name and password pre-filled${ssid.isEmpty ? '' : ' ($ssid)'} — keep them unchanged. After Bluetooth setup, the app waits for the main router to detect the new unit (up to 90 seconds) and adds it to the mesh automatically. Keep the phone on the main Wi-Fi throughout.'
+              : 'Connect to your router first, then come back to add a node.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: provider.isConnected
+                ? () {
+                    Navigator.pop(dialogContext);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => SetupWizardScreen(
+                          prefillSsid: ssid.isNotEmpty ? ssid : null,
+                          prefillPassword: password.isNotEmpty ? password : null,
+                        ),
+                      ),
+                    );
+                  }
+                : null,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.deepOrange,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Start Bluetooth Setup'),
+          ),
+        ],
       ),
     );
   }

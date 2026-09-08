@@ -223,6 +223,30 @@ class MqttService {
     ]);
   }
 
+  Future<Map<String, dynamic>?> checkNodeExist(String serialNumber) async {
+    return sendCommand('/GetCheckNodeExist', {'CheckNode': serialNumber});
+  }
+
+  Future<Map<String, dynamic>?> grantNodeAdd({
+    required String subNodeSn,
+    required String nickName,
+    int accountNum = 1,
+  }) async {
+    return sendCommand('/SetGrantNodeAdd', [
+      {
+        'SubNodeSn': subNodeSn,
+        'NickName': nickName,
+        'AddTime': DateTime.now().millisecondsSinceEpoch,
+        'AccountNum': accountNum,
+        'BrState': 0,
+        'IpAddr': '',
+        'NetMask': '',
+        'Gateway': '',
+        'Dns': '',
+      },
+    ]);
+  }
+
   Future<Map<String, dynamic>?> getWirelessSettings() async {
     final v2Result = await sendCommand('/GetWirelessInfoListV2', [
       {
