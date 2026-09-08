@@ -170,6 +170,19 @@ class DashboardTab extends StatelessWidget {
 
   const DashboardTab({super.key, required this.onLogout});
 
+  String _headerTitle(RouterProvider provider) {
+    if (provider.isConnected) {
+      for (final node in provider.nodes) {
+        if (node.isMaster &&
+            node.nickName != null &&
+            node.nickName!.isNotEmpty) {
+          return node.nickName!;
+        }
+      }
+    }
+    return provider.currentRouter?.displayName ?? 'TT Router';
+  }
+
   void _showAuthRequiredMessage(BuildContext context) {
     showDialog(
       context: context,
@@ -287,7 +300,7 @@ class DashboardTab extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    provider.currentRouter?.displayName ?? 'TT Router',
+                    _headerTitle(provider),
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       fontWeight: FontWeight.w800,
