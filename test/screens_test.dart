@@ -1,3 +1,5 @@
+import 'package:tt_router_flutter/providers/pi_provider.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -101,8 +103,11 @@ Future<RouterProvider> _connectedProvider(WidgetTester tester) async {
 }
 
 Widget _app(RouterProvider provider, Widget home, {ThemeMode? mode}) =>
-    ChangeNotifierProvider.value(
-      value: provider,
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider.value(value: provider),
+        ChangeNotifierProvider(create: (_) => PiProvider()),
+      ],
       child: MaterialApp(
         theme: AppTheme.light(),
         darkTheme: AppTheme.dark(),
@@ -118,6 +123,7 @@ Future<void> _setSize(WidgetTester tester, Size size) async {
 }
 
 void main() {
+  FlutterSecureStorage.setMockInitialValues({});
   test('device sorting', () {
     final list = _devices.map(DeviceEntity.fromJson).toList();
     expect(sortDevices(list, DeviceSort.name).first.displayName, 'hue-bridge');

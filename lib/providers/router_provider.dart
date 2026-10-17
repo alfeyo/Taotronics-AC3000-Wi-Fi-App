@@ -1191,10 +1191,16 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
     return result;
   }
 
+  DateTime? _wanUpdatedAt;
+  DateTime? get wanUpdatedAt => _wanUpdatedAt;
+  DateTime? _guestUpdatedAt;
+  DateTime? get guestUpdatedAt => _guestUpdatedAt;
+
   Future<void> refreshWanSettings() async {
     final response = await _mqtt.getWanSettings();
     if (response != null && response['ErrorCode'] == 0) {
       _wanSettings = response['Data'];
+      _wanUpdatedAt = DateTime.now();
       notifyListeners();
     }
   }
@@ -1262,6 +1268,7 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
         : null;
     if (guest != null) {
       _guestWifi = guest;
+      _guestUpdatedAt = DateTime.now();
       notifyListeners();
     }
     return response;
@@ -1856,6 +1863,8 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
     _wirelessNetworksParsed = [];
     _wirelessLoaded = false;
     _wanSettings = null;
+    _wanUpdatedAt = null;
+    _guestUpdatedAt = null;
     _lanSettings = null;
     _connectionInfo = null;
     _nodeRateInfo = [];

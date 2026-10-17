@@ -1,3 +1,5 @@
+import 'package:tt_router_flutter/providers/pi_provider.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -82,11 +84,13 @@ Future<RouterProvider> _provider(
   return provider;
 }
 
-Widget _app(RouterProvider provider, Widget home) =>
-    ChangeNotifierProvider.value(
-      value: provider,
-      child: MaterialApp(theme: AppTheme.dark(), home: home),
-    );
+Widget _app(RouterProvider provider, Widget home) => MultiProvider(
+  providers: [
+    ChangeNotifierProvider.value(value: provider),
+    ChangeNotifierProvider(create: (_) => PiProvider()),
+  ],
+  child: MaterialApp(theme: AppTheme.dark(), home: home),
+);
 
 Future<void> _settle(WidgetTester tester) async {
   for (var i = 0; i < 6; i++) {
@@ -98,6 +102,7 @@ Future<void> _settle(WidgetTester tester) async {
 }
 
 void main() {
+  FlutterSecureStorage.setMockInitialValues({});
   Future<(RouterProvider, List<int?>)> pumpHome(
     WidgetTester tester,
     _FakeRouter router,

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'providers/router_provider.dart';
+import 'providers/pi_provider.dart';
 import 'screens/splash_screen.dart';
 import 'theme/app_theme.dart';
 
@@ -35,8 +36,11 @@ class TTRouterApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => RouterProvider(),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => RouterProvider()),
+        ChangeNotifierProvider(create: (_) => PiProvider()),
+      ],
       child: MaterialApp(
         title: 'TT Router',
         debugShowCheckedModeBanner: false,
