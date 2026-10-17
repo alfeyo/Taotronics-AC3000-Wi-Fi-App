@@ -74,7 +74,9 @@ class PiApi {
       }
       final data = jsonDecode(utf8.decode(bytes));
       if (response.statusCode == 409 && body != null) {
-        return {'ok': true, 'alreadyReceived': true};
+        throw const PiApiException(
+          'Snapshot was rejected as already received or out of date.',
+        );
       }
       if (response.statusCode != 200 ||
           data is! Map<String, dynamic> ||

@@ -20,6 +20,12 @@ class PiProvider extends ChangeNotifier {
   DateTime? _routerDetailsAt;
   int _generation = 0;
   bool _disposed = false;
+  bool _foreground = false;
+  void setForeground(bool active) {
+    _foreground = active;
+    if (!active) _generation++;
+  }
+
   bool get configured => endpoint.isNotEmpty && _token.isNotEmpty;
   bool get stale =>
       error != null ||
@@ -74,14 +80,14 @@ class PiProvider extends ChangeNotifier {
 
   Future<void> refresh(RouterProvider router) async {
     await ready;
-    if (!configured || busy || _disposed) return;
+    if (!configured || busy || _disposed || !_foreground) return;
     busy = true;
     _emit();
     final generation = _generation;
     try {
       final api = PiApi(validatePiEndpoint(endpoint), _token);
       final result = await api.request('/api/v1/gateway');
-      if (generation != _generation || _disposed) return;
+      if (generation != _generation || _disposed || !_foreground) return;
       data = result;
       receivedAt = DateTime.now();
       error = null;
@@ -91,7 +97,13 @@ class PiProvider extends ChangeNotifier {
                 DateTime.now().difference(_routerDetailsAt!).inSeconds >= 60)) {
           _routerDetailsAt = DateTime.now();
           await router.refreshWanSettings();
-          await router.loadGuestWifiSettings();
+          await router.loadGuestWifiSettings(quiet: true);
+        }
+        if (generation != _generation ||
+            _disposed ||
+            !_foreground ||
+            !sharing) {
+          return;
         }
         final snapshot = buildPiRouterSnapshot(router);
         if (snapshot == null) {
@@ -99,10 +111,21 @@ class PiProvider extends ChangeNotifier {
         } else {
           try {
             await api.request('/api/v1/router/snapshot', body: snapshot);
+            if (generation != _generation ||
+                _disposed ||
+                !_foreground ||
+                !sharing) {
+              return;
+            }
             sharedAt = DateTime.now();
             bridgeError = null;
           } catch (e) {
-            bridgeError = e.toString();
+            if (generation == _generation &&
+                !_disposed &&
+                _foreground &&
+                sharing) {
+              bridgeError = e.toString();
+            }
           }
         }
       }

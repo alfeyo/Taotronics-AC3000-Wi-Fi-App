@@ -1258,9 +1258,15 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
     );
   }
 
-  Future<Map<String, dynamic>?> loadGuestWifiSettings() async {
-    final response = await _readRouterSetting(_mqtt.getGuestWifi);
-    final data = response?['Data'];
+  Future<Map<String, dynamic>?> loadGuestWifiSettings({
+    bool quiet = false,
+  }) async {
+    if (quiet && !isConnected) return null;
+    final response = quiet
+        ? await _mqtt.getGuestWifi()
+        : await _readRouterSetting(_mqtt.getGuestWifi);
+    if (response == null || response['ErrorCode'] != 0) return response;
+    final data = response['Data'];
     final guest = data is List && data.isNotEmpty && data.first is Map
         ? Map<String, dynamic>.from(data.first as Map)
         : data is Map

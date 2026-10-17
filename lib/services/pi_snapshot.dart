@@ -83,7 +83,7 @@ Map<String, dynamic>? buildPiRouterSnapshot(
                 },
               )
               .toList()
-        : [],
+        : null,
     'wifi': wifi
         ? router.wirelessNetworksParsed
               .map(
