@@ -25,6 +25,30 @@ class DeviceEntity {
   /// Every field the router reported, for the device detail view.
   final Map<String, dynamic> raw;
 
+  /// GetDevListInfo `ConnTime`: when the current connection started.
+  DateTime? get connectedSince => _epoch(raw['ConnTime']);
+
+  /// GetDevListInfo `CreateTime`: when the router first saw the device.
+  DateTime? get firstSeen => _epoch(raw['CreateTime']);
+
+  /// GetDevListInfo `UpdateTime`: last time the router saw the device.
+  DateTime? get lastSeen => _epoch(raw['UpdateTime']);
+
+  /// Whether the router reports per-device byte counters at all. The
+  /// TaoTronics AC3000 firmware observed does not.
+  bool get hasByteCounters =>
+      raw.containsKey('UpBytes') || raw.containsKey('DownBytes');
+
+  /// Link type inferred from `ClientType`: 0 was observed for an
+  /// Ethernet-only device and 2 for phones/tablets on Wi-Fi.
+  DeviceLink get link => switch (raw['ClientType']) {
+    0 => DeviceLink.wired,
+    2 => DeviceLink.wireless,
+    _ => DeviceLink.unknown,
+  };
+
+  bool get isActive => isOnline && (uploadSpeed > 0 || downloadSpeed > 0);
+
   DeviceEntity({
     required this.mac,
     this.nickName,
@@ -81,6 +105,11 @@ class DeviceEntity {
     if (hostName != null && hostName!.isNotEmpty) return hostName!;
     return mac;
   }
+
+  /// Name used for searching: nickname, host name, IP and MAC.
+  String get searchText =>
+      '${nickName ?? ''} ${hostName ?? ''} ${ipAddress ?? ''} $mac'
+          .toLowerCase();
 
   String get deviceTypeIcon {
     switch (deviceType) {
@@ -159,6 +188,15 @@ class NodeEntity {
   bool get isMaster => routerType == 0;
   String get displayName =>
       nickName == null || nickName!.isEmpty ? sn : nickName!;
+}
+
+enum DeviceLink { wired, wireless, unknown }
+
+DateTime? _epoch(dynamic value) {
+  final seconds = _int(value);
+  // Ignore zero and implausible values (before 2015).
+  if (seconds < 1420070400) return null;
+  return DateTime.fromMillisecondsSinceEpoch(seconds * 1000);
 }
 
 int _int(dynamic value) {

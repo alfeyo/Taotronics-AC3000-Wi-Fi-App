@@ -180,6 +180,17 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
     return DateTime.now().difference(at) > const Duration(seconds: 20);
   }
 
+  /// When the live numbers on the dashboard last changed: telemetry if the
+  /// router answers it, otherwise the device list (rates are summed).
+  DateTime? get liveDataUpdatedAt =>
+      hasLiveWanRates ? _telemetryUpdatedAt : _devicesUpdatedAt;
+
+  bool get liveDataStale {
+    final at = liveDataUpdatedAt;
+    return at == null ||
+        DateTime.now().difference(at) > const Duration(seconds: 20);
+  }
+
   /// Whether the router answers the live telemetry commands at all.
   bool get liveTelemetrySupported => _liveTelemetryResponsive;
 
