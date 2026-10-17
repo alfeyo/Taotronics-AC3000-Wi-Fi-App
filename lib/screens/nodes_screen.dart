@@ -61,7 +61,15 @@ class NodesScreen extends StatelessWidget {
               for (final node in nodes)
                 Padding(
                   padding: const EdgeInsets.only(bottom: Space.md),
-                  child: ContentWidth(child: _NodeCard(node: node)),
+                  child: ContentWidth(
+                    child: _NodeCard(
+                      node: node,
+                      ledOn: provider.ledNodes
+                          .where((l) => '${l['NodeSn']}' == node.sn)
+                          .map(RouterProvider.isLedOn)
+                          .firstOrNull,
+                    ),
+                  ),
                 ),
             ],
           ],
@@ -72,9 +80,12 @@ class NodesScreen extends StatelessWidget {
 }
 
 class _NodeCard extends StatelessWidget {
-  const _NodeCard({required this.node});
+  const _NodeCard({required this.node, this.ledOn});
 
   final NodeEntity node;
+
+  /// LED state from GetLedList; null when not reported for this node.
+  final bool? ledOn;
 
   @override
   Widget build(BuildContext context) {
@@ -87,11 +98,14 @@ class _NodeCard extends StatelessWidget {
       if (node.firmwareVersion != null)
         (Icons.system_update_alt_rounded, 'Firmware', node.firmwareVersion!),
       if (node.ipAddress != null) (Icons.lan_rounded, 'IP', node.ipAddress!),
+      if (ledOn != null)
+        (Icons.lightbulb_outline_rounded, 'LED', ledOn! ? 'On' : 'Off'),
     ];
 
-    return Card(
+    return PanelCard(
+      padding: EdgeInsets.zero,
       child: Padding(
-        padding: const EdgeInsets.all(Space.lg),
+        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -101,6 +115,7 @@ class _NodeCard extends StatelessWidget {
                   Icons.router_rounded,
                   tone: node.isOnline ? Tone.success : Tone.neutral,
                   size: 52,
+                  round: true,
                 ),
                 const SizedBox(width: Space.lg),
                 Expanded(

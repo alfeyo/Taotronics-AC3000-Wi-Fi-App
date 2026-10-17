@@ -115,139 +115,175 @@ class _DevicesScreenState extends State<DevicesScreen> {
     final online = all.where((d) => d.isOnline).length;
     final active = all.where((d) => d.isActive).length;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Devices'),
-        actions: [
-          PopupMenuButton<DeviceSort>(
-            tooltip: 'Sort',
-            icon: const Icon(Icons.sort_rounded),
-            initialValue: _sort,
-            onSelected: (sort) => setState(() => _sort = sort),
-            itemBuilder: (context) => [
-              for (final sort in DeviceSort.values)
-                CheckedPopupMenuItem(
-                  value: sort,
-                  checked: sort == _sort,
-                  child: Text(sort.label),
-                ),
-            ],
+    final sortMenu = PopupMenuButton<DeviceSort>(
+      tooltip: 'Sort',
+      initialValue: _sort,
+      onSelected: (sort) => setState(() => _sort = sort),
+      itemBuilder: (context) => [
+        for (final sort in DeviceSort.values)
+          CheckedPopupMenuItem(
+            value: sort,
+            checked: sort == _sort,
+            child: Text(sort.label),
           ),
-          IconButton(
-            tooltip: 'Refresh',
-            icon: const Icon(Icons.refresh_rounded),
-            onPressed: provider.isConnected ? provider.refreshDevices : null,
-          ),
-        ],
+      ],
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: Space.sm, vertical: 10),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'SORT',
+              style: theme.textTheme.labelLarge?.copyWith(letterSpacing: 1),
+            ),
+            const SizedBox(width: Space.xs),
+            const Icon(Icons.sort_rounded, size: 18),
+          ],
+        ),
       ),
-      body: RefreshIndicator(
-        onRefresh: provider.refreshDevices,
-        child: CustomScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          slivers: [
-            SliverToBoxAdapter(
-              child: ContentWidth(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    Space.lg,
-                    Space.sm,
-                    Space.lg,
-                    0,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const ConnectionStatusBanners(),
-                      SearchBar(
-                        controller: _search,
-                        hintText: 'Search name, IP or MAC',
-                        leading: const Icon(Icons.search_rounded),
-                        elevation: const WidgetStatePropertyAll(0),
-                        trailing: [
-                          if (_search.text.isNotEmpty)
-                            IconButton(
-                              tooltip: 'Clear search',
-                              onPressed: () => setState(_search.clear),
-                              icon: const Icon(Icons.close_rounded),
-                            ),
-                        ],
-                        onChanged: (_) => setState(() {}),
-                      ),
-                      const SizedBox(height: Space.md),
-                      SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: [
-                            for (final filter in DeviceFilter.values)
-                              Padding(
-                                padding: const EdgeInsets.only(right: Space.sm),
-                                child: ChoiceChip(
-                                  label: Text(
-                                    '${filter.label} '
-                                    '${all.where(filter.matches).length}',
-                                  ),
-                                  selected: _filter == filter,
-                                  onSelected: (_) =>
-                                      setState(() => _filter = filter),
-                                ),
+    );
+
+    return Scaffold(
+      body: SafeArea(
+        bottom: false,
+        child: RefreshIndicator(
+          onRefresh: provider.refreshDevices,
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              SliverToBoxAdapter(
+                child: ContentWidth(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      Space.lg,
+                      Space.lg,
+                      Space.lg,
+                      0,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        PageHeader(
+                          kicker: 'Network clients',
+                          title: 'Devices',
+                          subtitle: provider.isConnected
+                              ? '$online connected · ${all.length - online} offline'
+                              : 'Connect to the router to see devices',
+                          trailing: IconButton(
+                            tooltip: 'Refresh',
+                            icon: const Icon(Icons.refresh_rounded),
+                            onPressed: provider.isConnected
+                                ? provider.refreshDevices
+                                : null,
+                          ),
+                        ),
+                        const SizedBox(height: Space.lg),
+                        const ConnectionStatusBanners(),
+                        SearchBar(
+                          controller: _search,
+                          hintText: 'Search name, IP or MAC',
+                          leading: const Icon(Icons.search_rounded),
+                          elevation: const WidgetStatePropertyAll(0),
+                          trailing: [
+                            if (_search.text.isNotEmpty)
+                              IconButton(
+                                tooltip: 'Clear search',
+                                onPressed: () => setState(_search.clear),
+                                icon: const Icon(Icons.close_rounded),
                               ),
                           ],
+                          onChanged: (_) => setState(() {}),
                         ),
-                      ),
-                      const SizedBox(height: Space.sm),
-                      Text(
-                        provider.isConnected
-                            ? '$online online · $active active · '
-                                  '${all.length - online} offline · '
-                                  'updated ${formatAge(provider.devicesUpdatedAt)}'
-                            : 'Device data appears once the router is connected.',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
+                        const SizedBox(height: Space.md),
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: [
+                              for (final filter in DeviceFilter.values)
+                                Padding(
+                                  padding: const EdgeInsets.only(
+                                    right: Space.sm,
+                                  ),
+                                  child: ChoiceChip(
+                                    label: Text(
+                                      '${filter.label} '
+                                      '${all.where(filter.matches).length}',
+                                    ),
+                                    selected: _filter == filter,
+                                    onSelected: (_) =>
+                                        setState(() => _filter = filter),
+                                  ),
+                                ),
+                            ],
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: Space.sm),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            if (visible.isEmpty)
-              SliverFillRemaining(
-                hasScrollBody: false,
-                child: EmptyState(
-                  icon: all.isEmpty
-                      ? Icons.devices_other_rounded
-                      : Icons.search_off_rounded,
-                  title: all.isEmpty
-                      ? (provider.isConnected
-                            ? 'No devices reported yet'
-                            : 'Not connected')
-                      : 'No devices match',
-                  message: all.isEmpty
-                      ? 'Pull down to refresh.'
-                      : 'Try another filter or search term.',
-                ),
-              )
-            else
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(
-                  Space.lg,
-                  0,
-                  Space.lg,
-                  Space.xxl,
-                ),
-                sliver: SliverList.separated(
-                  itemCount: visible.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: Space.sm),
-                  itemBuilder: (context, i) => ContentWidth(
-                    child: _DeviceTile(
-                      device: visible[i],
-                      onTap: () => showDeviceDetails(context, visible[i]),
+                        const SizedBox(height: Space.md),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                'Your devices',
+                                style: theme.textTheme.titleLarge,
+                              ),
+                            ),
+                            sortMenu,
+                          ],
+                        ),
+                        Text(
+                          provider.isConnected
+                              ? '$active active now · sorted by '
+                                    '${_sort.label.toLowerCase()} · updated '
+                                    '${formatAge(provider.devicesUpdatedAt)}'
+                              : 'Device data appears once the router is connected.',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        const SizedBox(height: Space.md),
+                      ],
                     ),
                   ),
                 ),
               ),
-          ],
+              if (visible.isEmpty)
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: EmptyState(
+                    icon: all.isEmpty
+                        ? Icons.devices_other_rounded
+                        : Icons.search_off_rounded,
+                    title: all.isEmpty
+                        ? (provider.isConnected
+                              ? 'No devices reported yet'
+                              : 'Not connected')
+                        : 'No devices match',
+                    message: all.isEmpty
+                        ? 'Pull down to refresh.'
+                        : 'Try another filter or search term.',
+                  ),
+                )
+              else
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(
+                    Space.lg,
+                    0,
+                    Space.lg,
+                    120,
+                  ),
+                  sliver: SliverList.separated(
+                    itemCount: visible.length,
+                    separatorBuilder: (_, _) =>
+                        const SizedBox(height: Space.md),
+                    itemBuilder: (context, i) => ContentWidth(
+                      child: _DeviceTile(
+                        device: visible[i],
+                        onTap: () => showDeviceDetails(context, visible[i]),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -275,66 +311,93 @@ class _DeviceTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final muted = theme.colorScheme.onSurfaceVariant;
     final d = device;
-    final subtitle = [
-      d.ipAddress ?? d.mac,
-      if (d.link != DeviceLink.unknown) _linkLabel(d.link),
-      if (!d.isOnline && d.lastSeen != null) 'seen ${formatAge(d.lastSeen)}',
-    ].join(' · ');
+    final status = d.isOnline
+        ? (d.isActive ? 'Active' : 'Online')
+        : d.lastSeen == null
+        ? 'Offline'
+        : 'Offline · seen ${formatAge(d.lastSeen)}';
+    final statusColor = d.isOnline
+        ? context.tone(Tone.success).foreground
+        : muted;
 
-    return Card(
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(Space.md),
-          child: Row(
-            children: [
-              IconBadge(
-                d.link == DeviceLink.wired
-                    ? Icons.lan_rounded
-                    : Icons.devices_rounded,
-                tone: d.isOnline ? Tone.info : Tone.neutral,
-              ),
-              const SizedBox(width: Space.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+    return PanelCard(
+      onTap: onTap,
+      padding: const EdgeInsets.fromLTRB(Space.lg, Space.lg, 20, Space.lg),
+      child: Row(
+        children: [
+          IconBadge(
+            d.link == DeviceLink.wired
+                ? Icons.lan_rounded
+                : Icons.devices_other_rounded,
+            tone: d.isOnline
+                ? (d.link == DeviceLink.wired ? Tone.success : Tone.brand)
+                : Tone.neutral,
+            size: 46,
+            round: true,
+          ),
+          const SizedBox(width: Space.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  d.displayName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleMedium,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  [
+                    if (d.link != DeviceLink.unknown) _linkLabel(d.link),
+                    d.ipAddress ?? d.mac,
+                  ].join(' · '),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(color: muted),
+                ),
+                const SizedBox(height: Space.xs),
+                Row(
                   children: [
-                    Text(
-                      d.displayName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleSmall,
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: statusColor,
+                        shape: BoxShape.circle,
+                      ),
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        status,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          color: statusColor,
+                        ),
                       ),
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(width: Space.sm),
-              if (d.isActive)
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    _Rate(Icons.south_rounded, d.downloadSpeed, Tone.info),
-                    _Rate(Icons.north_rounded, d.uploadSpeed, Tone.brand),
-                  ],
-                )
-              else
-                StatusPill(
-                  label: d.isOnline ? 'Idle' : 'Offline',
-                  tone: d.isOnline ? Tone.success : Tone.neutral,
-                ),
-            ],
+              ],
+            ),
           ),
-        ),
+          const SizedBox(width: Space.sm),
+          if (d.isActive)
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                _Rate(Icons.south_rounded, d.downloadSpeed, Tone.brand),
+                const SizedBox(height: 2),
+                _Rate(Icons.north_rounded, d.uploadSpeed, Tone.accent),
+              ],
+            )
+          else if (d.isOnline)
+            Text('Idle', style: theme.textTheme.labelLarge),
+        ],
       ),
     );
   }
