@@ -31,18 +31,18 @@ class WirelessNetwork {
 
   factory WirelessNetwork.fromJson(Map<String, dynamic> json) {
     return WirelessNetwork(
-      index: json['Index'] ?? json['index'] ?? 0,
-      ssid: json['Ssid'] ?? json['ssid'] ?? '',
-      password: json['Password'] ?? json['password'] ?? '',
-      encrypt: json['Encrypt'] ?? json['encrypt'] ?? 0,
-      vlanId: json['Vlanid'] ?? json['VlanId'] ?? json['vlanId'] ?? 0,
-      vlanEnabled: json['VlanEnable'] ?? json['vlanEnable'] ?? 0,
-      ssidIsolate: json['SsidIsolate'] ?? json['ssidIsolate'] ?? 0,
-      staIsolate: json['StaIsolate'] ?? json['staIsolate'] ?? 0,
-      create: json['Create'] ?? json['create'] ?? 1,
-      disable: json['Disable'] ?? json['disable'] ?? 0,
-      confStatus: json['ConfStatus'] ?? json['confStatus'] ?? 0,
-      nodeSn: json['NodeSn'] ?? json['nodeSn'],
+      index: _int(json['Index'] ?? json['index']),
+      ssid: '${json['Ssid'] ?? json['ssid'] ?? ''}',
+      password: '${json['Password'] ?? json['password'] ?? ''}',
+      encrypt: _int(json['Encrypt'] ?? json['encrypt']),
+      vlanId: _int(json['Vlanid'] ?? json['VlanId'] ?? json['vlanId']),
+      vlanEnabled: _int(json['VlanEnable'] ?? json['vlanEnable']),
+      ssidIsolate: _int(json['SsidIsolate'] ?? json['ssidIsolate']),
+      staIsolate: _int(json['StaIsolate'] ?? json['staIsolate']),
+      create: _int(json['Create'] ?? json['create'], fallback: 1),
+      disable: _int(json['Disable'] ?? json['disable']),
+      confStatus: _int(json['ConfStatus'] ?? json['confStatus']),
+      nodeSn: (json['NodeSn'] ?? json['nodeSn'])?.toString(),
       rawData: Map<String, dynamic>.from(json),
     );
   }
@@ -136,4 +136,11 @@ class WirelessNetwork {
   String toString() {
     return 'WirelessNetwork(index: $index, ssid: $ssid, enabled: $isEnabled, band: $bandLabel)';
   }
+}
+
+int _int(dynamic value, {int fallback = 0}) {
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  if (value is String) return int.tryParse(value.trim()) ?? fallback;
+  return fallback;
 }

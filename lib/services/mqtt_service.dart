@@ -1,26 +1,52 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'dart:math';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
-import 'package:mqtt_client/mqtt_client.dart';
-import 'package:mqtt_client/mqtt_server_client.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-class MqttService {
-  static const int mqttPort = 25678;
-  static const String _routerCertificateName = 'CN=wifilocal.taotronics.com';
-  static const String _routerCertificateIssuer =
-      '/C=CN/ST=GD/L=SZ/O=AIMMIT/OU=IOT/'
-      'CN=wifilocal.taotronics.com/emailAddress=dazoo.app@idazoo.com';
+import 'mqtt_transport.dart';
+import 'router_certificate_verifier.dart';
 
-  MqttServerClient? _client;
+/// Local MQTT control channel to a TaoTronics mesh router.
+///
+/// Guarantees:
+/// * Only one connection attempt runs at a time; a new [connect] waits for the
+///   previous attempt instead of tearing its client down mid-handshake, and an
+///   identical concurrent [connect] shares the attempt already in flight.
+/// * [connectionStream] reports `false` only for unexpected drops of an
+///   established session, never for deliberate disconnects or failed attempts
+///   (callers get those from the [connect] result).
+/// * Replies are matched by topic. The protocol has no request id, so requests
+///   to the same path run one at a time and identical concurrent requests share
+///   one round trip. Every request completes exactly once: with the reply, or
+///   with `null` on timeout, disconnect or malformed payload.
+class MqttService {
+  MqttService({MqttTransportFactory? transportFactory, this._appIdLoader}) {
+    _transportFactory = transportFactory ?? _defaultTransport;
+  }
+
+  static const int mqttPort = 25678;
+
+  late final MqttTransportFactory _transportFactory;
+  final Future<String> Function()? _appIdLoader;
+
+  MqttTransport? _transport;
+  StreamSubscription<MqttInbound>? _inboundSubscription;
   String? _meshId;
   String? _currentIp;
   String? _appId;
   bool _isConnected = false;
-  StreamSubscription? _updatesSubscription;
+
+  Future<bool>? _connectInFlight;
+  String? _connectInFlightKey;
+  Future<void> _connectQueue = Future.value();
+
+  final _pendingByTopic = <String, Completer<Map<String, dynamic>?>>{};
+  final _pathQueues = <String, Future<void>>{};
+  final _sharedRequests = <String, Future<Map<String, dynamic>?>>{};
+
+  CertificateVerdict? _lastCertificateVerdict;
 
   final _messageController = StreamController<Map<String, dynamic>>.broadcast();
   final _connectionController = StreamController<bool>.broadcast();
@@ -28,6 +54,17 @@ class MqttService {
   Stream<Map<String, dynamic>> get messageStream => _messageController.stream;
   Stream<bool> get connectionStream => _connectionController.stream;
   bool get isConnected => _isConnected;
+  String? get connectedMeshId => _isConnected ? _meshId : null;
+
+  /// Outcome of the most recent router certificate check, for diagnostics.
+  CertificateVerdict? get lastCertificateVerdict => _lastCertificateVerdict;
+
+  MqttTransport _defaultTransport(String host, int port) => ServerMqttTransport(
+    host,
+    port,
+    verifier: RouterCertificateVerifier(pinnedAuthorityDer),
+    onCertificateVerdict: (verdict) => _lastCertificateVerdict = verdict,
+  );
 
   String _generatePassword(String meshId) {
     final input = 'dazoo$meshId';
@@ -36,7 +73,28 @@ class MqttService {
     return digest.toString();
   }
 
-  Future<bool> connect(
+  Future<bool> connect(String meshId, String ipAddress, {String? password}) {
+    final key = '$meshId|$ipAddress|${password ?? ''}';
+    final inFlight = _connectInFlight;
+    if (inFlight != null && _connectInFlightKey == key) return inFlight;
+
+    final previous = _connectQueue;
+    final attempt = previous.then(
+      (_) => _connectNow(meshId, ipAddress, password: password),
+    );
+    _connectQueue = attempt.then<void>((_) {}, onError: (_) {});
+    _connectInFlight = attempt;
+    _connectInFlightKey = key;
+    attempt.whenComplete(() {
+      if (identical(_connectInFlight, attempt)) {
+        _connectInFlight = null;
+        _connectInFlightKey = null;
+      }
+    });
+    return attempt;
+  }
+
+  Future<bool> _connectNow(
     String meshId,
     String ipAddress, {
     String? password,
@@ -47,106 +105,127 @@ class MqttService {
 
     await disconnect();
 
+    final appId = await _loadAppId();
+    final transport = _transportFactory(ipAddress, mqttPort);
+    _transport = transport;
     _meshId = meshId;
     _currentIp = ipAddress;
-    final appId = await _loadAppId();
 
     try {
-      _client = MqttServerClient.withPort(ipAddress, appId, mqttPort);
-      _client!.logging(on: false);
-      _client!.keepAlivePeriod = 30;
-      _client!.connectTimeoutPeriod = 10000;
-      _client!.secure = true;
-      _client!.securityContext = SecurityContext()
-        ..setTrustedCertificatesBytes(_getTrustedCertificate());
-      _client!.onBadCertificate = _isPinnedRouterCertificate;
-
-      _client!.onConnected = _onConnected;
-      _client!.onDisconnected = _onDisconnected;
-      _client!.onSubscribed = _onSubscribed;
-
-      final mqttPassword = password ?? _generatePassword(meshId);
-      final connMessage = MqttConnectMessage()
-          .withClientIdentifier(appId)
-          .authenticateAs(meshId, mqttPassword)
-          .startClean()
-          .withWillQos(MqttQos.atMostOnce);
-
-      _client!.connectionMessage = connMessage;
-
       debugPrint('MqttService: Connecting to $ipAddress:$mqttPort');
-      await _client!.connect();
-
-      if (_client!.connectionStatus?.state == MqttConnectionState.connected) {
-        _subscribeToTopics();
-        return true;
-      }
+      await transport.connect(
+        clientId: appId,
+        username: meshId,
+        password: password ?? _generatePassword(meshId),
+      );
     } catch (e) {
       debugPrint('MqttService: Connection failed - $e');
-      _isConnected = false;
-      _connectionController.add(false);
+      if (identical(_transport, transport)) {
+        _transport = null;
+        _meshId = null;
+        _currentIp = null;
+      }
+      try {
+        transport.disconnect();
+      } catch (_) {}
+      return false;
     }
 
-    return false;
-  }
+    if (!identical(_transport, transport)) {
+      transport.disconnect();
+      return false;
+    }
 
-  void _onConnected() {
+    _inboundSubscription = transport.messages.listen(_handleInbound);
+    transport.onDisconnected = () {
+      if (identical(_transport, transport)) _handleUnexpectedDrop();
+    };
+    transport.subscribe('$appId/+');
     debugPrint('MqttService: Connected');
     _isConnected = true;
     _connectionController.add(true);
+    return true;
   }
 
-  void _onDisconnected() {
-    debugPrint('MqttService: Disconnected');
-    _isConnected = false;
+  void _handleUnexpectedDrop() {
+    debugPrint('MqttService: Disconnected unexpectedly');
+    _teardown();
     _connectionController.add(false);
   }
 
-  void _onSubscribed(String topic) {
-    debugPrint('MqttService: Subscribed to $topic');
+  void _handleInbound(MqttInbound message) {
+    final Object? decoded;
+    try {
+      decoded = jsonDecode(message.payload);
+    } catch (e) {
+      debugPrint(
+        'MqttService: Failed to parse message on ${message.topic} - $e',
+      );
+      return;
+    }
+    final data = decoded is Map ? Map<String, dynamic>.from(decoded) : null;
+    if (data != null) {
+      _messageController.add({'topic': message.topic, 'data': data});
+    }
+
+    final pending = _pendingByTopic.remove(message.topic);
+    if (pending == null || pending.isCompleted) return;
+    if (data == null) {
+      debugPrint('MqttService: Non-object reply on ${message.topic} ignored');
+    }
+    pending.complete(data);
   }
 
-  void _subscribeToTopics() {
-    if (_appId == null || _client == null) return;
-
-    final topic = '$_appId/+';
-    _client!.subscribe(topic, MqttQos.exactlyOnce);
-
-    _updatesSubscription?.cancel();
-    _updatesSubscription = _client!.updates?.listen(
-      (List<MqttReceivedMessage<MqttMessage>> messages) {
-        for (final message in messages) {
-          final payload = message.payload as MqttPublishMessage;
-          final data = MqttPublishPayload.bytesToStringAsString(
-            payload.payload.message,
-          );
-
-          try {
-            final json = jsonDecode(data);
-            _messageController.add({'topic': message.topic, 'data': json});
-          } catch (e) {
-            debugPrint('MqttService: Failed to parse message - $e');
-          }
-        }
-      },
-      onError: (Object error) {
-        debugPrint('MqttService: update stream error - $error');
-      },
-    );
-  }
-
+  /// Sends `data` to the router command `path` and waits for its reply.
   Future<Map<String, dynamic>?> sendCommand(
     String path,
     dynamic data, {
     int timeout = 10,
     int routerTimeout = 0,
-  }) async {
-    if (!_isConnected || _client == null || _meshId == null) {
-      return null;
-    }
+  }) {
+    if (!_isConnected) return Future.value(null);
 
-    final completer = Completer<Map<String, dynamic>?>();
+    final String shareKey;
+    try {
+      shareKey = '$path|$routerTimeout|${jsonEncode(data)}';
+    } catch (e) {
+      debugPrint('MqttService: Cannot encode $path payload - $e');
+      return Future.value(null);
+    }
+    final shared = _sharedRequests[shareKey];
+    if (shared != null) return shared;
+
+    final previous = _pathQueues[path] ?? Future<void>.value();
+    final request = previous.then(
+      (_) =>
+          _sendNow(path, data, timeout: timeout, routerTimeout: routerTimeout),
+    );
+    final done = request.then<void>((_) {});
+    _pathQueues[path] = done;
+    _sharedRequests[shareKey] = request;
+    request.whenComplete(() {
+      if (identical(_sharedRequests[shareKey], request)) {
+        _sharedRequests.remove(shareKey);
+      }
+      if (identical(_pathQueues[path], done)) _pathQueues.remove(path);
+    });
+    return request;
+  }
+
+  Future<Map<String, dynamic>?> _sendNow(
+    String path,
+    dynamic data, {
+    required int timeout,
+    required int routerTimeout,
+  }) async {
+    final transport = _transport;
+    final meshId = _meshId;
+    if (!_isConnected || transport == null || meshId == null) return null;
+
     final appId = await _loadAppId();
+    final responseTopic = '$appId$path';
+    final completer = Completer<Map<String, dynamic>?>();
+    _pendingByTopic[responseTopic] = completer;
 
     final payload = {
       'AppId': appId,
@@ -156,40 +235,29 @@ class MqttService {
       'Timestamp': DateTime.now().millisecondsSinceEpoch ~/ 1000,
     };
 
-    final topic = '$_meshId/$appId$path';
-    final responseTopic = '$appId$path';
-
-    StreamSubscription? subscription;
-    Timer? timeoutTimer;
-
-    subscription = messageStream.listen((message) {
-      if (message['topic'] == responseTopic) {
-        timeoutTimer?.cancel();
-        subscription?.cancel();
-        completer.complete(message['data']);
-      }
-    });
-
-    timeoutTimer = Timer(Duration(seconds: timeout), () {
-      subscription?.cancel();
-      if (!completer.isCompleted) {
-        debugPrint('MqttService: timeout waiting for $responseTopic');
-        completer.complete(null);
-      }
-    });
-
     try {
-      final builder = MqttClientPayloadBuilder();
-      builder.addString(jsonEncode(payload));
-      _client!.publishMessage(topic, MqttQos.exactlyOnce, builder.payload!);
+      transport.publish('$meshId/$appId$path', jsonEncode(payload));
     } catch (e) {
       debugPrint('MqttService: publish failed - $e');
-      timeoutTimer.cancel();
-      subscription.cancel();
-      if (!completer.isCompleted) completer.complete(null);
+      if (identical(_pendingByTopic[responseTopic], completer)) {
+        _pendingByTopic.remove(responseTopic);
+      }
+      return null;
     }
 
-    return completer.future;
+    final timer = Timer(Duration(seconds: timeout), () {
+      if (completer.isCompleted) return;
+      debugPrint('MqttService: timeout waiting for $responseTopic');
+      if (identical(_pendingByTopic[responseTopic], completer)) {
+        _pendingByTopic.remove(responseTopic);
+      }
+      completer.complete(null);
+    });
+    try {
+      return await completer.future;
+    } finally {
+      timer.cancel();
+    }
   }
 
   Future<Map<String, dynamic>?> getSystemStatus() async {
@@ -223,7 +291,16 @@ class MqttService {
     ]);
   }
 
+  /// Routers that left GetWirelessInfoListV2 unanswered while V1 worked.
+  /// The router handles commands one at a time and an unanswered V2 request
+  /// blocks every other command for ~10 s, so it is only tried once.
+  final _wirelessV2Unsupported = <String>{};
+
   Future<Map<String, dynamic>?> getWirelessSettings() async {
+    final meshId = _meshId;
+    if (meshId != null && _wirelessV2Unsupported.contains(meshId)) {
+      return _getWirelessSettingsV1();
+    }
     final v2Result = await sendCommand('/GetWirelessInfoListV2', [
       {
         'Ssid': '',
@@ -245,6 +322,19 @@ class MqttService {
       return v2Result;
     }
 
+    final v1Result = await _getWirelessSettingsV1();
+    if (v2Result == null &&
+        v1Result != null &&
+        v1Result['ErrorCode'] == 0 &&
+        meshId != null &&
+        meshId == _meshId) {
+      debugPrint('MqttService: $meshId does not answer V2 wireless; using V1');
+      _wirelessV2Unsupported.add(meshId);
+    }
+    return v1Result;
+  }
+
+  Future<Map<String, dynamic>?> _getWirelessSettingsV1() {
     return sendCommand('/GetWirelessInfoList', [
       {
         'Ssid': '',
@@ -612,23 +702,41 @@ class MqttService {
   }
 
   Future<void> disconnect() async {
-    await _updatesSubscription?.cancel();
-    _updatesSubscription = null;
-    _client?.disconnect();
-    _client = null;
+    _teardown();
+  }
+
+  void _teardown() {
+    final transport = _transport;
+    _transport = null;
+    _inboundSubscription?.cancel();
+    _inboundSubscription = null;
     _isConnected = false;
     _meshId = null;
     _currentIp = null;
+    for (final pending in _pendingByTopic.values) {
+      if (!pending.isCompleted) pending.complete(null);
+    }
+    _pendingByTopic.clear();
+    if (transport != null) {
+      transport.onDisconnected = null;
+      try {
+        transport.disconnect();
+      } catch (e) {
+        debugPrint('MqttService: disconnect error - $e');
+      }
+    }
   }
 
   void dispose() {
-    disconnect();
+    _teardown();
     _messageController.close();
     _connectionController.close();
   }
 
   Future<String> _loadAppId() async {
     if (_appId != null) return _appId!;
+    final loader = _appIdLoader;
+    if (loader != null) return _appId = await loader();
 
     const key = 'mqtt_app_id';
     final prefs = await SharedPreferences.getInstance();
@@ -648,9 +756,12 @@ class MqttService {
     return id;
   }
 
-  Uint8List _getTrustedCertificate() {
-    // Local MQTT certificate from the TT Router APK.
-    const certPem = '''-----BEGIN CERTIFICATE-----
+  /// TaoTronics local MQTT CA from the original TT Router APK. The router's
+  /// leaf certificate (`emailAddress=leo.li@idazoo.com`) is signed by it.
+  static Uint8List get pinnedAuthorityDer =>
+      RouterCertificateVerifier.pemToDer(_pinnedAuthorityPem);
+
+  static const _pinnedAuthorityPem = '''-----BEGIN CERTIFICATE-----
 MIID8TCCAtmgAwIBAgIJAPB0Pmqr17WhMA0GCSqGSIb3DQEBCwUAMIGOMQswCQYD
 VQQGEwJDTjELMAkGA1UECAwCR0QxCzAJBgNVBAcMAlNaMQ8wDQYDVQQKDAZBSU1N
 SVQxDDAKBgNVBAsMA0lPVDEhMB8GA1UEAwwYd2lmaWxvY2FsLnRhb3Ryb25pY3Mu
@@ -674,31 +785,4 @@ HKY04dj6faJvSPvBUyV4fWhxDJlxISYUokzXIB7gl3QDqpWxdpNuz/cQXy1MlJrQ
 VIJ1OjVQ119ztnCTT6YvKfq11tugKxmJN69IVQeaslf5eliwIOoEazBLP6zlDQaC
 M9IwCGs=
 -----END CERTIFICATE-----''';
-    return Uint8List.fromList(utf8.encode(certPem));
-  }
-
-  bool _isPinnedRouterCertificate(Object certificate) {
-    if (certificate is! X509Certificate) {
-      debugPrint('MqttService: Router TLS certificate rejected: unknown type');
-      return false;
-    }
-
-    final receivedPem = _normalizePem(certificate.pem);
-    final pinnedPem = _normalizePem(utf8.decode(_getTrustedCertificate()));
-    final hasRouterIdentity =
-        certificate.subject.contains(_routerCertificateName) &&
-        certificate.issuer == _routerCertificateIssuer;
-    final accepted = receivedPem == pinnedPem || hasRouterIdentity;
-
-    debugPrint(
-      'MqttService: Router TLS certificate ${accepted ? 'accepted' : 'rejected'} '
-      'for ${certificate.subject} issued by ${certificate.issuer}',
-    );
-
-    return accepted;
-  }
-
-  String _normalizePem(String pem) {
-    return pem.replaceAll('\r\n', '\n').trim();
-  }
 }

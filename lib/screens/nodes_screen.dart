@@ -71,7 +71,9 @@ class NodesScreen extends StatelessWidget {
                   width: 60,
                   height: 60,
                   decoration: BoxDecoration(
-                    color: node.isOnline ? Colors.green.shade50 : Colors.grey.shade100,
+                    color: node.isOnline
+                        ? Colors.green.shade50
+                        : Colors.grey.shade100,
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(
@@ -126,7 +128,8 @@ class NodesScreen extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (node.isOnline)
+                // Only draw signal bars when the router reported a value.
+                if (node.isOnline && node.signalStrength > 0)
                   _buildSignalIndicator(node.signalStrength),
               ],
             ),
@@ -139,11 +142,7 @@ class NodesScreen extends StatelessWidget {
                   '${node.connectedDevices}',
                   'Devices',
                 ),
-                _buildStatItem(
-                  Icons.memory,
-                  node.model ?? 'N/A',
-                  'Model',
-                ),
+                _buildStatItem(Icons.memory, node.model ?? 'N/A', 'Model'),
                 _buildStatItem(
                   Icons.update,
                   node.firmwareVersion ?? 'N/A',
@@ -162,10 +161,7 @@ class NodesScreen extends StatelessWidget {
                   ),
                   Text(
                     'SN: ${node.sn}',
-                    style: TextStyle(
-                      color: Colors.grey.shade600,
-                      fontSize: 12,
-                    ),
+                    style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
                   ),
                 ],
               ),
@@ -200,16 +196,10 @@ class NodesScreen extends StatelessWidget {
       children: [
         Icon(icon, color: Colors.grey),
         const SizedBox(height: 4),
-        Text(
-          value,
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
+        Text(value, style: const TextStyle(fontWeight: FontWeight.bold)),
         Text(
           label,
-          style: TextStyle(
-            fontSize: 12,
-            color: Colors.grey.shade600,
-          ),
+          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
         ),
       ],
     );

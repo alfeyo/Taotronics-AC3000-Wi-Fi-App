@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../providers/router_provider.dart';
 import '../models/wireless_network.dart';
+import '../widgets/feedback.dart';
 import 'devices_screen.dart';
 import 'settings_screen.dart';
 import 'nodes_screen.dart';
@@ -1410,17 +1411,8 @@ class DashboardTab extends StatelessWidget {
           ElevatedButton(
             onPressed: () async {
               Navigator.pop(context);
-              final success = await provider.rebootRouter();
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      success ? 'Rebooting router...' : 'Failed to reboot',
-                    ),
-                    backgroundColor: success ? Colors.green : Colors.red,
-                  ),
-                );
-              }
+              final result = await provider.rebootRouter();
+              if (context.mounted) showSaveResult(context, result);
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
@@ -1442,11 +1434,13 @@ class WifiSettingsScreen extends StatefulWidget {
 }
 
 class _WifiSettingsScreenState extends State<WifiSettingsScreen> {
+  late final LivePauseToken _livePause;
+
   @override
   void initState() {
     super.initState();
     final provider = context.read<RouterProvider>();
-    provider.pauseLive();
+    _livePause = provider.pauseLiveUpdates('Wi-Fi settings');
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       provider.refreshWirelessSettings();
@@ -1455,9 +1449,7 @@ class _WifiSettingsScreenState extends State<WifiSettingsScreen> {
 
   @override
   void dispose() {
-    try {
-      context.read<RouterProvider>().resumeLive();
-    } catch (_) {}
+    _livePause.release();
     super.dispose();
   }
 
@@ -1823,25 +1815,13 @@ class _WifiSettingsScreenState extends State<WifiSettingsScreen> {
                         create: 1,
                       );
 
-                      final success = await provider.updateWirelessNetwork(
+                      final result = await provider.updateWirelessNetwork(
                         updated,
                       );
 
                       if (!ctx.mounted) return;
                       Navigator.pop(ctx);
-
-                      ScaffoldMessenger.of(ctx).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            success
-                                ? 'Wi-Fi settings sent. The router may briefly disconnect.'
-                                : 'Failed to update Wi-Fi settings.',
-                          ),
-                          backgroundColor: success
-                              ? const Color(0xff10b981)
-                              : const Color(0xffef4444),
-                        ),
-                      );
+                      if (context.mounted) showSaveResult(context, result);
                     },
               child: saving
                   ? const SizedBox(

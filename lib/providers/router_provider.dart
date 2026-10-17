@@ -1,9 +1,11 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import '../models/mesh_entity.dart';
 import '../models/device_entity.dart';
+import '../models/save_result.dart';
 import '../models/usb_storage.dart';
 import '../models/wireless_network.dart';
+import '../services/router_certificate_verifier.dart';
 import '../services/router_discovery.dart';
 import '../services/mqtt_service.dart';
 import '../services/auth_pairing_service.dart';
@@ -22,10 +24,56 @@ enum AuthenticationState {
   authenticationRequired,
 }
 
-class RouterProvider extends ChangeNotifier {
-  final RouterDiscoveryService _discovery = RouterDiscoveryService();
-  final MqttService _mqtt = MqttService();
-  final AuthPairingService _authService = AuthPairingService();
+/// Handle returned by [RouterProvider.pauseLiveUpdates]. Live polling resumes
+/// once every outstanding token has been released.
+class LivePauseToken {
+  LivePauseToken._(this._owner, this.reason);
+
+  final RouterProvider _owner;
+  final String reason;
+  bool _released = false;
+
+  void release() {
+    if (_released) return;
+    _released = true;
+    _owner._releasePause(this);
+  }
+}
+
+class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
+  RouterProvider({
+    RouterDiscoveryService? discovery,
+    MqttService? mqtt,
+    AuthPairingService? authService,
+    bool autoStart = true,
+  }) : _discovery = discovery ?? RouterDiscoveryService(),
+       _mqtt = mqtt ?? MqttService(),
+       _authService = authService ?? AuthPairingService() {
+    WidgetsBinding.instance.addObserver(this);
+    _discoverySubscription = _discovery.routerStream.listen(
+      _onRouterDiscovered,
+    );
+    _connectionSubscription = _mqtt.connectionStream.listen(
+      _onConnectionChanged,
+    );
+    if (autoStart) _initialize();
+  }
+
+  final RouterDiscoveryService _discovery;
+  final MqttService _mqtt;
+  final AuthPairingService _authService;
+
+  /// Delays used between automatic reconnect attempts.
+  static const reconnectDelays = [
+    Duration(seconds: 1),
+    Duration(seconds: 2),
+    Duration(seconds: 4),
+    Duration(seconds: 8),
+  ];
+
+  /// How long a configuration change waits for the router to come back
+  /// before it is reported as unverified.
+  static const verificationWindow = Duration(seconds: 90);
 
   MeshEntity? _currentRouter;
   final List<MeshEntity> _routers = [];
@@ -54,6 +102,9 @@ class RouterProvider extends ChangeNotifier {
   String? _usbVisitAddress;
   bool _usbStorageLoading = false;
   bool _usbStorageSaving = false;
+  DateTime? _devicesUpdatedAt;
+  DateTime? _telemetryUpdatedAt;
+  DateTime? _nodesUpdatedAt;
 
   RouterDiscoveryState _discoveryState = RouterDiscoveryState.idle;
   NetworkState _networkState = NetworkState.unknown;
@@ -69,19 +120,40 @@ class RouterProvider extends ChangeNotifier {
   Timer? _liveTimer;
   Timer? _reconnectTimer;
   bool _liveRefreshing = false;
-  bool _livePaused = false;
   bool _liveTelemetryResponsive = true;
+  int _telemetryMisses = 0;
+
+  /// Consecutive unanswered telemetry batches before live polling stops
+  /// asking for telemetry (the full refresh keeps retrying). The router
+  /// occasionally answers a few hundred ms after the 4 s timeout, so a single
+  /// miss must not switch the dashboard to stale values.
+  static const telemetryMissesBeforeBackoff = 3;
   bool _reconnectInProgress = false;
   bool _allowReconnect = true;
+  bool _inBackground = false;
   int _reconnectAttempt = 0;
+  bool _discoveryRetryUsed = false;
+  int _sessionGeneration = 0;
+  final Set<LivePauseToken> _pauseTokens = {};
+  LivePauseToken? _backgroundPause;
 
-  void pauseLive() {
-    _livePaused = true;
+  final List<PendingChange> _pendingChanges = [];
+  int _nextChangeId = 0;
+
+  /// Pauses the 3-second live polling until the returned token is released.
+  /// Screens that write settings hold a token so polling cannot interleave
+  /// with their requests.
+  LivePauseToken pauseLiveUpdates(String reason) {
+    final token = LivePauseToken._(this, reason);
+    _pauseTokens.add(token);
+    return token;
   }
 
-  void resumeLive() {
-    _livePaused = false;
+  void _releasePause(LivePauseToken token) {
+    _pauseTokens.remove(token);
   }
+
+  bool get isLivePaused => _pauseTokens.isNotEmpty;
 
   // Getters
   MeshEntity? get currentRouter => _currentRouter;
@@ -94,6 +166,22 @@ class RouterProvider extends ChangeNotifier {
   List<WirelessNetwork> get wirelessNetworksParsed => _wirelessNetworksParsed;
   bool get wirelessLoading => _wirelessLoading;
   bool get wirelessLoaded => _wirelessLoaded;
+  List<PendingChange> get pendingChanges => List.unmodifiable(_pendingChanges);
+  DateTime? get devicesUpdatedAt => _devicesUpdatedAt;
+  DateTime? get telemetryUpdatedAt => _telemetryUpdatedAt;
+  DateTime? get nodesUpdatedAt => _nodesUpdatedAt;
+  CertificateVerdict? get certificateVerdict => _mqtt.lastCertificateVerdict;
+
+  /// True when live telemetry has not refreshed for a while although the
+  /// session is up, so the dashboard can mark the numbers as stale.
+  bool get telemetryStale {
+    final at = _telemetryUpdatedAt;
+    if (at == null) return true;
+    return DateTime.now().difference(at) > const Duration(seconds: 20);
+  }
+
+  /// Whether the router answers the live telemetry commands at all.
+  bool get liveTelemetrySupported => _liveTelemetryResponsive;
 
   String get currentWifiName {
     if (_wirelessNetworksParsed.isEmpty) {
@@ -158,6 +246,9 @@ class RouterProvider extends ChangeNotifier {
 
   bool get isLoading => _isLoading;
   bool get isConnected => _authState == AuthenticationState.authenticated;
+  bool get isReconnecting =>
+      _authState == AuthenticationState.authenticating &&
+      _shouldReconnectCurrentRouter;
   bool get isRouterFound => _discoveryState == RouterDiscoveryState.routerFound;
   bool get isNetworkReachable => _networkState == NetworkState.gatewayReachable;
   bool get isMqttPortOpen => _mqttPortState == MqttPortState.open;
@@ -175,9 +266,13 @@ class RouterProvider extends ChangeNotifier {
   int get reportedTotalNodeCount =>
       _connectionInt('TotalNodeCount', _nodes.length);
   int get networkQuality => _connectionInt('NetworkQuality', 0);
+
+  /// Whether the router has reported its internet state at all.
+  bool get hasInternetStatus => _connectionInfo?['Internet'] != null;
   bool get internetConnected => _connectionInt('Internet', 0) == 1;
 
   String get networkQualityLabel {
+    if (!hasInternetStatus) return 'Unknown';
     if (!internetConnected) return 'Offline';
     return networkQuality == 2 ? 'Check' : 'Good';
   }
@@ -273,30 +368,49 @@ class RouterProvider extends ChangeNotifier {
     return parts.join(' | ');
   }
 
-  RouterProvider() {
-    _initialize();
-  }
-
   Future<void> _initialize() async {
     await _authService.loadSavedPairings();
     _discoveryState = RouterDiscoveryState.scanning;
     notifyListeners();
-
-    _discoverySubscription = _discovery.routerStream.listen(
-      _onRouterDiscovered,
-    );
-    _connectionSubscription = _mqtt.connectionStream.listen(
-      _onConnectionChanged,
-    );
     await _discovery.startDiscovery();
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.resumed:
+        _inBackground = false;
+        _backgroundPause?.release();
+        _backgroundPause = null;
+        if (isConnected) {
+          refreshAll();
+        } else if (_shouldReconnectCurrentRouter) {
+          _reconnectAttempt = 0;
+          _scheduleReconnect();
+        }
+      case AppLifecycleState.paused:
+      case AppLifecycleState.hidden:
+        _inBackground = true;
+        _backgroundPause ??= pauseLiveUpdates('app in background');
+        _reconnectTimer?.cancel();
+        _reconnectTimer = null;
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.detached:
+        break;
+    }
+  }
+
   void _onRouterDiscovered(DiscoveredRouter discovered) {
+    var changed = false;
     final existing = _routers.indexWhere((r) => r.meshId == discovered.meshId);
 
     if (existing >= 0) {
-      _routers[existing].ipAddress = discovered.ipAddress;
-      _routers[existing].state = 1;
+      final router = _routers[existing];
+      if (router.ipAddress != discovered.ipAddress || router.state != 1) {
+        router.ipAddress = discovered.ipAddress;
+        router.state = 1;
+        changed = true;
+      }
     } else {
       _routers.add(
         MeshEntity(
@@ -306,19 +420,32 @@ class RouterProvider extends ChangeNotifier {
           state: 1,
         ),
       );
+      changed = true;
     }
 
-    _discoveryState = RouterDiscoveryState.routerFound;
+    if (_discoveryState != RouterDiscoveryState.routerFound) {
+      _discoveryState = RouterDiscoveryState.routerFound;
+      changed = true;
+    }
 
     if (_currentRouter == null && _routers.isNotEmpty) {
       selectRouter(_routers.first);
+      return;
     } else if (_currentRouter?.meshId == discovered.meshId &&
         !isConnected &&
         _authService.isPaired(discovered.meshId)) {
-      _scheduleReconnect();
+      if (_reconnectAttempt > 0 && !_discoveryRetryUsed && !_inBackground) {
+        // The router is broadcasting again: retry now instead of waiting for
+        // the backoff timer. Once per outage, so failing logins are not
+        // retried at the beacon rate.
+        _discoveryRetryUsed = true;
+        reconnectNow();
+      } else {
+        _scheduleReconnect();
+      }
     }
 
-    notifyListeners();
+    if (changed) notifyListeners();
   }
 
   void _onConnectionChanged(bool connected) {
@@ -326,12 +453,13 @@ class RouterProvider extends ChangeNotifier {
       _reconnectTimer?.cancel();
       _reconnectTimer = null;
       _reconnectAttempt = 0;
-      _reconnectInProgress = false;
+      _discoveryRetryUsed = false;
       _authState = AuthenticationState.authenticated;
       _errorMessage = null;
       _startAutoRefresh();
       refreshAll();
     } else {
+      // Only unexpected drops of an established session arrive here.
       _stopAutoRefresh();
       if (_shouldReconnectCurrentRouter) {
         _authState = AuthenticationState.authenticating;
@@ -364,8 +492,19 @@ class RouterProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> selectRouter(MeshEntity router) async {
+  /// Starts a new user-initiated session. Pending automatic reconnects belong
+  /// to the previous session and are cancelled so they cannot override it.
+  int _beginSession() {
+    _sessionGeneration++;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    _reconnectAttempt = 0;
     _allowReconnect = true;
+    return _sessionGeneration;
+  }
+
+  Future<void> selectRouter(MeshEntity router) async {
+    final session = _beginSession();
     _currentRouter = router;
     _authState = AuthenticationState.authenticating;
     _isLoading = true;
@@ -381,6 +520,7 @@ class RouterProvider extends ChangeNotifier {
         router.ipAddress!,
         password: reconnectPassword,
       );
+      if (session != _sessionGeneration) return;
       if (success) {
         _authState = AuthenticationState.authenticated;
         await _authService.attemptPairing(
@@ -407,15 +547,26 @@ class RouterProvider extends ChangeNotifier {
     String ipAddress, {
     String? password,
   }) async {
-    _allowReconnect = true;
+    final session = _beginSession();
     _authState = AuthenticationState.authenticating;
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
 
     final success = await _mqtt.connect(meshId, ipAddress, password: password);
+    if (session != _sessionGeneration) return false;
 
     if (success) {
+      final known = _routers.where((r) => r.meshId == meshId).firstOrNull;
+      _currentRouter =
+          known ??
+          MeshEntity(
+            meshId: meshId,
+            ssid: 'Router',
+            ipAddress: ipAddress,
+            state: 1,
+          );
+      _currentRouter!.ipAddress = ipAddress;
       _authState = AuthenticationState.authenticated;
       await _authService.attemptPairing(
         meshId: meshId,
@@ -438,7 +589,7 @@ class RouterProvider extends ChangeNotifier {
   void _startAutoRefresh() {
     _refreshTimer?.cancel();
     _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
-      refreshAll();
+      if (!isLivePaused) refreshAll();
     });
     _liveTimer?.cancel();
     _liveTimer = Timer.periodic(const Duration(seconds: 3), (_) {
@@ -463,32 +614,31 @@ class RouterProvider extends ChangeNotifier {
 
   void _scheduleReconnect() {
     if (!_shouldReconnectCurrentRouter ||
+        _inBackground ||
         _reconnectInProgress ||
         _reconnectTimer?.isActive == true) {
       return;
     }
 
-    final attempt = _reconnectAttempt;
-    final seconds = switch (attempt) {
-      0 => 1,
-      1 => 2,
-      2 => 4,
-      _ => 8,
-    };
+    final delay =
+        reconnectDelays[_reconnectAttempt.clamp(0, reconnectDelays.length - 1)];
     _reconnectAttempt++;
+    final session = _sessionGeneration;
     debugPrint(
-      'RouterProvider: reconnecting saved router in ${seconds}s '
+      'RouterProvider: reconnecting saved router in ${delay.inSeconds}s '
       '(attempt $_reconnectAttempt)',
     );
-    _reconnectTimer = Timer(
-      Duration(seconds: seconds),
-      _reconnectCurrentRouter,
-    );
+    _reconnectTimer = Timer(delay, () => _reconnectCurrentRouter(session));
   }
 
-  Future<void> _reconnectCurrentRouter() async {
+  Future<void> _reconnectCurrentRouter(int session) async {
     _reconnectTimer = null;
-    if (!_shouldReconnectCurrentRouter || _reconnectInProgress) return;
+    if (session != _sessionGeneration ||
+        !_shouldReconnectCurrentRouter ||
+        _reconnectInProgress ||
+        isConnected) {
+      return;
+    }
 
     final router = _currentRouter!;
     final ipAddress = router.ipAddress!;
@@ -503,6 +653,7 @@ class RouterProvider extends ChangeNotifier {
     );
 
     _reconnectInProgress = false;
+    if (session != _sessionGeneration) return;
     if (success) {
       _authState = AuthenticationState.authenticated;
       _errorMessage = null;
@@ -513,8 +664,19 @@ class RouterProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Retries the saved router immediately, e.g. after the phone rejoins Wi-Fi.
+  void reconnectNow() {
+    if (isConnected || !_shouldReconnectCurrentRouter || _reconnectInProgress) {
+      return;
+    }
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    _reconnectAttempt = 0;
+    _reconnectCurrentRouter(_sessionGeneration);
+  }
+
   Future<void> _liveRefresh() async {
-    if (!isConnected || _liveRefreshing || _refreshing || _livePaused) return;
+    if (!isConnected || _liveRefreshing || _refreshing || isLivePaused) return;
     _liveRefreshing = true;
     try {
       final liveWork = <Future<void>>[refreshDevices()];
@@ -582,12 +744,12 @@ class RouterProvider extends ChangeNotifier {
     if (daily != null && daily['ErrorCode'] == 0) {
       final data = daily['Data'];
       if (data is List) {
-        _dailyFlow = data.cast<Map<String, dynamic>>();
+        _dailyFlow = _mapList(data);
         var up = 0;
         var down = 0;
         for (final entry in _dailyFlow) {
-          up += (entry['UpBytes'] as num?)?.toInt() ?? 0;
-          down += (entry['DownBytes'] as num?)?.toInt() ?? 0;
+          up += _readInt(entry['UpBytes']);
+          down += _readInt(entry['DownBytes']);
         }
         _todayUpBytes = up;
         _todayDownBytes = down;
@@ -598,12 +760,12 @@ class RouterProvider extends ChangeNotifier {
     if (monthly != null && monthly['ErrorCode'] == 0) {
       final data = monthly['Data'];
       if (data is List) {
-        _monthlyFlow = data.cast<Map<String, dynamic>>();
+        _monthlyFlow = _mapList(data);
         var up = 0;
         var down = 0;
         for (final entry in _monthlyFlow) {
-          up += (entry['UpBytes'] as num?)?.toInt() ?? 0;
-          down += (entry['DownBytes'] as num?)?.toInt() ?? 0;
+          up += _readInt(entry['UpBytes']);
+          down += _readInt(entry['DownBytes']);
         }
         _monthUpBytes = up;
         _monthDownBytes = down;
@@ -619,13 +781,18 @@ class RouterProvider extends ChangeNotifier {
       _mqtt.getNodeRateInfo(),
       _mqtt.getWanRateInfo(),
     ]);
-    _liveTelemetryResponsive = responses.any((response) => response != null);
+    if (responses.any((response) => response != null)) {
+      _telemetryMisses = 0;
+      _liveTelemetryResponsive = true;
+    } else if (++_telemetryMisses >= telemetryMissesBeforeBackoff) {
+      _liveTelemetryResponsive = false;
+    }
 
     final connect = responses[0];
     if (connect != null && connect['ErrorCode'] == 0) {
       final data = connect['Data'];
-      if (data is Map<String, dynamic>) {
-        _connectionInfo = data;
+      if (data is Map) {
+        _connectionInfo = Map<String, dynamic>.from(data);
       }
     }
 
@@ -633,9 +800,7 @@ class RouterProvider extends ChangeNotifier {
     if (nodeRates != null && nodeRates['ErrorCode'] == 0) {
       final data = nodeRates['Data'];
       if (data is List) {
-        _nodeRateInfo = data.whereType<Map>().map((entry) {
-          return Map<String, dynamic>.from(entry);
-        }).toList();
+        _nodeRateInfo = _mapList(data);
       }
     }
 
@@ -649,6 +814,7 @@ class RouterProvider extends ChangeNotifier {
       }
     }
 
+    if (_telemetryMisses == 0) _telemetryUpdatedAt = DateTime.now();
     notifyListeners();
   }
 
@@ -656,10 +822,10 @@ class RouterProvider extends ChangeNotifier {
     final response = await _mqtt.getSystemStatus();
     if (response != null && response['ErrorCode'] == 0) {
       final data = response['Data'];
-      if (data is Map<String, dynamic>) {
-        _systemStatus = data;
-      } else if (data is List && data.isNotEmpty) {
-        _systemStatus = data.first as Map<String, dynamic>?;
+      if (data is Map) {
+        _systemStatus = Map<String, dynamic>.from(data);
+      } else if (data is List && data.isNotEmpty && data.first is Map) {
+        _systemStatus = Map<String, dynamic>.from(data.first as Map);
       }
       notifyListeners();
     }
@@ -670,14 +836,13 @@ class RouterProvider extends ChangeNotifier {
     if (response != null && response['ErrorCode'] == 0) {
       final data = response['Data'];
       if (data is List) {
-        _devices = data
-            .map((d) => DeviceEntity.fromJson(d as Map<String, dynamic>))
-            .toList();
+        _devices = _mapList(data).map(DeviceEntity.fromJson).toList();
       } else if (data is Map && data['ClientList'] is List) {
-        _devices = (data['ClientList'] as List)
-            .map((d) => DeviceEntity.fromJson(d as Map<String, dynamic>))
-            .toList();
+        _devices = _mapList(
+          data['ClientList'] as List,
+        ).map(DeviceEntity.fromJson).toList();
       }
+      _devicesUpdatedAt = DateTime.now();
       notifyListeners();
     }
   }
@@ -687,19 +852,19 @@ class RouterProvider extends ChangeNotifier {
     if (response != null && response['ErrorCode'] == 0) {
       final data = response['Data'];
       if (data is List) {
-        _nodes = data
-            .map((n) => NodeEntity.fromJson(n as Map<String, dynamic>))
-            .toList();
+        _nodes = _mapList(data).map(NodeEntity.fromJson).toList();
       } else if (data is Map && data['NodeList'] is List) {
-        _nodes = (data['NodeList'] as List)
-            .map((n) => NodeEntity.fromJson(n as Map<String, dynamic>))
-            .toList();
+        _nodes = _mapList(
+          data['NodeList'] as List,
+        ).map(NodeEntity.fromJson).toList();
       }
+      _nodesUpdatedAt = DateTime.now();
       notifyListeners();
     }
   }
 
-  Future<void> refreshWirelessSettings() async {
+  /// Returns true when the router answered with a wireless list.
+  Future<bool> refreshWirelessSettings() async {
     _wirelessLoading = true;
     notifyListeners();
 
@@ -707,69 +872,81 @@ class RouterProvider extends ChangeNotifier {
     _wirelessLoading = false;
     _wirelessLoaded = true;
 
+    var ok = false;
     if (response != null && response['ErrorCode'] == 0) {
       final data = response['Data'];
       if (data is List) {
-        _wirelessNetworksRaw = data.cast<Map<String, dynamic>>();
+        _wirelessNetworksRaw = _mapList(data);
         _wirelessNetworksParsed = _wirelessNetworksRaw
             .map((n) => WirelessNetwork.fromJson(n))
             .toList();
         if (_wirelessNetworksRaw.isNotEmpty) {
           _wirelessSettings = _wirelessNetworksRaw.first;
         }
-      } else if (data is Map<String, dynamic>) {
-        _wirelessSettings = data;
-        _wirelessNetworksRaw = [data];
-        _wirelessNetworksParsed = [WirelessNetwork.fromJson(data)];
+        ok = true;
+      } else if (data is Map) {
+        final map = Map<String, dynamic>.from(data);
+        _wirelessSettings = map;
+        _wirelessNetworksRaw = [map];
+        _wirelessNetworksParsed = [WirelessNetwork.fromJson(map)];
+        ok = true;
       }
     }
     notifyListeners();
+    return ok;
   }
 
-  Future<bool> updateWirelessNetwork(WirelessNetwork updated) async {
-    if (!isConnected) {
-      _errorMessage = 'Cannot update Wi-Fi: Not connected';
+  Future<SaveResult> updateWirelessNetwork(WirelessNetwork updated) {
+    final payloadList = _wirelessNetworksParsed
+        .map((n) => n.index == updated.index ? updated : n)
+        .map((n) => n.toRouterPayload())
+        .toList();
+    return setWirelessSettings(payloadList);
+  }
+
+  Future<SaveResult> setWirelessSettings(
+    List<Map<String, dynamic>> networks,
+  ) async {
+    final normalized = networks
+        .map(
+          (net) => <String, dynamic>{
+            ...net,
+            'Ssid': net['Ssid'] ?? '',
+            'Encrypt': net['Encrypt'] ?? 0,
+            'Password': net['Password'] ?? '',
+            'Vlanid': net['Vlanid'] ?? 0,
+            'SsidIsolate': net['SsidIsolate'] ?? 0,
+            'StaIsolate': net['StaIsolate'] ?? 0,
+            'Index': net['Index'] ?? 0,
+            'Create': net['Create'] ?? 1,
+            'VlanEnable': net['VlanEnable'] ?? 0,
+          },
+        )
+        .toList();
+
+    // The router restarts Wi-Fi when applying this and often drops the
+    // session before replying, so a missing reply is verified afterwards.
+    final result = await _writeRouterSetting(
+      label: 'Wi-Fi change',
+      failureMessage: 'Failed to update Wi-Fi settings',
+      request: () => _mqtt.setWirelessSettings(normalized),
+      verify: () async {
+        if (!await refreshWirelessSettings()) return null;
+        return _matchesByIndex(_wirelessNetworksRaw, normalized, const [
+          'Ssid',
+          'Password',
+          'Disable',
+        ]);
+      },
+    );
+    if (result.isConfirmed) {
+      _wirelessNetworksRaw = normalized;
+      _wirelessNetworksParsed = normalized
+          .map(WirelessNetwork.fromJson)
+          .toList();
       notifyListeners();
-      return false;
     }
-
-    final updatedList = _wirelessNetworksParsed.map((n) {
-      if (n.index == updated.index) return updated;
-      return n;
-    }).toList();
-
-    final payloadList = updatedList.map((n) => n.toRouterPayload()).toList();
-
-    _isLoading = true;
-    notifyListeners();
-
-    Map<String, dynamic>? response;
-    try {
-      response = await _mqtt
-          .setWirelessSettings(payloadList)
-          .timeout(const Duration(seconds: 8));
-    } catch (_) {
-      response = null;
-    }
-
-    final success = response == null || response['ErrorCode'] == 0;
-
-    if (!success) {
-      _errorMessage = 'Failed to update Wi-Fi settings';
-    } else {
-      _wirelessNetworksParsed = updatedList;
-      _wirelessNetworksRaw = payloadList;
-    }
-
-    _isLoading = false;
-    notifyListeners();
-
-    if (success) {
-      Future.delayed(const Duration(seconds: 6), () {
-        if (isConnected) refreshWirelessSettings();
-      });
-    }
-    return success;
+    return result;
   }
 
   Future<void> refreshWanSettings() async {
@@ -792,11 +969,24 @@ class RouterProvider extends ChangeNotifier {
     return _readRouterSetting(_mqtt.getWanSettings);
   }
 
-  Future<bool> updateWanSettings(List<Map<String, dynamic>> settings) {
+  Future<SaveResult> updateWanSettings(List<Map<String, dynamic>> settings) {
     return _writeRouterSetting(
-      'Failed to update WAN settings',
-      () => _mqtt.setWanSettings(settings),
-      acceptMissingResponse: true,
+      label: 'Internet (WAN) change',
+      failureMessage: 'Failed to update WAN settings',
+      request: () => _mqtt.setWanSettings(settings),
+      verify: () => _verifyListSubset(_mqtt.getWanSettings, settings, const [
+        'WanProto',
+        'ManualDns',
+        'WanIp',
+        'WanMask',
+        'WanGateway',
+        'WanDns',
+        'WanDnsbak',
+        'PppoeUser',
+        'VlanDisabled',
+        'VlanId',
+        'WanDisabled',
+      ]),
     );
   }
 
@@ -804,11 +994,19 @@ class RouterProvider extends ChangeNotifier {
     return _readRouterSetting(_mqtt.getLanSettings);
   }
 
-  Future<bool> updateLanSettings(List<Map<String, dynamic>> settings) {
+  Future<SaveResult> updateLanSettings(List<Map<String, dynamic>> settings) {
     return _writeRouterSetting(
-      'Failed to update LAN settings',
-      () => _mqtt.setLanSettings(settings),
-      acceptMissingResponse: true,
+      label: 'LAN change',
+      failureMessage: 'Failed to update LAN settings',
+      request: () => _mqtt.setLanSettings(settings),
+      verify: () => _verifyListSubset(_mqtt.getLanSettings, settings, const [
+        'LanIp',
+        'LanMask',
+        'DhcpStartAddr',
+        'DhcpEndAddr',
+        'VlanEnable',
+        'Vlanid',
+      ]),
     );
   }
 
@@ -816,11 +1014,16 @@ class RouterProvider extends ChangeNotifier {
     return _readRouterSetting(_mqtt.getGuestWifi);
   }
 
-  Future<bool> updateGuestWifiSettings(Map<String, dynamic> settings) {
+  Future<SaveResult> updateGuestWifiSettings(Map<String, dynamic> settings) {
     return _writeRouterSetting(
-      'Failed to update guest Wi-Fi',
-      () => _mqtt.setGuestWifi(settings),
-      acceptMissingResponse: true,
+      label: 'Guest Wi-Fi change',
+      failureMessage: 'Failed to update guest Wi-Fi',
+      request: () => _mqtt.setGuestWifi(settings),
+      verify: () => _verifyListSubset(
+        _mqtt.getGuestWifi,
+        [settings],
+        const ['Enable', 'Ssid', 'EncryptionWay'],
+      ),
     );
   }
 
@@ -828,10 +1031,10 @@ class RouterProvider extends ChangeNotifier {
     return _readRouterSetting(_mqtt.getFirewallSettings);
   }
 
-  Future<bool> updateFirewallSettings(bool enabled) {
+  Future<SaveResult> updateFirewallSettings(bool enabled) {
     return _writeRouterSetting(
-      'Failed to update firewall',
-      () => _mqtt.setFirewallSettings(enabled),
+      failureMessage: 'Failed to update firewall',
+      request: () => _mqtt.setFirewallSettings(enabled),
     );
   }
 
@@ -839,14 +1042,14 @@ class RouterProvider extends ChangeNotifier {
     return _readRouterSetting(_mqtt.getUpnpDmzSettings);
   }
 
-  Future<bool> updateUpnpDmzSettings({
+  Future<SaveResult> updateUpnpDmzSettings({
     required bool upnpEnabled,
     required bool dmzEnabled,
     required String dmzHost,
   }) {
     return _writeRouterSetting(
-      'Failed to update UPnP and DMZ',
-      () => _mqtt.setUpnpDmzSettings(
+      failureMessage: 'Failed to update UPnP and DMZ',
+      request: () => _mqtt.setUpnpDmzSettings(
         upnpEnabled: upnpEnabled,
         dmzEnabled: dmzEnabled,
         dmzHost: dmzHost,
@@ -858,14 +1061,14 @@ class RouterProvider extends ChangeNotifier {
     return _readRouterSetting(_mqtt.getQosSettings);
   }
 
-  Future<bool> updateQosSettings({
+  Future<SaveResult> updateQosSettings({
     required bool enabled,
     required int upBandwidth,
     required int downBandwidth,
   }) {
     return _writeRouterSetting(
-      'Failed to update QoS',
-      () => _mqtt.setQosSettings(
+      failureMessage: 'Failed to update QoS',
+      request: () => _mqtt.setQosSettings(
         enabled: enabled,
         upBandwidth: upBandwidth,
         downBandwidth: downBandwidth,
@@ -877,14 +1080,14 @@ class RouterProvider extends ChangeNotifier {
     return _readRouterSetting(_mqtt.getFastNatSettings);
   }
 
-  Future<bool> updateFastNatSettings({
+  Future<SaveResult> updateFastNatSettings({
     required bool enabled,
     required bool autoFilter,
     required String portList,
   }) {
     return _writeRouterSetting(
-      'Failed to update Fast NAT',
-      () => _mqtt.setFastNatSettings(
+      failureMessage: 'Failed to update Fast NAT',
+      request: () => _mqtt.setFastNatSettings(
         enabled: enabled,
         autoFilter: autoFilter,
         portList: portList,
@@ -900,10 +1103,10 @@ class RouterProvider extends ChangeNotifier {
     return _readRouterSetting(_mqtt.getVpnStatus);
   }
 
-  Future<bool> updateVpnSettings(Map<String, dynamic> settings) {
+  Future<SaveResult> updateVpnSettings(Map<String, dynamic> settings) {
     return _writeRouterSetting(
-      'Failed to update VPN',
-      () => _mqtt.setVpnSettings(settings),
+      failureMessage: 'Failed to update VPN',
+      request: () => _mqtt.setVpnSettings(settings),
     );
   }
 
@@ -911,24 +1114,24 @@ class RouterProvider extends ChangeNotifier {
     return _readRouterSetting(_mqtt.getVirtualServers);
   }
 
-  Future<bool> addVirtualServer(Map<String, dynamic> rule) {
+  Future<SaveResult> addVirtualServer(Map<String, dynamic> rule) {
     return _writeRouterSetting(
-      'Failed to add port forwarding rule',
-      () => _mqtt.addVirtualServer(rule),
+      failureMessage: 'Failed to add port forwarding rule',
+      request: () => _mqtt.addVirtualServer(rule),
     );
   }
 
-  Future<bool> updateVirtualServer(Map<String, dynamic> rule) {
+  Future<SaveResult> updateVirtualServer(Map<String, dynamic> rule) {
     return _writeRouterSetting(
-      'Failed to update port forwarding rule',
-      () => _mqtt.updateVirtualServer(rule),
+      failureMessage: 'Failed to update port forwarding rule',
+      request: () => _mqtt.updateVirtualServer(rule),
     );
   }
 
-  Future<bool> deleteVirtualServer(String index) {
+  Future<SaveResult> deleteVirtualServer(String index) {
     return _writeRouterSetting(
-      'Failed to delete port forwarding rule',
-      () => _mqtt.deleteVirtualServer(index),
+      failureMessage: 'Failed to delete port forwarding rule',
+      request: () => _mqtt.deleteVirtualServer(index),
     );
   }
 
@@ -940,10 +1143,10 @@ class RouterProvider extends ChangeNotifier {
     return _readRouterSetting(_mqtt.getDdnsStatus);
   }
 
-  Future<bool> updateDdnsSettings(Map<String, dynamic> settings) {
+  Future<SaveResult> updateDdnsSettings(Map<String, dynamic> settings) {
     return _writeRouterSetting(
-      'Failed to update DDNS',
-      () => _mqtt.setDdnsSettings(settings),
+      failureMessage: 'Failed to update DDNS',
+      request: () => _mqtt.setDdnsSettings(settings),
     );
   }
 
@@ -951,10 +1154,10 @@ class RouterProvider extends ChangeNotifier {
     return _readRouterSetting(_mqtt.getLedSettings);
   }
 
-  Future<bool> updateNodeLed({required String nodeSn, required int led}) {
+  Future<SaveResult> updateNodeLed({required String nodeSn, required int led}) {
     return _writeRouterSetting(
-      'Failed to update node LED',
-      () => _mqtt.setNodeLed(nodeSn: nodeSn, led: led),
+      failureMessage: 'Failed to update node LED',
+      request: () => _mqtt.setNodeLed(nodeSn: nodeSn, led: led),
     );
   }
 
@@ -962,10 +1165,10 @@ class RouterProvider extends ChangeNotifier {
     return _readRouterSetting(_mqtt.getRestartSchedule);
   }
 
-  Future<bool> updateRestartSchedule(Map<String, dynamic> settings) {
+  Future<SaveResult> updateRestartSchedule(Map<String, dynamic> settings) {
     return _writeRouterSetting(
-      'Failed to update restart schedule',
-      () => _mqtt.setRestartSchedule(settings),
+      failureMessage: 'Failed to update restart schedule',
+      request: () => _mqtt.setRestartSchedule(settings),
     );
   }
 
@@ -982,19 +1185,31 @@ class RouterProvider extends ChangeNotifier {
     if (response == null) {
       _errorMessage = 'Router did not answer the settings request';
       notifyListeners();
+    } else if (response['ErrorCode'] != 0) {
+      _errorMessage =
+          'Router returned error ${response['ErrorCode']} for the settings request';
+      notifyListeners();
+      return null;
     }
     return response;
   }
 
-  Future<bool> _writeRouterSetting(
-    String failureMessage,
-    Future<Map<String, dynamic>?> Function() request, {
-    bool acceptMissingResponse = false,
+  /// Sends a configuration change.
+  ///
+  /// With [verify], a missing reply (the session dropped while the router
+  /// applied the change) becomes [SaveStatus.pendingVerification] and the
+  /// result is checked by re-reading the router after it reconnects.
+  /// Without [verify], a missing reply is a failure.
+  Future<SaveResult> _writeRouterSetting({
+    required String failureMessage,
+    required Future<Map<String, dynamic>?> Function() request,
+    String label = 'Change',
+    Future<bool?> Function()? verify,
   }) async {
     if (!isConnected) {
       _errorMessage = 'Authentication required for router settings';
       notifyListeners();
-      return false;
+      return const SaveResult.failed('Not connected to the router.');
     }
 
     _isLoading = true;
@@ -1003,18 +1218,127 @@ class RouterProvider extends ChangeNotifier {
     Map<String, dynamic>? response;
     try {
       response = await request();
+    } catch (e) {
+      debugPrint('RouterProvider: write failed - $e');
+      response = null;
     } finally {
       _isLoading = false;
     }
 
-    final success =
-        (acceptMissingResponse && response == null) ||
-        (response != null && response['ErrorCode'] == 0);
-    if (!success) {
-      _errorMessage = failureMessage;
+    final SaveResult result;
+    if (response != null) {
+      final code = response['ErrorCode'];
+      result = code == 0
+          ? SaveResult.confirmed('$label saved.')
+          : SaveResult.failed('$failureMessage (router error $code).');
+    } else if (verify != null) {
+      _startVerification(label, verify);
+      result = SaveResult.pending(
+        '$label sent. The connection may drop briefly; the app will confirm '
+        'the new settings when it reconnects.',
+      );
+    } else {
+      result = SaveResult.failed(
+        '$failureMessage: the router did not answer. The change may not '
+        'have been applied.',
+      );
     }
+
+    if (result.isFailed) _errorMessage = result.message;
     notifyListeners();
-    return success;
+    return result;
+  }
+
+  void _startVerification(String label, Future<bool?> Function() verify) {
+    final change = PendingChange(id: _nextChangeId++, label: label);
+    _pendingChanges.add(change);
+    notifyListeners();
+    _runVerification(change, verify, _sessionGeneration);
+  }
+
+  Future<void> _runVerification(
+    PendingChange change,
+    Future<bool?> Function() verify,
+    int session,
+  ) async {
+    // Give the router time to apply the change and drop the session first.
+    await Future<void>.delayed(const Duration(seconds: 3));
+    final deadline = DateTime.now().add(verificationWindow);
+    while (!isConnected && DateTime.now().isBefore(deadline)) {
+      if (session != _sessionGeneration) return;
+      await Future<void>.delayed(const Duration(seconds: 1));
+    }
+    if (session != _sessionGeneration || !_pendingChanges.contains(change)) {
+      return;
+    }
+
+    bool? matches;
+    if (isConnected) {
+      try {
+        matches = await verify();
+      } catch (e) {
+        debugPrint('RouterProvider: verification failed - $e');
+      }
+    }
+    change.status = switch (matches) {
+      true => ChangeStatus.confirmed,
+      false => ChangeStatus.mismatch,
+      null => ChangeStatus.unverified,
+    };
+    notifyListeners();
+  }
+
+  void dismissPendingChange(PendingChange change) {
+    _pendingChanges.remove(change);
+    notifyListeners();
+  }
+
+  Future<bool?> _verifyListSubset(
+    Future<Map<String, dynamic>?> Function() reader,
+    List<Map<String, dynamic>> sent,
+    List<String> keys,
+  ) async {
+    final response = await reader();
+    if (response == null || response['ErrorCode'] != 0) return null;
+    final data = response['Data'];
+    final fresh = data is List
+        ? _mapList(data)
+        : data is Map
+        ? [Map<String, dynamic>.from(data)]
+        : null;
+    if (fresh == null || fresh.length < sent.length) return null;
+    for (var i = 0; i < sent.length; i++) {
+      if (!_subsetMatches(fresh[i], sent[i], keys)) return false;
+    }
+    return true;
+  }
+
+  static bool _matchesByIndex(
+    List<Map<String, dynamic>> fresh,
+    List<Map<String, dynamic>> sent,
+    List<String> keys,
+  ) {
+    for (final expected in sent) {
+      final actual = fresh
+          .where((n) => '${n['Index']}' == '${expected['Index']}')
+          .firstOrNull;
+      if (actual == null || !_subsetMatches(actual, expected, keys)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  static bool _subsetMatches(
+    Map<String, dynamic> actual,
+    Map<String, dynamic> expected,
+    List<String> keys,
+  ) {
+    for (final key in keys) {
+      if (!expected.containsKey(key) || !actual.containsKey(key)) continue;
+      if ('${actual[key]}' != '${expected[key]}') return false;
+    }
+    return true;
   }
 
   Future<void> refreshUsbStorage() async {
@@ -1044,9 +1368,7 @@ class RouterProvider extends ChangeNotifier {
       if (disks != null && disks['ErrorCode'] == 0) {
         final data = disks['Data'];
         if (data is List) {
-          _usbDisks = data.whereType<Map>().map((entry) {
-            return UsbDisk.fromJson(Map<String, dynamic>.from(entry));
-          }).toList();
+          _usbDisks = _mapList(data).map(UsbDisk.fromJson).toList();
         }
       }
 
@@ -1064,105 +1386,61 @@ class RouterProvider extends ChangeNotifier {
     }
   }
 
-  Future<bool> updateUsbStorageSettings(UsbStorageSettings updated) async {
-    if (!isConnected || _usbStorageSaving) return false;
-
+  Future<SaveResult> updateUsbStorageSettings(
+    UsbStorageSettings updated,
+  ) async {
+    if (_usbStorageSaving) {
+      return const SaveResult.failed(
+        'A storage change is already in progress.',
+      );
+    }
     _usbStorageSaving = true;
     notifyListeners();
-
-    Map<String, dynamic>? response;
-    try {
-      response = await _mqtt.setPrivateStorage(
+    final result = await _writeRouterSetting(
+      label: 'USB storage change',
+      failureMessage: 'Failed to update USB storage settings',
+      request: () => _mqtt.setPrivateStorage(
         usb3Enabled: updated.usb3Enabled,
         sambaEnabled: updated.sambaEnabled,
         anonymousAccess: updated.anonymousAccess,
-      );
-    } finally {
-      _usbStorageSaving = false;
-    }
-
-    final success = response != null && response['ErrorCode'] == 0;
-    if (success) {
-      _usbStorageSettings = updated;
-    } else {
-      _errorMessage = 'Failed to update USB storage settings';
-    }
+      ),
+    );
+    _usbStorageSaving = false;
+    if (result.isConfirmed) _usbStorageSettings = updated;
     notifyListeners();
-    return success;
+    return result;
   }
 
-  Future<bool> setWirelessSettings(List<Map<String, dynamic>> networks) async {
-    if (!isConnected) {
-      _errorMessage = 'Cannot update settings: Authentication required';
-      notifyListeners();
-      return false;
-    }
-
-    _isLoading = true;
-    notifyListeners();
-
-    final normalized = networks
-        .map(
-          (net) => <String, dynamic>{
-            'Ssid': net['Ssid'] ?? '',
-            'Encrypt': net['Encrypt'] ?? 0,
-            'Password': net['Password'] ?? '',
-            'Vlanid': net['Vlanid'] ?? 0,
-            'SsidIsolate': net['SsidIsolate'] ?? 0,
-            'StaIsolate': net['StaIsolate'] ?? 0,
-            'Index': net['Index'] ?? 0,
-            'Create': net['Create'] ?? 1,
-            'VlanEnable': net['VlanEnable'] ?? 0,
-          },
-        )
-        .toList();
-
-    Map<String, dynamic>? response;
-    try {
-      response = await _mqtt
-          .setWirelessSettings(normalized)
-          .timeout(const Duration(seconds: 8));
-    } catch (_) {
-      response = null;
-    }
-
-    // Router restarts Wi-Fi after this command and the MQTT session may drop
-    // before a reply arrives. Treat no-reply / connection loss as success
-    // (the router is applying the change). An ErrorCode != 0 is a real failure.
-    final success = response == null || response['ErrorCode'] == 0;
-
-    if (!success) {
-      _errorMessage = 'Failed to update wireless settings';
-    }
-
-    _isLoading = false;
-    notifyListeners();
-
-    if (success) {
-      Future.delayed(const Duration(seconds: 6), () {
-        if (isConnected) refreshWirelessSettings();
-      });
-    }
-    return success;
-  }
-
-  Future<bool> rebootRouter() async {
+  /// Asks every mesh node to restart. The router may drop the session before
+  /// acknowledging, which is reported as pending rather than as a failure.
+  Future<SaveResult> rebootRouter() async {
     if (!isConnected) {
       _errorMessage = 'Cannot reboot: Authentication required';
       notifyListeners();
-      return false;
+      return const SaveResult.failed('Not connected to the router.');
     }
 
     final response = await _mqtt.rebootRouter();
-    return response != null && response['ErrorCode'] == 0;
+    if (response == null) {
+      return const SaveResult.pending(
+        'Restart requested. The router did not confirm before the connection '
+        'dropped; the app reconnects automatically when it is back.',
+      );
+    }
+    if (response['ErrorCode'] == 0) {
+      return const SaveResult.confirmed(
+        'Router is restarting. The app reconnects automatically.',
+      );
+    }
+    return SaveResult.failed(
+      'Router refused the restart (error ${response['ErrorCode']}).',
+    );
   }
 
   Future<void> logout() async {
+    _beginSession();
     _allowReconnect = false;
-    _reconnectTimer?.cancel();
-    _reconnectTimer = null;
     _reconnectInProgress = false;
-    _reconnectAttempt = 0;
     _stopAutoRefresh();
     await _mqtt.disconnect();
 
@@ -1186,6 +1464,11 @@ class RouterProvider extends ChangeNotifier {
     _usbStorageLoading = false;
     _usbStorageSaving = false;
     _liveTelemetryResponsive = true;
+    _telemetryMisses = 0;
+    _devicesUpdatedAt = null;
+    _telemetryUpdatedAt = null;
+    _nodesUpdatedAt = null;
+    _pendingChanges.clear();
     _isLoading = false;
     _errorMessage = null;
     notifyListeners();
@@ -1202,6 +1485,11 @@ class RouterProvider extends ChangeNotifier {
     return fallback;
   }
 
+  static List<Map<String, dynamic>> _mapList(List data) => data
+      .whereType<Map>()
+      .map((entry) => Map<String, dynamic>.from(entry))
+      .toList();
+
   void setError(String message) {
     _errorMessage = message;
     notifyListeners();
@@ -1214,6 +1502,7 @@ class RouterProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _discoverySubscription?.cancel();
     _connectionSubscription?.cancel();
     _refreshTimer?.cancel();

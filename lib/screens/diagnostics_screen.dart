@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:network_info_plus/network_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/router_provider.dart';
+import '../services/router_certificate_verifier.dart';
 import '../widgets/ui_components.dart';
 
 class DiagnosticsScreen extends StatefulWidget {
@@ -75,6 +76,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
       'MQTT Port: ${provider.mqttPortState.name}',
     );
     _addEntry(DiagnosticType.network, 'Auth: ${provider.authState.name}');
+    _addTlsEntry(provider);
 
     if (provider.errorMessage != null) {
       _addEntry(DiagnosticType.error, 'Last error: ${provider.errorMessage}');
@@ -83,6 +85,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
   }
 
   void _addEntry(DiagnosticType type, String message) {
+    if (!mounted) return;
     setState(() {
       _diagnosticLog.add(
         DiagnosticEntry(
@@ -109,7 +112,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
     _checkRouterProvider();
 
     _addEntry(DiagnosticType.info, 'Diagnostics complete');
-    setState(() => _isRunning = false);
+    if (mounted) setState(() => _isRunning = false);
   }
 
   Future<void> _getNetworkInfo() async {
@@ -240,11 +243,20 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
     );
 
     if (provider.currentRouter != null) {
-      _addEntry(
-        DiagnosticType.info,
-        'Current router: ${provider.currentRouter!.meshId}',
-      );
+      final meshId = provider.currentRouter!.meshId;
+      _addEntry(DiagnosticType.info, 'Current router: $meshId');
+      if (provider.authService.isPaired(meshId)) {
+        _addEntry(
+          provider.authService.isPasswordStoredSecurely(meshId)
+              ? DiagnosticType.success
+              : DiagnosticType.warning,
+          provider.authService.isPasswordStoredSecurely(meshId)
+              ? 'Router password: Android Keystore storage'
+              : 'Router password: secure storage unavailable, kept in app preferences',
+        );
+      }
     }
+    _addTlsEntry(provider);
 
     if (provider.errorMessage != null) {
       _addEntry(
@@ -257,6 +269,21 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
     provider.updateNetworkState(
       gatewayReachable: _routerReachable,
       mqttPortOpen: _mqttPortOpen,
+    );
+  }
+
+  void _addTlsEntry(RouterProvider provider) {
+    final verdict = provider.certificateVerdict;
+    if (verdict == null) {
+      _addEntry(DiagnosticType.info, 'Router TLS certificate: not checked yet');
+      return;
+    }
+    _addEntry(
+      verdict.trusted ? DiagnosticType.success : DiagnosticType.error,
+      verdict.trusted
+          ? 'Router TLS certificate: verified against the TaoTronics CA'
+          : 'Router TLS certificate REJECTED (${verdict.name}). The device '
+                'answering on the router address is not a TaoTronics router.',
     );
   }
 
@@ -290,6 +317,10 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
           'deviceCount': provider.devices.length,
           'nodeCount': provider.nodes.length,
           'lastError': provider.errorMessage,
+          'tlsCertificate': provider.certificateVerdict?.name,
+          'pendingChanges': provider.pendingChanges
+              .map((c) => {'label': c.label, 'status': c.status.name})
+              .toList(),
         },
         'diagnosticSummary': {
           'successCount': _diagnosticLog
@@ -354,7 +385,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
       }
     }
 
-    setState(() => _isExporting = false);
+    if (mounted) setState(() => _isExporting = false);
   }
 
   void _showExportPreview(String json) {

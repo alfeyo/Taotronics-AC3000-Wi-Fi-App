@@ -1,11 +1,12 @@
 import 'dart:async';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:network_info_plus/network_info_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../providers/router_provider.dart';
+import '../services/network_probe.dart';
 import 'home_screen.dart';
 import 'setup_wizard_screen.dart';
 import 'diagnostics_screen.dart';
@@ -19,6 +20,10 @@ class DiscoveryScreen extends StatefulWidget {
 
 class _DiscoveryScreenState extends State<DiscoveryScreen> {
   final NetworkInfo _networkInfo = NetworkInfo();
+  final NetworkProbe _probe = NetworkProbe();
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
+  Timer? _connectivityDebounce;
+  Future<void>? _scan;
 
   String? _wifiName;
   String? _wifiIP;
@@ -63,10 +68,37 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
   void initState() {
     super.initState();
     _startDiscovery();
+    _connectivitySubscription = Connectivity().onConnectivityChanged.listen((
+      _,
+    ) {
+      // Re-check after Wi-Fi changes, once the new network has settled.
+      _connectivityDebounce?.cancel();
+      _connectivityDebounce = Timer(const Duration(seconds: 2), () {
+        if (!mounted) return;
+        _startDiscovery();
+        context.read<RouterProvider>().reconnectNow();
+      });
+    }, onError: (Object _) {});
   }
 
-  Future<void> _startDiscovery() async {
-    setState(() {
+  @override
+  void dispose() {
+    _connectivitySubscription?.cancel();
+    _connectivityDebounce?.cancel();
+    super.dispose();
+  }
+
+  void _update(VoidCallback change) {
+    if (mounted) setState(change);
+  }
+
+  /// Runs one scan at a time; overlapping requests share the running scan.
+  Future<void> _startDiscovery() => _scan ??= _runScan().whenComplete(() {
+    _scan = null;
+  });
+
+  Future<void> _runScan() async {
+    _update(() {
       _isScanning = true;
       _errorMessage = null;
       _routerReachable = false;
@@ -83,66 +115,52 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
       gatewayReachable: _routerReachable,
       mqttPortOpen: _mqttPortOpen,
     );
-    setState(() => _isScanning = false);
+    _update(() => _isScanning = false);
   }
 
   Future<void> _requestPermissions() async {
     final locationStatus = await Permission.locationWhenInUse.request();
     if (!locationStatus.isGranted) {
-      setState(
-        () => _errorMessage = 'Location permission required for WiFi info',
+      _update(
+        () => _errorMessage = locationStatus.isPermanentlyDenied
+            ? 'Location permission is off for TT Router. The Wi-Fi name is '
+                  'hidden, but router checks still run. Enable it in app settings.'
+            : 'Location permission lets Android show the Wi-Fi name. Router '
+                  'checks still run without it.',
       );
     }
   }
 
   Future<void> _getNetworkInfo() async {
     try {
-      _wifiName = await _networkInfo.getWifiName();
-      _wifiIP = await _networkInfo.getWifiIP();
-      _gatewayIP = await _networkInfo.getWifiGatewayIP() ?? _defaultGateway;
-      setState(() {});
-    } catch (e) {
-      setState(() {
-        _gatewayIP = _defaultGateway;
+      final wifiName = await _networkInfo.getWifiName();
+      final wifiIP = await _networkInfo.getWifiIP();
+      final gateway = await _networkInfo.getWifiGatewayIP();
+      _update(() {
+        _wifiName = wifiName;
+        _wifiIP = wifiIP;
+        _gatewayIP = gateway ?? _defaultGateway;
       });
+    } catch (e) {
+      _update(() => _gatewayIP = _defaultGateway);
     }
   }
 
   Future<void> _checkRouterReachability() async {
-    if (_gatewayIP == null) return;
-
-    try {
-      final socket = await Socket.connect(
-        _gatewayIP!,
-        80,
-        timeout: const Duration(seconds: 3),
-      );
-      socket.destroy();
-      setState(() => _routerReachable = true);
-    } catch (_) {
-      try {
-        final result = await InternetAddress.lookup(_gatewayIP!);
-        setState(() => _routerReachable = result.isNotEmpty);
-      } catch (_) {
-        setState(() => _routerReachable = false);
-      }
-    }
+    final gateway = _gatewayIP;
+    if (gateway == null) return;
+    final reachable = await _probe.isHostReachable(
+      gateway,
+      ports: const [80, 443, _mqttPort],
+    );
+    _update(() => _routerReachable = reachable);
   }
 
   Future<void> _checkMqttPort() async {
-    if (_gatewayIP == null) return;
-
-    try {
-      final socket = await Socket.connect(
-        _gatewayIP!,
-        _mqttPort,
-        timeout: const Duration(seconds: 3),
-      );
-      socket.destroy();
-      setState(() => _mqttPortOpen = true);
-    } catch (_) {
-      setState(() => _mqttPortOpen = false);
-    }
+    final gateway = _gatewayIP;
+    if (gateway == null) return;
+    final outcome = await _probe.probe(gateway, _mqttPort);
+    _update(() => _mqttPortOpen = outcome == ProbeOutcome.open);
   }
 
   void _navigateToDashboard() {
@@ -324,7 +342,9 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
 
   String _heroSubtitle() {
     if (_isScanning) return 'Checking gateway and MQTT port';
-    if (_routerReachable && _mqttPortOpen) return 'Tap continue to open the dashboard';
+    if (_routerReachable && _mqttPortOpen) {
+      return 'Tap continue to open the dashboard';
+    }
     if (_routerReachable) return 'Router found, but needs authentication';
     return "Connect to the router's Wi-Fi and try again";
   }
@@ -390,17 +410,20 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
       color = const Color(0xff10b981);
       icon = Icons.check_circle_rounded;
       title = 'Router found';
-      body = 'Gateway is reachable and the MQTT broker is accepting connections.';
+      body =
+          'Gateway is reachable and the MQTT broker is accepting connections.';
     } else if (_routerReachable) {
       color = const Color(0xfff59e0b);
       icon = Icons.warning_amber_rounded;
       title = 'Authentication required';
-      body = 'Router responded, but the MQTT broker is locked. Pair the router to continue.';
+      body =
+          'Router responded, but the MQTT broker is locked. Pair the router to continue.';
     } else {
       color = const Color(0xffef4444);
       icon = Icons.error_outline_rounded;
       title = 'Router not reachable';
-      body = "We can't reach the gateway. Make sure you're on the router's Wi-Fi.";
+      body =
+          "We can't reach the gateway. Make sure you're on the router's Wi-Fi.";
     }
 
     return _cleanCard(
@@ -524,18 +547,17 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
       children: [
         Icon(icon, size: 16, color: Colors.grey.shade500),
         const SizedBox(width: 10),
-        Text(label,
-            style: TextStyle(color: Colors.grey.shade700, fontSize: 13)),
+        Text(
+          label,
+          style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
+        ),
         const Spacer(),
         Flexible(
           child: Text(
             value,
             textAlign: TextAlign.right,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 13.5,
-              fontWeight: FontWeight.w600,
-            ),
+            style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
           ),
         ),
       ],
@@ -543,8 +565,7 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
   }
 
   Widget _checkRow(String label, bool status, {String? pendingLabel}) {
-    final color =
-        status ? const Color(0xff10b981) : const Color(0xffef4444);
+    final color = status ? const Color(0xff10b981) : const Color(0xffef4444);
     return Row(
       children: [
         Container(
@@ -561,12 +582,7 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
           ),
         ),
         const SizedBox(width: 12),
-        Expanded(
-          child: Text(
-            label,
-            style: const TextStyle(fontSize: 13.5),
-          ),
-        ),
+        Expanded(child: Text(label, style: const TextStyle(fontSize: 13.5))),
         Text(
           status ? 'OK' : (pendingLabel ?? 'Failed'),
           style: TextStyle(
@@ -585,7 +601,9 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
       decoration: BoxDecoration(
         color: bg ?? Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: border ?? Colors.black.withValues(alpha: 0.05)),
+        border: Border.all(
+          color: border ?? Colors.black.withValues(alpha: 0.05),
+        ),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.025),
@@ -604,8 +622,11 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
       border: const Color(0xffffd6d3),
       child: Row(
         children: [
-          const Icon(Icons.error_outline_rounded,
-              color: Color(0xffd32f2f), size: 22),
+          const Icon(
+            Icons.error_outline_rounded,
+            color: Color(0xffd32f2f),
+            size: 22,
+          ),
           const SizedBox(width: 10),
           Expanded(
             child: Text(

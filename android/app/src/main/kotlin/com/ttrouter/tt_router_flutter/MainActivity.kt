@@ -48,7 +48,7 @@ class MainActivity : FlutterActivity() {
                 openWifiPicker(result)
             }
             "discoverRouter" -> {
-                provisioner?.cancel()
+                provisioner?.cancel("Superseded by a new Bluetooth search.")
                 provisioner = TtRouterProvisioner("", "", result, true).also { it.start() }
             }
             "provisionRouter" -> {
@@ -59,7 +59,7 @@ class MainActivity : FlutterActivity() {
                     return
                 }
 
-                provisioner?.cancel()
+                provisioner?.cancel("Superseded by a new Bluetooth setup request.")
                 provisioner = TtRouterProvisioner(ssid, password, result, false).also { it.start() }
             }
             else -> result.notImplemented()
@@ -68,15 +68,25 @@ class MainActivity : FlutterActivity() {
 
     private fun openWifiPicker(result: MethodChannel.Result) {
         try {
-            startActivity(Intent("android.net.wifi.PICK_WIFI_NETWORK"))
-        } catch (_: ActivityNotFoundException) {
-            startActivity(Intent(Settings.ACTION_WIFI_SETTINGS))
+            try {
+                startActivity(Intent("android.net.wifi.PICK_WIFI_NETWORK"))
+            } catch (_: ActivityNotFoundException) {
+                startActivity(Intent(Settings.ACTION_WIFI_SETTINGS))
+            }
+            result.success(null)
+        } catch (e: Exception) {
+            result.error(
+                "wifi_settings_unavailable",
+                "Open Android Wi-Fi settings and join the router network.",
+                e.message,
+            )
         }
-        result.success(null)
     }
 
     override fun onDestroy() {
-        provisioner?.cancel()
+        // The Dart side is being torn down with the engine; just release
+        // Bluetooth resources without replying.
+        provisioner?.cancel(null)
         super.onDestroy()
     }
 
@@ -118,7 +128,11 @@ class MainActivity : FlutterActivity() {
 
         private val scanCallback = object : ScanCallback() {
             override fun onScanResult(callbackType: Int, result: ScanResult) {
-                val name = result.device.name ?: result.scanRecord?.deviceName ?: return
+                val name = try {
+                    result.device.name ?: result.scanRecord?.deviceName
+                } catch (_: SecurityException) {
+                    result.scanRecord?.deviceName
+                } ?: return
                 if (!name.startsWith("TTBT")) return
                 if (bestScan == null || result.rssi > bestScan!!.rssi) {
                     bestScan = result
@@ -136,11 +150,13 @@ class MainActivity : FlutterActivity() {
                 status: Int,
                 newState: Int,
             ) {
-                handler.post {
+                guarded {
                     if (status != BluetoothGatt.GATT_SUCCESS) {
                         fail("connect_failed", "Bluetooth connection failed with status $status.")
                     } else if (newState == BluetoothProfile.STATE_CONNECTED) {
-                        gatt.discoverServices()
+                        if (!gatt.discoverServices()) {
+                            fail("services_failed", "Router Bluetooth services could not be read.")
+                        }
                     } else if (newState == BluetoothProfile.STATE_DISCONNECTED && !completed) {
                         fail("disconnected", "Router Bluetooth connection closed.")
                     }
@@ -148,10 +164,10 @@ class MainActivity : FlutterActivity() {
             }
 
             override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
-                handler.post {
+                guarded {
                     if (status != BluetoothGatt.GATT_SUCCESS) {
                         fail("services_failed", "Router Bluetooth services could not be read.")
-                        return@post
+                        return@guarded
                     }
 
                     val service = gatt.getService(SERVICE_UUID)
@@ -160,14 +176,14 @@ class MainActivity : FlutterActivity() {
                     val notify = notifyCharacteristic
                     if (writeCharacteristic == null || notify == null) {
                         fail("service_missing", "TT Router setup service is missing.")
-                        return@post
+                        return@guarded
                     }
 
                     gatt.setCharacteristicNotification(notify, true)
                     val descriptor = notify.getDescriptor(CLIENT_CONFIG_UUID)
                     if (descriptor == null) {
                         sendCapabilityInfo()
-                        return@post
+                        return@guarded
                     }
                     descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
                     if (!gatt.writeDescriptor(descriptor)) {
@@ -181,7 +197,7 @@ class MainActivity : FlutterActivity() {
                 descriptor: BluetoothGattDescriptor,
                 status: Int,
             ) {
-                handler.post {
+                guarded {
                     if (status == BluetoothGatt.GATT_SUCCESS) {
                         sendCapabilityInfo()
                     } else {
@@ -211,7 +227,7 @@ class MainActivity : FlutterActivity() {
                 characteristic: BluetoothGattCharacteristic,
                 status: Int,
             ) {
-                handler.post {
+                guarded {
                     Log.d(
                         LOG_TAG,
                         "BLE write result $writeCommandName chunk $writeChunkIndex/$writeChunkCount status $status",
@@ -227,7 +243,10 @@ class MainActivity : FlutterActivity() {
 
         fun start() {
             if (!hasBlePermissions()) {
-                fail("permission_required", "Bluetooth scan and connect permissions are required.")
+                fail(
+                    "permission_required",
+                    "Allow Nearby devices (Bluetooth) permission for TT Router, then try again.",
+                )
                 return
             }
             if (bluetoothAdapter?.isEnabled != true || scanner == null) {
@@ -235,15 +254,53 @@ class MainActivity : FlutterActivity() {
                 return
             }
 
-            val settings = ScanSettings.Builder()
-                .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
-                .build()
-            scanner!!.startScan(null, settings, scanCallback)
-            handler.postDelayed(scanTimeout, 12000L)
+            guarded {
+                val settings = ScanSettings.Builder()
+                    .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+                    .build()
+                scanner!!.startScan(null, settings, scanCallback)
+                handler.postDelayed(scanTimeout, 12000L)
+            }
         }
 
-        fun cancel() {
+        /**
+         * Stops this request. The pending Flutter call is answered with a
+         * `cancelled` error (exactly once) unless [reason] is null.
+         */
+        fun cancel(reason: String?) {
+            if (!completed) {
+                completed = true
+                if (reason != null) {
+                    try {
+                        flutterResult.error("cancelled", reason, null)
+                    } catch (e: Exception) {
+                        Log.w(LOG_TAG, "Could not deliver cancellation", e)
+                    }
+                }
+            }
             cleanup()
+        }
+
+        /**
+         * Runs Bluetooth work on the main thread and converts any exception
+         * into a Flutter error instead of crashing the app.
+         */
+        private fun guarded(block: () -> Unit) {
+            val run = Runnable {
+                if (completed) return@Runnable
+                try {
+                    block()
+                } catch (e: SecurityException) {
+                    fail("permission_required", "Bluetooth permission was revoked during setup.")
+                } catch (e: Exception) {
+                    Log.e(LOG_TAG, "Bluetooth setup error", e)
+                    fail(
+                        "bluetooth_error",
+                        "Bluetooth setup failed: ${e.message ?: e.javaClass.simpleName}",
+                    )
+                }
+            }
+            if (Looper.myLooper() == Looper.getMainLooper()) run.run() else handler.post(run)
         }
 
         private fun hasBlePermissions(): Boolean {
@@ -262,14 +319,20 @@ class MainActivity : FlutterActivity() {
         }
 
         private fun connectBestDevice() {
-            stopScan()
-            val device = bestScan?.device
-            if (device == null) {
-                fail("not_found", "No nearby TTBT router was found.")
-                return
+            guarded {
+                stopScan()
+                val device = bestScan?.device
+                if (device == null) {
+                    fail(
+                        "not_found",
+                        "No router in setup mode was found nearby. Check that its LED " +
+                            "flashes green and keep the phone within 1 m.",
+                    )
+                    return@guarded
+                }
+                gatt = device.connectGatt(this@MainActivity, false, gattCallback)
+                armTimeout(60000L)
             }
-            gatt = device.connectGatt(this@MainActivity, false, gattCallback)
-            armTimeout(60000L)
         }
 
         private fun sendGetDevInfo() {
@@ -375,9 +438,16 @@ class MainActivity : FlutterActivity() {
         }
 
         private fun handleNotification(value: ByteArray) {
-            handler.post {
-                incoming.write(value)
-                if (value.isEmpty() || value.last() != '\n'.code.toByte()) return@post
+            // Copy now: the stack may reuse the buffer after this callback.
+            val chunk = value.copyOf()
+            guarded {
+                incoming.write(chunk)
+                if (incoming.size() > MAX_REPLY_BYTES) {
+                    incoming.reset()
+                    fail("bad_response", "Router sent an oversized Bluetooth reply.")
+                    return@guarded
+                }
+                if (chunk.isEmpty() || chunk.last() != '\n'.code.toByte()) return@guarded
                 val message = String(crypt(incoming.toByteArray()), StandardCharsets.UTF_8)
                 incoming.reset()
                 handleResponse(message)
@@ -385,16 +455,16 @@ class MainActivity : FlutterActivity() {
         }
 
         private fun handleResponse(message: String) {
-            val separator = message.indexOf(',')
-            if (separator < 1) return
-            val responseCommand = "/${message.substring(0, separator)}"
-            val command = if (responseCommand in ROUTER_COMMANDS) {
-                responseCommand
-            } else {
-                writeCommandName
+            val response = try {
+                BleResponseParser.parse(message, ROUTER_COMMANDS, writeCommandName)
+            } catch (e: BleProtocolException) {
+                Log.w(LOG_TAG, "Malformed router reply: ${e.message}")
+                fail("bad_response", e.message ?: "Router sent an unreadable reply.")
+                return
             }
-            val body = JSONObject(message.substring(separator + 1).trim())
-            val errorCode = body.optInt("ErrorCode", -1)
+            val command = response.command
+            val body = response.body
+            val errorCode = response.errorCode
             if (errorCode != 0) {
                 if (errorCode == ROUTER_BUSY_ERROR && retryBusyCommand(command)) {
                     return
@@ -442,6 +512,7 @@ class MainActivity : FlutterActivity() {
             )
             handler.postDelayed(
                 {
+                    if (completed) return@postDelayed
                     when (command) {
                         "/SetWizardWireless" -> sendWizardWireless()
                         "/GetMWanInfo" -> sendWanInfo()
@@ -549,5 +620,6 @@ class MainActivity : FlutterActivity() {
         private val CLIENT_CONFIG_UUID: UUID =
             UUID.fromString("00002902-0000-1000-8000-00805F9B34FB")
         private const val LOG_TAG = "TtRouterBle"
+        private const val MAX_REPLY_BYTES = 64 * 1024
     }
 }

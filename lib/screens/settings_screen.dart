@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../models/save_result.dart';
 import '../models/usb_storage.dart';
 import '../providers/router_provider.dart';
 import 'router_settings_screens.dart';
+import '../widgets/feedback.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -244,12 +246,8 @@ class SettingsScreen extends StatelessWidget {
           TextButton(
             onPressed: () async {
               Navigator.pop(context);
-              await provider.rebootRouter();
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Rebooting router...')),
-                );
-              }
+              final result = await provider.rebootRouter();
+              if (context.mounted) showSaveResult(context, result);
             },
             child: const Text('Reboot', style: TextStyle(color: Colors.red)),
           ),
@@ -496,23 +494,22 @@ class _WifiSettingsDetailScreenState extends State<WifiSettingsDetailScreen> {
     final hasRouterNetworks = patchedNetworks.any(
       (network) => network.index == 0 || network.index == 1,
     );
-    final success = hasRouterNetworks
-        ? await provider.setWirelessSettings(
-            patchedNetworks
-                .map((network) => network.toRouterPayload())
-                .toList(),
-          )
-        : false;
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            success ? 'Settings saved!' : 'Failed to save settings',
-          ),
+    if (!hasRouterNetworks) {
+      showSaveResult(
+        context,
+        const SaveResult.failed(
+          'The router has not reported its 2.4 GHz / 5 GHz networks yet.',
         ),
       );
-      if (success) Navigator.pop(context);
+      return;
+    }
+    final result = await provider.setWirelessSettings(
+      patchedNetworks.map((network) => network.toRouterPayload()).toList(),
+    );
+
+    if (mounted) {
+      showSaveResult(context, result);
+      if (result.accepted) Navigator.pop(context);
     }
   }
 }
@@ -787,15 +784,9 @@ class _UsbStorageScreenState extends State<UsbStorageScreen> {
     RouterProvider provider,
     UsbStorageSettings updated,
   ) async {
-    final success = await provider.updateUsbStorageSettings(updated);
+    final result = await provider.updateUsbStorageSettings(updated);
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          success ? 'USB storage settings updated.' : 'Storage update failed.',
-        ),
-      ),
-    );
+    showSaveResult(context, result);
   }
 
   String _formatBytes(int bytes) {

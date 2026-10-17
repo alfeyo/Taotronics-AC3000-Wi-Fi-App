@@ -11,22 +11,15 @@ class DevicesScreen extends StatefulWidget {
 }
 
 class _DevicesScreenState extends State<DevicesScreen> {
+  // Live polling keeps refreshing the device list while this screen is open,
+  // so device rates stay current. The extra refresh fills the list at once.
   @override
   void initState() {
     super.initState();
     final p = context.read<RouterProvider>();
-    p.pauseLive();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) p.refreshDevices();
     });
-  }
-
-  @override
-  void dispose() {
-    try {
-      context.read<RouterProvider>().resumeLive();
-    } catch (_) {}
-    super.dispose();
   }
 
   String _formatRate(int bytesPerSec) {

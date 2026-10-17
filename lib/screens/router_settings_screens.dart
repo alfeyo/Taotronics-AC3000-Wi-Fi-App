@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../models/save_result.dart';
 import '../providers/router_provider.dart';
+import '../widgets/feedback.dart';
 
 class WanSettingsScreen extends StatefulWidget {
   const WanSettingsScreen({super.key});
@@ -22,6 +24,7 @@ class _WanSettingsScreenState extends State<WanSettingsScreen> {
   final _vlanId = TextEditingController();
 
   bool _loading = true;
+  bool _loadFailed = false;
   bool _saving = false;
   bool _manualDns = false;
   bool _vlanEnabled = false;
@@ -53,6 +56,7 @@ class _WanSettingsScreenState extends State<WanSettingsScreen> {
   Future<void> _load() async {
     final response = await context.read<RouterProvider>().loadWanSettings();
     final items = _mapList(response?['Data']);
+    _loadFailed = items.isEmpty;
     if (items.isNotEmpty) {
       final primary = items[0];
       final secondary = items.length > 1 ? items[1] : {'WanDisabled': 1};
@@ -102,18 +106,14 @@ class _WanSettingsScreenState extends State<WanSettingsScreen> {
         ..['PppoeACName'] = _pppoeAc.text.trim();
     }
 
-    final success = await context.read<RouterProvider>().updateWanSettings([
+    final result = await context.read<RouterProvider>().updateWanSettings([
       primary,
       Map<String, dynamic>.from(_secondary)
         ..putIfAbsent('WanDisabled', () => 1),
     ]);
     if (!mounted) return;
     setState(() => _saving = false);
-    _showResult(
-      context,
-      success,
-      'WAN settings saved. The router may reconnect.',
-    );
+    showSaveResult(context, result);
   }
 
   @override
@@ -121,6 +121,7 @@ class _WanSettingsScreenState extends State<WanSettingsScreen> {
     return _SettingsScaffold(
       title: 'WAN & DNS',
       loading: _loading,
+      loadFailed: _loadFailed,
       onRefresh: _load,
       actions: [
         TextButton(
@@ -232,6 +233,7 @@ class _LanSettingsScreenState extends State<LanSettingsScreen> {
   final _dhcpEnd = TextEditingController();
   final _vlanId = TextEditingController();
   bool _loading = true;
+  bool _loadFailed = false;
   bool _saving = false;
   bool _vlanEnabled = false;
   Map<String, dynamic> _lan = {};
@@ -257,6 +259,7 @@ class _LanSettingsScreenState extends State<LanSettingsScreen> {
   Future<void> _load() async {
     final response = await context.read<RouterProvider>().loadLanSettings();
     final items = _mapList(response?['Data']);
+    _loadFailed = items.isEmpty;
     if (items.isNotEmpty) {
       _lan = items[0];
       if (items.length > 1) _dhcp = items[1];
@@ -273,7 +276,7 @@ class _LanSettingsScreenState extends State<LanSettingsScreen> {
 
   Future<void> _save() async {
     setState(() => _saving = true);
-    final success = await context.read<RouterProvider>().updateLanSettings([
+    final result = await context.read<RouterProvider>().updateLanSettings([
       Map<String, dynamic>.from(_lan)
         ..['LanIp'] = _lanIp.text.trim()
         ..['LanMask'] = _lanMask.text.trim(),
@@ -286,11 +289,7 @@ class _LanSettingsScreenState extends State<LanSettingsScreen> {
     ]);
     if (!mounted) return;
     setState(() => _saving = false);
-    _showResult(
-      context,
-      success,
-      'LAN settings saved. The local IP may change.',
-    );
+    showSaveResult(context, result);
   }
 
   @override
@@ -298,6 +297,7 @@ class _LanSettingsScreenState extends State<LanSettingsScreen> {
     return _SettingsScaffold(
       title: 'LAN Settings',
       loading: _loading,
+      loadFailed: _loadFailed,
       onRefresh: _load,
       actions: [
         TextButton(
@@ -364,6 +364,7 @@ class _GuestWifiSettingsScreenState extends State<GuestWifiSettingsScreen> {
   final _ssid = TextEditingController();
   final _password = TextEditingController();
   bool _loading = true;
+  bool _loadFailed = false;
   bool _saving = false;
   bool _enabled = false;
   int _encryption = 3;
@@ -386,6 +387,7 @@ class _GuestWifiSettingsScreenState extends State<GuestWifiSettingsScreen> {
         .read<RouterProvider>()
         .loadGuestWifiSettings();
     final guest = _firstMap(response?['Data']);
+    _loadFailed = guest == null;
     if (guest != null) {
       _enabled = _asInt(guest['Enable']) == 1;
       _ssid.text = _asText(guest['Ssid']);
@@ -404,12 +406,12 @@ class _GuestWifiSettingsScreenState extends State<GuestWifiSettingsScreen> {
         ..['EncryptionWay'] = _encryption;
       if (_encryption > 0) payload['Password'] = _password.text;
     }
-    final success = await context
-        .read<RouterProvider>()
-        .updateGuestWifiSettings(payload);
+    final result = await context.read<RouterProvider>().updateGuestWifiSettings(
+      payload,
+    );
     if (!mounted) return;
     setState(() => _saving = false);
-    _showResult(context, success, 'Guest Wi-Fi settings saved.');
+    showSaveResult(context, result);
   }
 
   @override
@@ -417,6 +419,7 @@ class _GuestWifiSettingsScreenState extends State<GuestWifiSettingsScreen> {
     return _SettingsScaffold(
       title: 'Guest Wi-Fi',
       loading: _loading,
+      loadFailed: _loadFailed,
       onRefresh: _load,
       actions: [
         TextButton(
@@ -475,6 +478,7 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
   final _dmzHost = TextEditingController();
   final _fastNatPorts = TextEditingController();
   bool _loading = true;
+  bool _loadFailed = false;
   bool _saving = false;
   bool _firewall = false;
   bool _upnp = false;
@@ -505,6 +509,8 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
     final firewall = _dataMap(responses[0]?['Data']);
     final upnp = _mapList(responses[1]?['Data']);
     final fastNat = _dataMap(responses[2]?['Data']);
+    // Saving writes all three groups, so every one must have loaded.
+    _loadFailed = firewall == null || upnp.isEmpty || fastNat == null;
     _firewall = _asInt(firewall?['Enable']) == 1;
     if (upnp.isNotEmpty) _upnp = _asInt(upnp[0]['UpnpEnabled']) == 1;
     if (upnp.length > 1) {
@@ -535,10 +541,12 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
     ]);
     if (!mounted) return;
     setState(() => _saving = false);
-    _showResult(
+    showSaveResult(
       context,
-      results.every((result) => result),
-      'Security settings saved.',
+      results.firstWhere(
+        (result) => !result.isConfirmed,
+        orElse: () => const SaveResult.confirmed('Security settings saved.'),
+      ),
     );
   }
 
@@ -547,6 +555,7 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
     return _SettingsScaffold(
       title: 'Security & NAT',
       loading: _loading,
+      loadFailed: _loadFailed,
       onRefresh: _load,
       actions: [
         TextButton(
@@ -623,6 +632,7 @@ class _QosSettingsScreenState extends State<QosSettingsScreen> {
   final _up = TextEditingController();
   final _down = TextEditingController();
   bool _loading = true;
+  bool _loadFailed = false;
   bool _saving = false;
   bool _enabled = false;
 
@@ -642,6 +652,7 @@ class _QosSettingsScreenState extends State<QosSettingsScreen> {
   Future<void> _load() async {
     final response = await context.read<RouterProvider>().loadQosSettings();
     final data = _dataMap(response?['Data']);
+    _loadFailed = data == null;
     _enabled = _asInt(data?['Enable']) == 1;
     _up.text = _asText(data?['UpBandwidth'], fallback: '0');
     _down.text = _asText(data?['DownBandwidth'], fallback: '0');
@@ -650,14 +661,14 @@ class _QosSettingsScreenState extends State<QosSettingsScreen> {
 
   Future<void> _save() async {
     setState(() => _saving = true);
-    final success = await context.read<RouterProvider>().updateQosSettings(
+    final result = await context.read<RouterProvider>().updateQosSettings(
       enabled: _enabled,
       upBandwidth: _number(_up.text),
       downBandwidth: _number(_down.text),
     );
     if (!mounted) return;
     setState(() => _saving = false);
-    _showResult(context, success, 'QoS settings saved.');
+    showSaveResult(context, result);
   }
 
   @override
@@ -665,6 +676,7 @@ class _QosSettingsScreenState extends State<QosSettingsScreen> {
     return _SettingsScaffold(
       title: 'QoS',
       loading: _loading,
+      loadFailed: _loadFailed,
       onRefresh: _load,
       actions: [
         TextButton(
@@ -718,6 +730,7 @@ class _VpnSettingsScreenState extends State<VpnSettingsScreen> {
   final _innerNet = TextEditingController();
   final _innerMask = TextEditingController();
   bool _loading = true;
+  bool _loadFailed = false;
   bool _saving = false;
   bool _mppe = false;
   int _mode = 0;
@@ -748,6 +761,7 @@ class _VpnSettingsScreenState extends State<VpnSettingsScreen> {
     ]);
     final data = _firstMap(responses[0]?['Data']);
     final status = _dataMap(responses[1]?['Data']);
+    _loadFailed = data == null;
     if (data != null) {
       _mode = _asInt(data['VpnEnable']);
       _server.text = _asText(data['VpnServer']);
@@ -780,12 +794,12 @@ class _VpnSettingsScreenState extends State<VpnSettingsScreen> {
       if (_mode == 1) payload['VpnPPTPMppe'] = _mppe ? 1 : 0;
       if (_mode == 2) payload['IpsecPsk'] = _psk.text;
     }
-    final success = await context.read<RouterProvider>().updateVpnSettings(
+    final result = await context.read<RouterProvider>().updateVpnSettings(
       payload,
     );
     if (!mounted) return;
     setState(() => _saving = false);
-    _showResult(context, success, 'VPN settings saved.');
+    showSaveResult(context, result);
   }
 
   @override
@@ -793,6 +807,7 @@ class _VpnSettingsScreenState extends State<VpnSettingsScreen> {
     return _SettingsScaffold(
       title: 'VPN Client',
       loading: _loading,
+      loadFailed: _loadFailed,
       onRefresh: _load,
       actions: [
         TextButton(
@@ -885,6 +900,7 @@ class PortForwardingScreen extends StatefulWidget {
 
 class _PortForwardingScreenState extends State<PortForwardingScreen> {
   bool _loading = true;
+  bool _loadFailed = false;
   List<Map<String, dynamic>> _rules = [];
 
   @override
@@ -895,6 +911,7 @@ class _PortForwardingScreenState extends State<PortForwardingScreen> {
 
   Future<void> _load() async {
     final response = await context.read<RouterProvider>().loadVirtualServers();
+    _loadFailed = response == null;
     _rules = _mapList(response?['Data']);
     if (mounted) setState(() => _loading = false);
   }
@@ -907,16 +924,17 @@ class _PortForwardingScreenState extends State<PortForwardingScreen> {
     );
     if (result == null || !mounted) return;
     final provider = context.read<RouterProvider>();
-    final success = rule == null
+    final saved = rule == null
         ? await provider.addVirtualServer(result)
         : await provider.updateVirtualServer(result);
     if (!mounted) return;
-    _showResult(
+    showSaveResult(
       context,
-      success,
-      rule == null ? 'Rule added.' : 'Rule updated.',
+      saved.isConfirmed
+          ? SaveResult.confirmed(rule == null ? 'Rule added.' : 'Rule updated.')
+          : saved,
     );
-    if (success) {
+    if (saved.isConfirmed) {
       setState(() => _loading = true);
       await _load();
     }
@@ -925,12 +943,27 @@ class _PortForwardingScreenState extends State<PortForwardingScreen> {
   Future<void> _delete(Map<String, dynamic> rule) async {
     final index = _asText(rule['Index']);
     if (index.isEmpty) return;
-    final success = await context.read<RouterProvider>().deleteVirtualServer(
+    final confirmed = await confirmAction(
+      context,
+      title: 'Delete forwarding rule?',
+      message:
+          'Traffic to external ports ${_asText(rule['ExternalStartPort'])}-'
+          '${_asText(rule['ExternalEndPort'])} will no longer reach '
+          '${_asText(rule['DeviceIpaddr'], fallback: 'this device')}.',
+      confirmLabel: 'Delete',
+      destructive: true,
+      icon: Icons.delete_outline_rounded,
+    );
+    if (!confirmed || !mounted) return;
+    final result = await context.read<RouterProvider>().deleteVirtualServer(
       index,
     );
     if (!mounted) return;
-    _showResult(context, success, 'Rule deleted.');
-    if (success) {
+    showSaveResult(
+      context,
+      result.isConfirmed ? const SaveResult.confirmed('Rule deleted.') : result,
+    );
+    if (result.isConfirmed) {
       setState(() => _loading = true);
       await _load();
     }
@@ -941,6 +974,7 @@ class _PortForwardingScreenState extends State<PortForwardingScreen> {
     return _SettingsScaffold(
       title: 'Port Forwarding',
       loading: _loading,
+      loadFailed: _loadFailed,
       onRefresh: _load,
       actions: [
         IconButton(
@@ -1003,6 +1037,7 @@ class _DdnsSettingsScreenState extends State<DdnsSettingsScreen> {
   final _password = TextEditingController();
   final _host = TextEditingController();
   bool _loading = true;
+  bool _loadFailed = false;
   bool _saving = false;
   bool _enabled = false;
   int _service = 0;
@@ -1030,6 +1065,7 @@ class _DdnsSettingsScreenState extends State<DdnsSettingsScreen> {
     ]);
     final data = _firstMap(responses[0]?['Data']);
     final status = _dataMap(responses[1]?['Data']);
+    _loadFailed = data == null;
     if (data != null) {
       _enabled = _asInt(data['Enable']) == 1;
       _service = _asInt(data['Service']);
@@ -1056,12 +1092,12 @@ class _DdnsSettingsScreenState extends State<DdnsSettingsScreen> {
         ..['PassWord'] = _password.text
         ..['HostName'] = _host.text.trim();
     }
-    final success = await context.read<RouterProvider>().updateDdnsSettings(
+    final result = await context.read<RouterProvider>().updateDdnsSettings(
       payload,
     );
     if (!mounted) return;
     setState(() => _saving = false);
-    _showResult(context, success, 'DDNS settings saved.');
+    showSaveResult(context, result);
   }
 
   @override
@@ -1069,6 +1105,7 @@ class _DdnsSettingsScreenState extends State<DdnsSettingsScreen> {
     return _SettingsScaffold(
       title: 'DDNS',
       loading: _loading,
+      loadFailed: _loadFailed,
       onRefresh: _load,
       actions: [
         TextButton(
@@ -1129,6 +1166,7 @@ class NodeLedSettingsScreen extends StatefulWidget {
 
 class _NodeLedSettingsScreenState extends State<NodeLedSettingsScreen> {
   bool _loading = true;
+  bool _loadFailed = false;
   List<Map<String, dynamic>> _nodes = [];
 
   @override
@@ -1139,18 +1177,22 @@ class _NodeLedSettingsScreenState extends State<NodeLedSettingsScreen> {
 
   Future<void> _load() async {
     final response = await context.read<RouterProvider>().loadLedSettings();
+    _loadFailed = response == null;
     _nodes = _mapList(response?['Data']);
     if (mounted) setState(() => _loading = false);
   }
 
   Future<void> _setLed(Map<String, dynamic> node, bool enabled) async {
-    final success = await context.read<RouterProvider>().updateNodeLed(
+    final result = await context.read<RouterProvider>().updateNodeLed(
       nodeSn: _asText(node['NodeSn']),
       led: enabled ? 1 : 0,
     );
     if (!mounted) return;
-    _showResult(context, success, 'LED updated.');
-    if (success) {
+    showSaveResult(
+      context,
+      result.isConfirmed ? const SaveResult.confirmed('LED updated.') : result,
+    );
+    if (result.isConfirmed) {
       node['Led'] = enabled ? 1 : 0;
       setState(() {});
     }
@@ -1161,6 +1203,7 @@ class _NodeLedSettingsScreenState extends State<NodeLedSettingsScreen> {
     return _SettingsScaffold(
       title: 'Router LEDs',
       loading: _loading,
+      loadFailed: _loadFailed,
       onRefresh: _load,
       child: _nodes.isEmpty
           ? const _EmptySettings(
@@ -1196,6 +1239,7 @@ class RestartScheduleScreen extends StatefulWidget {
 
 class _RestartScheduleScreenState extends State<RestartScheduleScreen> {
   bool _loading = true;
+  bool _loadFailed = false;
   bool _saving = false;
   bool _enabled = false;
   TimeOfDay _time = const TimeOfDay(hour: 3, minute: 0);
@@ -1210,6 +1254,7 @@ class _RestartScheduleScreenState extends State<RestartScheduleScreen> {
   Future<void> _load() async {
     final response = await context.read<RouterProvider>().loadRestartSchedule();
     final data = _firstMap(response?['Data']);
+    _loadFailed = data == null;
     if (data != null) {
       _enabled = _asInt(data['RestartSwitch']) == 1;
       _time = TimeOfDay(
@@ -1237,12 +1282,12 @@ class _RestartScheduleScreenState extends State<RestartScheduleScreen> {
         ..['RestartHour'] = _time.hour
         ..['RestartMinute'] = _time.minute;
     }
-    final success = await context.read<RouterProvider>().updateRestartSchedule(
+    final result = await context.read<RouterProvider>().updateRestartSchedule(
       payload,
     );
     if (!mounted) return;
     setState(() => _saving = false);
-    _showResult(context, success, 'Restart schedule saved.');
+    showSaveResult(context, result);
   }
 
   Future<void> _rebootNow() async {
@@ -1264,8 +1309,8 @@ class _RestartScheduleScreenState extends State<RestartScheduleScreen> {
       ),
     );
     if (ok != true || !mounted) return;
-    final success = await context.read<RouterProvider>().rebootRouter();
-    if (mounted) _showResult(context, success, 'Router restart requested.');
+    final result = await context.read<RouterProvider>().rebootRouter();
+    if (mounted) showSaveResult(context, result);
   }
 
   @override
@@ -1273,6 +1318,7 @@ class _RestartScheduleScreenState extends State<RestartScheduleScreen> {
     return _SettingsScaffold(
       title: 'Restart Controls',
       loading: _loading,
+      loadFailed: _loadFailed,
       onRefresh: _load,
       actions: [
         TextButton(
@@ -1566,6 +1612,7 @@ class _SettingsScaffold extends StatelessWidget {
     required this.loading,
     required this.onRefresh,
     required this.child,
+    this.loadFailed = false,
     this.actions = const [],
   });
 
@@ -1573,14 +1620,23 @@ class _SettingsScaffold extends StatelessWidget {
   final bool loading;
   final Future<void> Function() onRefresh;
   final Widget child;
+
+  /// When the current values could not be read, editing is disabled: saving
+  /// the form's defaults would overwrite the router's real configuration.
+  final bool loadFailed;
   final List<Widget> actions;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(title), actions: actions),
+      appBar: AppBar(
+        title: Text(title),
+        actions: loading || loadFailed ? const [] : actions,
+      ),
       body: loading
           ? const Center(child: CircularProgressIndicator())
+          : loadFailed
+          ? _LoadFailedView(onRetry: onRefresh)
           : RefreshIndicator(
               onRefresh: onRefresh,
               child: ListView(
@@ -1640,6 +1696,77 @@ class _EmptySettings extends StatelessWidget {
           const SizedBox(height: 6),
           Text(subtitle, textAlign: TextAlign.center),
         ],
+      ),
+    );
+  }
+}
+
+class _LoadFailedView extends StatefulWidget {
+  const _LoadFailedView({required this.onRetry});
+
+  final Future<void> Function() onRetry;
+
+  @override
+  State<_LoadFailedView> createState() => _LoadFailedViewState();
+}
+
+class _LoadFailedViewState extends State<_LoadFailedView> {
+  bool _retrying = false;
+
+  Future<void> _retry() async {
+    setState(() => _retrying = true);
+    await widget.onRetry();
+    if (mounted) setState(() => _retrying = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final provider = context.watch<RouterProvider>();
+    final theme = Theme.of(context);
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              provider.isConnected
+                  ? Icons.cloud_off_rounded
+                  : Icons.link_off_rounded,
+              size: 48,
+              color: theme.colorScheme.error,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Could not read the current settings',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.titleMedium,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              provider.isConnected
+                  ? 'The router did not answer. Editing is disabled so the '
+                        'form cannot overwrite your configuration with blank values.'
+                  : 'The app is not connected to the router. Reconnect, then try again.',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 20),
+            FilledButton.icon(
+              onPressed: _retrying ? null : _retry,
+              icon: _retrying
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.refresh_rounded),
+              label: const Text('Try again'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1722,14 +1849,4 @@ String _encodeRestartDays(Set<int> days) {
 
 String _restartDayLabel(int day) {
   return const ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][day];
-}
-
-void _showResult(BuildContext context, bool success, String message) {
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(
-      content: Text(
-        success ? message : 'Update failed. Check diagnostics logs.',
-      ),
-    ),
-  );
 }

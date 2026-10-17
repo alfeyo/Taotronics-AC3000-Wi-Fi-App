@@ -145,6 +145,7 @@ class _PairingScreenState extends State<PairingScreen> {
           : null,
     );
 
+    if (!mounted) return;
     if (success) {
       setState(() {
         _successMessage = 'Connection successful! Router paired.';
