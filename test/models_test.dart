@@ -26,7 +26,10 @@ void main() {
     expect(d.isActive, isTrue);
     expect(d.uploadSpeed, 2505);
     expect(d.link, DeviceLink.wireless);
-    expect(d.connectedSince, DateTime.fromMillisecondsSinceEpoch(1792242175000));
+    expect(
+      d.connectedSince,
+      DateTime.fromMillisecondsSinceEpoch(1792242175000),
+    );
     expect(d.hasByteCounters, isFalse);
     expect(d.searchText, contains('192.168.10.138'));
   });

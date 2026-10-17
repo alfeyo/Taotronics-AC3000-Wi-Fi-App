@@ -1,207 +1,210 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../providers/router_provider.dart';
+
 import '../models/device_entity.dart';
+import '../providers/router_provider.dart';
+import '../theme/app_theme.dart';
+import '../utils/format.dart';
+import '../widgets/app_widgets.dart';
+import '../widgets/connection_banner.dart';
 
 class NodesScreen extends StatelessWidget {
   const NodesScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final provider = context.watch<RouterProvider>();
+    final nodes = [...provider.nodes]
+      ..sort((a, b) => a.isMaster == b.isMaster ? 0 : (a.isMaster ? -1 : 1));
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Mesh Nodes'),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
-        elevation: 0,
+        title: const Text('Mesh nodes'),
         actions: [
-          Consumer<RouterProvider>(
-            builder: (context, provider, child) => IconButton(
-              icon: const Icon(Icons.refresh),
-              onPressed: provider.refreshNodes,
-            ),
+          IconButton(
+            tooltip: 'Refresh',
+            icon: const Icon(Icons.refresh_rounded),
+            onPressed: provider.isConnected ? provider.refreshNodes : null,
           ),
         ],
       ),
-      body: Consumer<RouterProvider>(
-        builder: (context, provider, child) {
-          if (provider.nodes.isEmpty) {
-            return const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.router, size: 80, color: Colors.grey),
-                  SizedBox(height: 16),
-                  Text(
-                    'No mesh nodes found',
-                    style: TextStyle(fontSize: 18, color: Colors.grey),
-                  ),
-                ],
-              ),
-            );
-          }
-
-          return RefreshIndicator(
-            onRefresh: provider.refreshNodes,
-            child: ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: provider.nodes.length,
-              itemBuilder: (context, index) {
-                final node = provider.nodes[index];
-                return _buildNodeCard(context, node);
-              },
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildNodeCard(BuildContext context, NodeEntity node) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 16),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
+      body: RefreshIndicator(
+        onRefresh: provider.refreshNodes,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(
+            Space.lg,
+            Space.sm,
+            Space.lg,
+            Space.xxl,
+          ),
           children: [
-            Row(
-              children: [
-                Container(
-                  width: 60,
-                  height: 60,
-                  decoration: BoxDecoration(
-                    color: node.isOnline
-                        ? Colors.green.shade50
-                        : Colors.grey.shade100,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(
-                    Icons.router,
-                    size: 30,
-                    color: node.isOnline ? Colors.green : Colors.grey,
-                  ),
+            const ConnectionStatusBanners(),
+            if (nodes.isEmpty)
+              const Padding(
+                padding: EdgeInsets.only(top: 80),
+                child: EmptyState(
+                  icon: Icons.hub_outlined,
+                  title: 'No mesh nodes reported',
+                  message: 'Pull down to refresh once the router is connected.',
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Text(
-                            node.displayName,
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          if (node.isMaster) ...[
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.deepOrange.shade50,
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: const Text(
-                                'Master',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.deepOrange,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        node.isOnline ? 'Online' : 'Offline',
-                        style: TextStyle(
-                          color: node.isOnline ? Colors.green : Colors.grey,
-                        ),
-                      ),
-                    ],
-                  ),
+              )
+            else ...[
+              Text(
+                '${nodes.where((n) => n.isOnline).length} of ${nodes.length} '
+                'online · updated ${formatAge(provider.nodesUpdatedAt)}',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
-                // Only draw signal bars when the router reported a value.
-                if (node.isOnline && node.signalStrength > 0)
-                  _buildSignalIndicator(node.signalStrength),
-              ],
-            ),
-            const Divider(height: 24),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildStatItem(
-                  Icons.devices,
-                  '${node.connectedDevices}',
-                  'Devices',
-                ),
-                _buildStatItem(Icons.memory, node.model ?? 'N/A', 'Model'),
-                _buildStatItem(
-                  Icons.update,
-                  node.firmwareVersion ?? 'N/A',
-                  'Firmware',
-                ),
-              ],
-            ),
-            if (node.ipAddress != null) ...[
-              const Divider(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'IP: ${node.ipAddress}',
-                    style: TextStyle(color: Colors.grey.shade600),
-                  ),
-                  Text(
-                    'SN: ${node.sn}',
-                    style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
-                  ),
-                ],
               ),
+              const SizedBox(height: Space.sm),
+              for (final node in nodes)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: Space.md),
+                  child: ContentWidth(child: _NodeCard(node: node)),
+                ),
             ],
           ],
         ),
       ),
     );
   }
+}
 
-  Widget _buildSignalIndicator(int strength) {
-    final bars = (strength / 25).ceil().clamp(1, 4);
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: List.generate(4, (index) {
-        final isActive = index < bars;
-        return Container(
-          width: 4,
-          height: 8.0 + (index * 4),
-          margin: const EdgeInsets.only(left: 2),
-          decoration: BoxDecoration(
-            color: isActive ? Colors.green : Colors.grey.shade300,
-            borderRadius: BorderRadius.circular(2),
-          ),
-        );
-      }),
+class _NodeCard extends StatelessWidget {
+  const _NodeCard({required this.node});
+
+  final NodeEntity node;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final facts = <(IconData, String, String)>[
+      (Icons.devices_rounded, 'Clients', '${node.connectedDevices}'),
+      if (node.uptimeSeconds > 0)
+        (Icons.timer_outlined, 'Uptime', formatUptime(node.uptimeSeconds)),
+      if (node.model != null) (Icons.memory_rounded, 'Model', node.model!),
+      if (node.firmwareVersion != null)
+        (Icons.system_update_alt_rounded, 'Firmware', node.firmwareVersion!),
+      if (node.ipAddress != null) (Icons.lan_rounded, 'IP', node.ipAddress!),
+    ];
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(Space.lg),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                IconBadge(
+                  Icons.router_rounded,
+                  tone: node.isOnline ? Tone.success : Tone.neutral,
+                  size: 52,
+                ),
+                const SizedBox(width: Space.lg),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        node.displayName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: Space.xs),
+                      Wrap(
+                        spacing: Space.sm,
+                        runSpacing: Space.xs,
+                        children: [
+                          StatusPill(
+                            label: node.isOnline ? 'Online' : 'Offline',
+                            tone: node.isOnline ? Tone.success : Tone.danger,
+                          ),
+                          StatusPill(
+                            label: node.isMaster ? 'Main router' : 'Satellite',
+                            tone: Tone.brand,
+                            dot: false,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                // Only draw signal bars when the router reported a value.
+                if (node.isOnline && node.signalStrength > 0)
+                  _SignalBars(node.signalStrength),
+              ],
+            ),
+            const SizedBox(height: Space.lg),
+            Wrap(
+              spacing: Space.xl,
+              runSpacing: Space.md,
+              children: [
+                for (final (icon, label, value) in facts)
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        icon,
+                        size: 18,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: Space.xs),
+                      Text(
+                        '$label ',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      Text(value, style: theme.textTheme.labelLarge),
+                    ],
+                  ),
+              ],
+            ),
+            const SizedBox(height: Space.sm),
+            Text(
+              'Serial ${node.sn}'
+              '${node.wiredBackhaul == null ? '' : ' · LocalConn ${node.wiredBackhaul! ? 1 : 0}'}',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
+}
 
-  Widget _buildStatItem(IconData icon, String value, String label) {
-    return Column(
-      children: [
-        Icon(icon, color: Colors.grey),
-        const SizedBox(height: 4),
-        Text(value, style: const TextStyle(fontWeight: FontWeight.bold)),
-        Text(
-          label,
-          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-        ),
-      ],
+class _SignalBars extends StatelessWidget {
+  const _SignalBars(this.strength);
+
+  final int strength;
+
+  @override
+  Widget build(BuildContext context) {
+    final bars = (strength / 25).ceil().clamp(1, 4);
+    final active = context.tone(Tone.success).foreground;
+    final inactive = Theme.of(context).colorScheme.outlineVariant;
+    return Semantics(
+      label: 'Signal $bars of 4',
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: List.generate(4, (index) {
+          return Container(
+            width: 4,
+            height: 8.0 + (index * 4),
+            margin: const EdgeInsets.only(left: 2),
+            decoration: BoxDecoration(
+              color: index < bars ? active : inactive,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          );
+        }),
+      ),
     );
   }
 }

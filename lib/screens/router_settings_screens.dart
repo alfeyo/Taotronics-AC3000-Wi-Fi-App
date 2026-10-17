@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/save_result.dart';
 import '../providers/router_provider.dart';
+import '../theme/app_theme.dart';
+import '../utils/validators.dart';
+import '../widgets/app_widgets.dart';
+import '../widgets/connection_banner.dart';
 import '../widgets/feedback.dart';
 
 class WanSettingsScreen extends StatefulWidget {
@@ -12,6 +16,7 @@ class WanSettingsScreen extends StatefulWidget {
 }
 
 class _WanSettingsScreenState extends State<WanSettingsScreen> {
+  final _form = GlobalKey<FormState>();
   final _ip = TextEditingController();
   final _mask = TextEditingController();
   final _gateway = TextEditingController();
@@ -80,6 +85,9 @@ class _WanSettingsScreenState extends State<WanSettingsScreen> {
   }
 
   Future<void> _save() async {
+    if (!(_form.currentState?.validate() ?? false)) return;
+    if (!await _confirmSave()) return;
+    if (!mounted) return;
     setState(() => _saving = true);
     final primary = Map<String, dynamic>.from(_primary)
       ..['WanProto'] = _wanProto
@@ -116,10 +124,26 @@ class _WanSettingsScreenState extends State<WanSettingsScreen> {
     showSaveResult(context, result);
   }
 
+  Future<bool> _confirmSave() => confirmAction(
+    context,
+    title: 'Change internet settings?',
+    message: _wanProto == 3
+        ? 'Bridge mode turns off the router\'s own routing. Devices may '
+              'lose internet and this app may lose access until the router '
+              'is reconfigured or reset.'
+        : 'If these values are wrong, every device loses internet access. '
+              'Local Wi-Fi and this app keep working, so you can change them '
+              'back.',
+    confirmLabel: 'Apply',
+    destructive: _wanProto == 3,
+    icon: Icons.public_rounded,
+  );
+
   @override
   Widget build(BuildContext context) {
     return _SettingsScaffold(
       title: 'WAN & DNS',
+      formKey: _form,
       loading: _loading,
       loadFailed: _loadFailed,
       onRefresh: _load,
@@ -150,15 +174,45 @@ class _WanSettingsScreenState extends State<WanSettingsScreen> {
                 ),
                 if (_wanProto == 1) ...[
                   _gap,
-                  _field(_ip, 'WAN IP address', icon: Icons.language),
+                  _field(
+                    _ip,
+                    'WAN IP address',
+                    icon: Icons.language,
+                    validator: Validators.ipv4,
+                  ),
                   _gap,
-                  _field(_mask, 'Subnet mask', icon: Icons.grid_4x4),
+                  _field(
+                    _mask,
+                    'Subnet mask',
+                    icon: Icons.grid_4x4,
+                    validator: Validators.netmask,
+                  ),
                   _gap,
-                  _field(_gateway, 'Gateway', icon: Icons.route),
+                  _field(
+                    _gateway,
+                    'Gateway',
+                    icon: Icons.route,
+                    validator: (v) =>
+                        Validators.ipv4(v) ??
+                        (Validators.netmask(_mask.text) == null &&
+                                Validators.isIpv4(_ip.text) &&
+                                !Validators.sameSubnet(
+                                  _ip.text.trim(),
+                                  v!.trim(),
+                                  _mask.text.trim(),
+                                )
+                            ? 'Gateway must be in the same subnet as the WAN IP'
+                            : null),
+                  ),
                 ],
                 if (_wanProto == 2) ...[
                   _gap,
-                  _field(_pppoeUser, 'PPPoE username', icon: Icons.person),
+                  _field(
+                    _pppoeUser,
+                    'PPPoE username',
+                    icon: Icons.person,
+                    validator: (v) => Validators.required(v, 'the username'),
+                  ),
                   _gap,
                   _field(
                     _pppoePassword,
@@ -187,9 +241,19 @@ class _WanSettingsScreenState extends State<WanSettingsScreen> {
                   subtitle: const Text('Static IP always uses manual DNS.'),
                 ),
                 if (_manualDns || _wanProto == 1) ...[
-                  _field(_dns, 'Primary DNS', icon: Icons.dns),
+                  _field(
+                    _dns,
+                    'Primary DNS',
+                    icon: Icons.dns,
+                    validator: Validators.ipv4,
+                  ),
                   _gap,
-                  _field(_dnsBackup, 'Secondary DNS', icon: Icons.dns_outlined),
+                  _field(
+                    _dnsBackup,
+                    'Secondary DNS (optional)',
+                    icon: Icons.dns_outlined,
+                    validator: (v) => Validators.ipv4(v, required: false),
+                  ),
                 ],
               ],
             ),
@@ -209,6 +273,7 @@ class _WanSettingsScreenState extends State<WanSettingsScreen> {
                     'VLAN ID',
                     icon: Icons.tag,
                     keyboardType: TextInputType.number,
+                    validator: Validators.vlanId,
                   ),
               ],
             ),
@@ -227,6 +292,7 @@ class LanSettingsScreen extends StatefulWidget {
 }
 
 class _LanSettingsScreenState extends State<LanSettingsScreen> {
+  final _form = GlobalKey<FormState>();
   final _lanIp = TextEditingController();
   final _lanMask = TextEditingController();
   final _dhcpStart = TextEditingController();
@@ -275,6 +341,9 @@ class _LanSettingsScreenState extends State<LanSettingsScreen> {
   }
 
   Future<void> _save() async {
+    if (!(_form.currentState?.validate() ?? false)) return;
+    if (!await _confirmSave()) return;
+    if (!mounted) return;
     setState(() => _saving = true);
     final result = await context.read<RouterProvider>().updateLanSettings([
       Map<String, dynamic>.from(_lan)
@@ -292,10 +361,67 @@ class _LanSettingsScreenState extends State<LanSettingsScreen> {
     showSaveResult(context, result);
   }
 
+  String? _dhcpValidator(String? value) {
+    final error = Validators.ipv4(value);
+    if (error != null) return error;
+    final ip = _lanIp.text.trim();
+    final mask = _lanMask.text.trim();
+    if (Validators.ipv4(ip) != null || Validators.netmask(mask) != null) {
+      return null;
+    }
+    if (!Validators.sameSubnet(ip, value!.trim(), mask)) {
+      return 'Must be in the router\'s subnet';
+    }
+    if (value.trim() == ip) return 'Must not be the router address';
+    return null;
+  }
+
+  Future<bool> _confirmSave() async {
+    final start = _dhcpStart.text.trim();
+    final end = _dhcpEnd.text.trim();
+    if (Validators.ipValue(start) > Validators.ipValue(end)) {
+      showSaveResult(
+        context,
+        const SaveResult.failed(
+          'The DHCP start address must come before the end.',
+        ),
+      );
+      return false;
+    }
+    final ip = _lanIp.text.trim();
+    if (Validators.ipValue(ip) >= Validators.ipValue(start) &&
+        Validators.ipValue(ip) <= Validators.ipValue(end)) {
+      showSaveResult(
+        context,
+        const SaveResult.failed(
+          'The router address must be outside the DHCP range.',
+        ),
+      );
+      return false;
+    }
+    final addressChanged = ip != _asText(_lan['LanIp']);
+    return confirmAction(
+      context,
+      title: addressChanged
+          ? 'Change the router address?'
+          : 'Change local network settings?',
+      message: addressChanged
+          ? 'The router moves to $ip. Every device, including this phone, '
+                'must get a new address; the app finds the router again '
+                'through discovery. Wrong values can make the router '
+                'unreachable until it is reset.'
+          : 'Devices may need to reconnect to receive new addresses.',
+      confirmLabel: 'Apply',
+      destructive: addressChanged,
+      icon: Icons.lan_rounded,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return _SettingsScaffold(
       title: 'LAN Settings',
+      formKey: _form,
       loading: _loading,
       loadFailed: _loadFailed,
       onRefresh: _load,
@@ -311,9 +437,19 @@ class _LanSettingsScreenState extends State<LanSettingsScreen> {
             title: 'Router Address',
             child: Column(
               children: [
-                _field(_lanIp, 'LAN IP address', icon: Icons.lan),
+                _field(
+                  _lanIp,
+                  'LAN IP address',
+                  icon: Icons.lan,
+                  validator: Validators.ipv4,
+                ),
                 _gap,
-                _field(_lanMask, 'Subnet mask', icon: Icons.grid_4x4),
+                _field(
+                  _lanMask,
+                  'Subnet mask',
+                  icon: Icons.grid_4x4,
+                  validator: Validators.netmask,
+                ),
               ],
             ),
           ),
@@ -321,9 +457,19 @@ class _LanSettingsScreenState extends State<LanSettingsScreen> {
             title: 'DHCP Range',
             child: Column(
               children: [
-                _field(_dhcpStart, 'Start address', icon: Icons.play_arrow),
+                _field(
+                  _dhcpStart,
+                  'Start address',
+                  icon: Icons.play_arrow,
+                  validator: _dhcpValidator,
+                ),
                 _gap,
-                _field(_dhcpEnd, 'End address', icon: Icons.stop),
+                _field(
+                  _dhcpEnd,
+                  'End address',
+                  icon: Icons.stop,
+                  validator: _dhcpValidator,
+                ),
               ],
             ),
           ),
@@ -342,6 +488,7 @@ class _LanSettingsScreenState extends State<LanSettingsScreen> {
                     'VLAN ID',
                     icon: Icons.tag,
                     keyboardType: TextInputType.number,
+                    validator: Validators.vlanId,
                   ),
               ],
             ),
@@ -361,6 +508,7 @@ class GuestWifiSettingsScreen extends StatefulWidget {
 }
 
 class _GuestWifiSettingsScreenState extends State<GuestWifiSettingsScreen> {
+  final _form = GlobalKey<FormState>();
   final _ssid = TextEditingController();
   final _password = TextEditingController();
   bool _loading = true;
@@ -398,6 +546,9 @@ class _GuestWifiSettingsScreenState extends State<GuestWifiSettingsScreen> {
   }
 
   Future<void> _save() async {
+    if (!(_form.currentState?.validate() ?? false)) return;
+    if (!await _confirmSave()) return;
+    if (!mounted) return;
     setState(() => _saving = true);
     final payload = <String, dynamic>{'Enable': _enabled ? 1 : 0};
     if (_enabled) {
@@ -414,10 +565,13 @@ class _GuestWifiSettingsScreenState extends State<GuestWifiSettingsScreen> {
     showSaveResult(context, result);
   }
 
+  Future<bool> _confirmSave() async => true;
+
   @override
   Widget build(BuildContext context) {
     return _SettingsScaffold(
       title: 'Guest Wi-Fi',
+      formKey: _form,
       loading: _loading,
       loadFailed: _loadFailed,
       onRefresh: _load,
@@ -437,7 +591,12 @@ class _GuestWifiSettingsScreenState extends State<GuestWifiSettingsScreen> {
               title: const Text('Enable guest Wi-Fi'),
             ),
             if (_enabled) ...[
-              _field(_ssid, 'Guest network name', icon: Icons.wifi),
+              _field(
+                _ssid,
+                'Guest network name',
+                icon: Icons.wifi,
+                validator: Validators.ssid,
+              ),
               _gap,
               DropdownButtonFormField<int>(
                 initialValue: _encryption,
@@ -457,6 +616,7 @@ class _GuestWifiSettingsScreenState extends State<GuestWifiSettingsScreen> {
                   'Guest password',
                   icon: Icons.password,
                   obscure: true,
+                  validator: Validators.wifiPassword,
                 ),
               ],
             ],
@@ -475,6 +635,7 @@ class SecuritySettingsScreen extends StatefulWidget {
 }
 
 class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
+  final _form = GlobalKey<FormState>();
   final _dmzHost = TextEditingController();
   final _fastNatPorts = TextEditingController();
   bool _loading = true;
@@ -517,6 +678,8 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
       _dmz = _asInt(upnp[1]['DmzEnabled']) == 1;
       _dmzHost.text = _asText(upnp[1]['HostIpaddr']);
     }
+    _loadedFirewall = _firewall;
+    _loadedDmz = _dmz;
     _fastNat = _asInt(fastNat?['FastnatEnable']) == 1;
     _autoFilter = _asInt(fastNat?['AutoFilter']) == 1;
     _fastNatPorts.text = _asText(fastNat?['PortList']);
@@ -524,6 +687,9 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
   }
 
   Future<void> _save() async {
+    if (!(_form.currentState?.validate() ?? false)) return;
+    if (!await _confirmSave()) return;
+    if (!mounted) return;
     setState(() => _saving = true);
     final provider = context.read<RouterProvider>();
     final results = await Future.wait([
@@ -550,10 +716,33 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
     );
   }
 
+  bool _loadedFirewall = false;
+  bool _loadedDmz = false;
+
+  Future<bool> _confirmSave() async {
+    final risks = [
+      if (_loadedFirewall && !_firewall) 'turn off the router firewall',
+      if (!_loadedDmz && _dmz)
+        'expose ${_dmzHost.text.trim()} to the internet (DMZ)',
+    ];
+    if (risks.isEmpty) return true;
+    return confirmAction(
+      context,
+      title: 'Reduce network protection?',
+      message:
+          'This will ${risks.join(' and ')}. Devices become reachable '
+          'from the internet in ways they were not before.',
+      confirmLabel: 'Apply anyway',
+      destructive: true,
+      icon: Icons.shield_outlined,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return _SettingsScaffold(
       title: 'Security & NAT',
+      formKey: _form,
       loading: _loading,
       loadFailed: _loadFailed,
       onRefresh: _load,
@@ -588,7 +777,12 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
                   title: const Text('Enable DMZ host'),
                 ),
                 if (_dmz)
-                  _field(_dmzHost, 'DMZ host IP', icon: Icons.desktop_windows),
+                  _field(
+                    _dmzHost,
+                    'DMZ host IP',
+                    icon: Icons.desktop_windows,
+                    validator: Validators.ipv4,
+                  ),
               ],
             ),
           ),
@@ -629,6 +823,7 @@ class QosSettingsScreen extends StatefulWidget {
 }
 
 class _QosSettingsScreenState extends State<QosSettingsScreen> {
+  final _form = GlobalKey<FormState>();
   final _up = TextEditingController();
   final _down = TextEditingController();
   bool _loading = true;
@@ -660,6 +855,9 @@ class _QosSettingsScreenState extends State<QosSettingsScreen> {
   }
 
   Future<void> _save() async {
+    if (!(_form.currentState?.validate() ?? false)) return;
+    if (!await _confirmSave()) return;
+    if (!mounted) return;
     setState(() => _saving = true);
     final result = await context.read<RouterProvider>().updateQosSettings(
       enabled: _enabled,
@@ -671,10 +869,18 @@ class _QosSettingsScreenState extends State<QosSettingsScreen> {
     showSaveResult(context, result);
   }
 
+  Future<bool> _confirmSave() async => true;
+
+  String? _bandwidth(String? value) {
+    final n = int.tryParse(value?.trim() ?? '');
+    return n == null || n < 0 ? 'Enter a whole number (0 or more)' : null;
+  }
+
   @override
   Widget build(BuildContext context) {
     return _SettingsScaffold(
       title: 'QoS',
+      formKey: _form,
       loading: _loading,
       loadFailed: _loadFailed,
       onRefresh: _load,
@@ -699,6 +905,8 @@ class _QosSettingsScreenState extends State<QosSettingsScreen> {
                 'Upload bandwidth',
                 icon: Icons.upload,
                 keyboardType: TextInputType.number,
+                helper: 'Value in the unit the router uses for QoS',
+                validator: _bandwidth,
               ),
               _gap,
               _field(
@@ -706,6 +914,7 @@ class _QosSettingsScreenState extends State<QosSettingsScreen> {
                 'Download bandwidth',
                 icon: Icons.download,
                 keyboardType: TextInputType.number,
+                validator: _bandwidth,
               ),
             ],
           ],
@@ -723,6 +932,7 @@ class VpnSettingsScreen extends StatefulWidget {
 }
 
 class _VpnSettingsScreenState extends State<VpnSettingsScreen> {
+  final _form = GlobalKey<FormState>();
   final _server = TextEditingController();
   final _user = TextEditingController();
   final _password = TextEditingController();
@@ -782,6 +992,9 @@ class _VpnSettingsScreenState extends State<VpnSettingsScreen> {
   }
 
   Future<void> _save() async {
+    if (!(_form.currentState?.validate() ?? false)) return;
+    if (!await _confirmSave()) return;
+    if (!mounted) return;
     setState(() => _saving = true);
     final payload = <String, dynamic>{'VpnEnable': _mode};
     if (_mode > 0) {
@@ -802,10 +1015,25 @@ class _VpnSettingsScreenState extends State<VpnSettingsScreen> {
     showSaveResult(context, result);
   }
 
+  Future<bool> _confirmSave() async {
+    if (_mode == 0) return true;
+    return confirmAction(
+      context,
+      title: 'Connect the router to this VPN?',
+      message:
+          'Internet traffic from your network may be routed through '
+          '${_server.text.trim()}. If the VPN fails, devices can lose '
+          'internet until it is turned off.',
+      confirmLabel: 'Apply',
+      icon: Icons.vpn_key_outlined,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return _SettingsScaffold(
       title: 'VPN Client',
+      formKey: _form,
       loading: _loading,
       loadFailed: _loadFailed,
       onRefresh: _load,
@@ -846,9 +1074,19 @@ class _VpnSettingsScreenState extends State<VpnSettingsScreen> {
               title: 'Credentials',
               child: Column(
                 children: [
-                  _field(_server, 'VPN server', icon: Icons.cloud),
+                  _field(
+                    _server,
+                    'VPN server',
+                    icon: Icons.cloud,
+                    validator: (v) => Validators.required(v, 'the server'),
+                  ),
                   _gap,
-                  _field(_user, 'Username', icon: Icons.person),
+                  _field(
+                    _user,
+                    'Username',
+                    icon: Icons.person,
+                    validator: (v) => Validators.required(v, 'the username'),
+                  ),
                   _gap,
                   _field(
                     _password,
@@ -1033,6 +1271,7 @@ class DdnsSettingsScreen extends StatefulWidget {
 }
 
 class _DdnsSettingsScreenState extends State<DdnsSettingsScreen> {
+  final _form = GlobalKey<FormState>();
   final _user = TextEditingController();
   final _password = TextEditingController();
   final _host = TextEditingController();
@@ -1083,6 +1322,9 @@ class _DdnsSettingsScreenState extends State<DdnsSettingsScreen> {
   }
 
   Future<void> _save() async {
+    if (!(_form.currentState?.validate() ?? false)) return;
+    if (!await _confirmSave()) return;
+    if (!mounted) return;
     setState(() => _saving = true);
     final payload = <String, dynamic>{'Enable': _enabled ? 1 : 0};
     if (_enabled) {
@@ -1100,10 +1342,13 @@ class _DdnsSettingsScreenState extends State<DdnsSettingsScreen> {
     showSaveResult(context, result);
   }
 
+  Future<bool> _confirmSave() async => true;
+
   @override
   Widget build(BuildContext context) {
     return _SettingsScaffold(
       title: 'DDNS',
+      formKey: _form,
       loading: _loading,
       loadFailed: _loadFailed,
       onRefresh: _load,
@@ -1148,7 +1393,12 @@ class _DdnsSettingsScreenState extends State<DdnsSettingsScreen> {
                 obscure: true,
               ),
               _gap,
-              _field(_host, 'Host name', icon: Icons.public),
+              _field(
+                _host,
+                'Host name',
+                icon: Icons.public,
+                validator: (v) => Validators.required(v, 'the host name'),
+              ),
             ],
           ],
         ),
@@ -1238,6 +1488,7 @@ class RestartScheduleScreen extends StatefulWidget {
 }
 
 class _RestartScheduleScreenState extends State<RestartScheduleScreen> {
+  final _form = GlobalKey<FormState>();
   bool _loading = true;
   bool _loadFailed = false;
   bool _saving = false;
@@ -1274,6 +1525,9 @@ class _RestartScheduleScreenState extends State<RestartScheduleScreen> {
   }
 
   Future<void> _save() async {
+    if (!(_form.currentState?.validate() ?? false)) return;
+    if (!await _confirmSave()) return;
+    if (!mounted) return;
     setState(() => _saving = true);
     final payload = <String, dynamic>{'RestartSwitch': _enabled ? 1 : 0};
     if (_enabled) {
@@ -1313,10 +1567,22 @@ class _RestartScheduleScreenState extends State<RestartScheduleScreen> {
     if (mounted) showSaveResult(context, result);
   }
 
+  Future<bool> _confirmSave() async {
+    if (_enabled && _days.isEmpty) {
+      showSaveResult(
+        context,
+        const SaveResult.failed('Choose at least one day for the restart.'),
+      );
+      return false;
+    }
+    return true;
+  }
+
   @override
   Widget build(BuildContext context) {
     return _SettingsScaffold(
       title: 'Restart Controls',
+      formKey: _form,
       loading: _loading,
       loadFailed: _loadFailed,
       onRefresh: _load,
@@ -1442,6 +1708,7 @@ class _VirtualServerEditor extends StatefulWidget {
 }
 
 class _VirtualServerEditorState extends State<_VirtualServerEditor> {
+  final _form = GlobalKey<FormState>();
   late final TextEditingController _name;
   late final TextEditingController _host;
   late final TextEditingController _mac;
@@ -1488,7 +1755,14 @@ class _VirtualServerEditorState extends State<_VirtualServerEditor> {
     super.dispose();
   }
 
+  String? _range(String? start, String? end) {
+    final a = int.tryParse(start ?? '') ?? 0;
+    final b = int.tryParse(end ?? '') ?? 0;
+    return a > b ? 'End must not be before start' : null;
+  }
+
   void _finish() {
+    if (!(_form.currentState?.validate() ?? false)) return;
     final old = widget.rule ?? {};
     Navigator.pop(context, <String, dynamic>{
       'Index': _asText(
@@ -1518,88 +1792,102 @@ class _VirtualServerEditorState extends State<_VirtualServerEditor> {
         bottom: MediaQuery.viewInsetsOf(context).bottom + 16,
       ),
       child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(widget.rule == null ? 'Add rule' : 'Edit rule'),
-              trailing: IconButton(
-                onPressed: () => Navigator.pop(context),
-                icon: const Icon(Icons.close),
+        child: Form(
+          key: _form,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(widget.rule == null ? 'Add rule' : 'Edit rule'),
+                trailing: IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close),
+                ),
               ),
-            ),
-            _field(_name, 'Device nickname', icon: Icons.label),
-            _gap,
-            _field(_host, 'Device host name', icon: Icons.computer),
-            _gap,
-            _field(_ip, 'Device IP', icon: Icons.lan),
-            _gap,
-            _field(_mac, 'Device MAC', icon: Icons.fingerprint),
-            _gap,
-            DropdownButtonFormField<int>(
-              initialValue: _protocol,
-              decoration: const InputDecoration(labelText: 'Protocol'),
-              items: const [
-                DropdownMenuItem(value: 0, child: Text('TCP')),
-                DropdownMenuItem(value: 1, child: Text('UDP')),
-                DropdownMenuItem(value: 2, child: Text('TCP + UDP')),
-              ],
-              onChanged: (value) => setState(() => _protocol = value ?? 0),
-            ),
-            _gap,
-            Row(
-              children: [
-                Expanded(
-                  child: _field(
-                    _externalStart,
-                    'External start',
-                    icon: Icons.login,
-                    keyboardType: TextInputType.number,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _field(
-                    _externalEnd,
-                    'External end',
-                    icon: Icons.logout,
-                    keyboardType: TextInputType.number,
-                  ),
-                ),
-              ],
-            ),
-            _gap,
-            Row(
-              children: [
-                Expanded(
-                  child: _field(
-                    _internalStart,
-                    'Internal start',
-                    icon: Icons.login,
-                    keyboardType: TextInputType.number,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _field(
-                    _internalEnd,
-                    'Internal end',
-                    icon: Icons.logout,
-                    keyboardType: TextInputType.number,
-                  ),
-                ),
-              ],
-            ),
-            _gap,
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: _finish,
-                child: const Text('Save'),
+              _field(_name, 'Device nickname', icon: Icons.label),
+              _gap,
+              _field(_host, 'Device host name', icon: Icons.computer),
+              _gap,
+              _field(
+                _ip,
+                'Device IP',
+                icon: Icons.lan,
+                validator: Validators.ipv4,
               ),
-            ),
-          ],
+              _gap,
+              _field(_mac, 'Device MAC', icon: Icons.fingerprint),
+              _gap,
+              DropdownButtonFormField<int>(
+                initialValue: _protocol,
+                decoration: const InputDecoration(labelText: 'Protocol'),
+                items: const [
+                  DropdownMenuItem(value: 0, child: Text('TCP')),
+                  DropdownMenuItem(value: 1, child: Text('UDP')),
+                  DropdownMenuItem(value: 2, child: Text('TCP + UDP')),
+                ],
+                onChanged: (value) => setState(() => _protocol = value ?? 0),
+              ),
+              _gap,
+              Row(
+                children: [
+                  Expanded(
+                    child: _field(
+                      _externalStart,
+                      'External start',
+                      icon: Icons.login,
+                      keyboardType: TextInputType.number,
+                      validator: Validators.port,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _field(
+                      _externalEnd,
+                      'External end',
+                      icon: Icons.logout,
+                      keyboardType: TextInputType.number,
+                      validator: (v) =>
+                          Validators.port(v) ?? _range(_externalStart.text, v),
+                    ),
+                  ),
+                ],
+              ),
+              _gap,
+              Row(
+                children: [
+                  Expanded(
+                    child: _field(
+                      _internalStart,
+                      'Internal start',
+                      icon: Icons.login,
+                      keyboardType: TextInputType.number,
+                      validator: Validators.port,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _field(
+                      _internalEnd,
+                      'Internal end',
+                      icon: Icons.logout,
+                      keyboardType: TextInputType.number,
+                      validator: (v) =>
+                          Validators.port(v) ?? _range(_internalStart.text, v),
+                    ),
+                  ),
+                ],
+              ),
+              _gap,
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: _finish,
+                  child: const Text('Save'),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1613,8 +1901,11 @@ class _SettingsScaffold extends StatelessWidget {
     required this.onRefresh,
     required this.child,
     this.loadFailed = false,
+    this.formKey,
     this.actions = const [],
   });
+
+  final GlobalKey<FormState>? formKey;
 
   final String title;
   final bool loading;
@@ -1639,9 +1930,24 @@ class _SettingsScaffold extends StatelessWidget {
           ? _LoadFailedView(onRetry: onRefresh)
           : RefreshIndicator(
               onRefresh: onRefresh,
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [child, const SizedBox(height: 24)],
+              child: Form(
+                key: formKey,
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(
+                    Space.lg,
+                    Space.sm,
+                    Space.lg,
+                    Space.xxl,
+                  ),
+                  children: [
+                    ContentWidth(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [const ConnectionStatusBanners(), child],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
     );
@@ -1656,19 +1962,9 @@ class _FormCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(title, style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 12),
-            child,
-          ],
-        ),
-      ),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Space.md),
+      child: SectionCard(title: title, child: child),
     );
   }
 }
@@ -1774,25 +2070,79 @@ class _LoadFailedViewState extends State<_LoadFailedView> {
 
 const _gap = SizedBox(height: 12);
 
-TextField _field(
+Widget _field(
   TextEditingController controller,
   String label, {
   required IconData icon,
   bool obscure = false,
   TextInputType? keyboardType,
   String? helper,
+  FormFieldValidator<String>? validator,
 }) {
-  return TextField(
+  return _Field(
     controller: controller,
-    obscureText: obscure,
+    label: label,
+    icon: icon,
+    obscure: obscure,
     keyboardType: keyboardType,
-    decoration: InputDecoration(
-      labelText: label,
-      helperText: helper,
-      prefixIcon: Icon(icon),
-      border: const OutlineInputBorder(),
-    ),
+    helper: helper,
+    validator: validator,
   );
+}
+
+/// Text field with validation and, for secrets, a show/hide toggle.
+class _Field extends StatefulWidget {
+  const _Field({
+    required this.controller,
+    required this.label,
+    required this.icon,
+    required this.obscure,
+    this.keyboardType,
+    this.helper,
+    this.validator,
+  });
+
+  final TextEditingController controller;
+  final String label;
+  final IconData icon;
+  final bool obscure;
+  final TextInputType? keyboardType;
+  final String? helper;
+  final FormFieldValidator<String>? validator;
+
+  @override
+  State<_Field> createState() => _FieldState();
+}
+
+class _FieldState extends State<_Field> {
+  late bool _hidden = widget.obscure;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextFormField(
+      controller: widget.controller,
+      obscureText: _hidden,
+      keyboardType: widget.keyboardType,
+      validator: widget.validator,
+      autovalidateMode: AutovalidateMode.onUserInteraction,
+      decoration: InputDecoration(
+        labelText: widget.label,
+        helperText: widget.helper,
+        prefixIcon: Icon(widget.icon),
+        suffixIcon: widget.obscure
+            ? IconButton(
+                tooltip: _hidden ? 'Show' : 'Hide',
+                onPressed: () => setState(() => _hidden = !_hidden),
+                icon: Icon(
+                  _hidden
+                      ? Icons.visibility_rounded
+                      : Icons.visibility_off_rounded,
+                ),
+              )
+            : null,
+      ),
+    );
+  }
 }
 
 Map<String, dynamic>? _dataMap(dynamic data) {

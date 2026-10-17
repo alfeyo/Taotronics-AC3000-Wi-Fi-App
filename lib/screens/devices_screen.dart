@@ -1,7 +1,74 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import '../providers/router_provider.dart';
+
 import '../models/device_entity.dart';
+import '../providers/router_provider.dart';
+import '../theme/app_theme.dart';
+import '../utils/format.dart';
+import '../widgets/app_widgets.dart';
+import '../widgets/connection_banner.dart';
+
+enum DeviceFilter {
+  all('All'),
+  online('Online'),
+  active('Active'),
+  offline('Offline');
+
+  const DeviceFilter(this.label);
+  final String label;
+
+  bool matches(DeviceEntity d) => switch (this) {
+    DeviceFilter.all => true,
+    DeviceFilter.online => d.isOnline,
+    DeviceFilter.active => d.isActive,
+    DeviceFilter.offline => !d.isOnline,
+  };
+}
+
+enum DeviceSort {
+  name('Name'),
+  activity('Current activity'),
+  ip('IP address'),
+  recent('Recently connected');
+
+  const DeviceSort(this.label);
+  final String label;
+}
+
+/// Sorting used by the devices list; exposed for tests.
+List<DeviceEntity> sortDevices(List<DeviceEntity> devices, DeviceSort sort) {
+  int byName(DeviceEntity a, DeviceEntity b) =>
+      a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase());
+  int byActivity(DeviceEntity a, DeviceEntity b) {
+    final rate = (b.uploadSpeed + b.downloadSpeed).compareTo(
+      a.uploadSpeed + a.downloadSpeed,
+    );
+    return rate != 0 ? rate : byName(a, b);
+  }
+
+  final sorted = [...devices];
+  sorted.sort(
+    (a, b) => switch (sort) {
+      DeviceSort.name => byName(a, b),
+      DeviceSort.activity => byActivity(a, b),
+      DeviceSort.ip => _ipKey(a.ipAddress).compareTo(_ipKey(b.ipAddress)),
+      DeviceSort.recent =>
+        (b.connectedSince?.millisecondsSinceEpoch ?? 0).compareTo(
+          a.connectedSince?.millisecondsSinceEpoch ?? 0,
+        ),
+    },
+  );
+  return sorted;
+}
+
+int _ipKey(String? ip) {
+  final parts = ip?.split('.').map(int.tryParse).toList();
+  if (parts == null || parts.length != 4 || parts.contains(null)) {
+    return 1 << 32;
+  }
+  return parts.fold<int>(0, (sum, p) => sum * 256 + p!);
+}
 
 class DevicesScreen extends StatefulWidget {
   const DevicesScreen({super.key});
@@ -11,6 +78,10 @@ class DevicesScreen extends StatefulWidget {
 }
 
 class _DevicesScreenState extends State<DevicesScreen> {
+  final _search = TextEditingController();
+  DeviceFilter _filter = DeviceFilter.all;
+  DeviceSort _sort = DeviceSort.name;
+
   // Live polling keeps refreshing the device list while this screen is open,
   // so device rates stay current. The extra refresh fills the list at once.
   @override
@@ -22,261 +93,209 @@ class _DevicesScreenState extends State<DevicesScreen> {
     });
   }
 
-  String _formatRate(int bytesPerSec) {
-    if (bytesPerSec <= 0) return '0 B/s';
-    const units = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
-    var value = bytesPerSec.toDouble();
-    var unit = 0;
-    while (value >= 1024 && unit < units.length - 1) {
-      value /= 1024;
-      unit++;
-    }
-    final f = value >= 100
-        ? value.toStringAsFixed(0)
-        : value >= 10
-        ? value.toStringAsFixed(1)
-        : value.toStringAsFixed(2);
-    return '$f ${units[unit]}';
-  }
-
-  IconData _deviceIcon(int type) {
-    switch (type) {
-      case 1:
-        return Icons.phone_android_rounded;
-      case 2:
-      case 3:
-        return Icons.phone_iphone_rounded;
-      case 4:
-      case 5:
-        return Icons.laptop_mac_rounded;
-      default:
-        return Icons.devices_other_rounded;
-    }
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final provider = context.watch<RouterProvider>();
+    final theme = Theme.of(context);
+    final query = _search.text.trim().toLowerCase();
+    final all = provider.devices;
+    final visible = sortDevices(
+      all
+          .where(_filter.matches)
+          .where((d) => query.isEmpty || d.searchText.contains(query))
+          .toList(),
+      _sort,
+    );
+    final online = all.where((d) => d.isOnline).length;
+    final active = all.where((d) => d.isActive).length;
+
     return Scaffold(
-      backgroundColor: const Color(0xfff7f7fa),
       appBar: AppBar(
-        title: const Text('Connected Devices'),
-        backgroundColor: const Color(0xffc14524),
-        foregroundColor: Colors.white,
+        title: const Text('Devices'),
         actions: [
-          Consumer<RouterProvider>(
-            builder: (_, p, _) => IconButton(
-              icon: const Icon(Icons.refresh_rounded),
-              onPressed: p.refreshDevices,
-            ),
+          PopupMenuButton<DeviceSort>(
+            tooltip: 'Sort',
+            icon: const Icon(Icons.sort_rounded),
+            initialValue: _sort,
+            onSelected: (sort) => setState(() => _sort = sort),
+            itemBuilder: (context) => [
+              for (final sort in DeviceSort.values)
+                CheckedPopupMenuItem(
+                  value: sort,
+                  checked: sort == _sort,
+                  child: Text(sort.label),
+                ),
+            ],
+          ),
+          IconButton(
+            tooltip: 'Refresh',
+            icon: const Icon(Icons.refresh_rounded),
+            onPressed: provider.isConnected ? provider.refreshDevices : null,
           ),
         ],
       ),
-      body: Consumer<RouterProvider>(
-        builder: (context, provider, _) {
-          if (provider.devices.isEmpty) {
-            return RefreshIndicator(
-              onRefresh: provider.refreshDevices,
-              child: ListView(
-                children: [
-                  SizedBox(height: MediaQuery.of(context).size.height * 0.25),
-                  _emptyState(),
-                ],
+      body: RefreshIndicator(
+        onRefresh: provider.refreshDevices,
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            SliverToBoxAdapter(
+              child: ContentWidth(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    Space.lg,
+                    Space.sm,
+                    Space.lg,
+                    0,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const ConnectionStatusBanners(),
+                      SearchBar(
+                        controller: _search,
+                        hintText: 'Search name, IP or MAC',
+                        leading: const Icon(Icons.search_rounded),
+                        elevation: const WidgetStatePropertyAll(0),
+                        trailing: [
+                          if (_search.text.isNotEmpty)
+                            IconButton(
+                              tooltip: 'Clear search',
+                              onPressed: () => setState(_search.clear),
+                              icon: const Icon(Icons.close_rounded),
+                            ),
+                        ],
+                        onChanged: (_) => setState(() {}),
+                      ),
+                      const SizedBox(height: Space.md),
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            for (final filter in DeviceFilter.values)
+                              Padding(
+                                padding: const EdgeInsets.only(right: Space.sm),
+                                child: ChoiceChip(
+                                  label: Text(
+                                    '${filter.label} '
+                                    '${all.where(filter.matches).length}',
+                                  ),
+                                  selected: _filter == filter,
+                                  onSelected: (_) =>
+                                      setState(() => _filter = filter),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: Space.sm),
+                      Text(
+                        provider.isConnected
+                            ? '$online online · $active active · '
+                                  '${all.length - online} offline · '
+                                  'updated ${formatAge(provider.devicesUpdatedAt)}'
+                            : 'Device data appears once the router is connected.',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: Space.sm),
+                    ],
+                  ),
+                ),
               ),
-            );
-          }
-
-          final online = provider.devices.where((d) => d.isOnline).toList();
-          final offline = provider.devices.where((d) => !d.isOnline).toList();
-
-          return RefreshIndicator(
-            onRefresh: provider.refreshDevices,
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
-              children: [
-                _summaryCard(online.length, provider.devices.length),
-                const SizedBox(height: 18),
-                if (online.isNotEmpty) ...[
-                  _sectionHeader('Online', online.length, Colors.green),
-                  const SizedBox(height: 8),
-                  ...online.map(
-                    (d) => Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: _deviceCard(d),
+            ),
+            if (visible.isEmpty)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: EmptyState(
+                  icon: all.isEmpty
+                      ? Icons.devices_other_rounded
+                      : Icons.search_off_rounded,
+                  title: all.isEmpty
+                      ? (provider.isConnected
+                            ? 'No devices reported yet'
+                            : 'Not connected')
+                      : 'No devices match',
+                  message: all.isEmpty
+                      ? 'Pull down to refresh.'
+                      : 'Try another filter or search term.',
+                ),
+              )
+            else
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(
+                  Space.lg,
+                  0,
+                  Space.lg,
+                  Space.xxl,
+                ),
+                sliver: SliverList.separated(
+                  itemCount: visible.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: Space.sm),
+                  itemBuilder: (context, i) => ContentWidth(
+                    child: _DeviceTile(
+                      device: visible[i],
+                      onTap: () => showDeviceDetails(context, visible[i]),
                     ),
                   ),
-                ],
-                if (offline.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  _sectionHeader('Offline', offline.length, Colors.grey),
-                  const SizedBox(height: 8),
-                  ...offline.map(
-                    (d) => Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: _deviceCard(d),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _emptyState() {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Container(
-          width: 86,
-          height: 86,
-          decoration: BoxDecoration(
-            color: Colors.deepOrange.withValues(alpha: 0.1),
-            shape: BoxShape.circle,
-          ),
-          child: const Icon(
-            Icons.devices_other_rounded,
-            size: 40,
-            color: Colors.deepOrange,
-          ),
-        ),
-        const SizedBox(height: 18),
-        const Text(
-          'No connected devices found',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-        ),
-        const SizedBox(height: 4),
-        Text('Pull to refresh', style: TextStyle(color: Colors.grey.shade600)),
-      ],
-    );
-  }
-
-  Widget _summaryCard(int online, int total) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.black.withValues(alpha: 0.05)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.025),
-            blurRadius: 14,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: const Color(0xff10b981).withValues(alpha: 0.14),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Icon(
-              Icons.devices_rounded,
-              color: Color(0xff10b981),
-              size: 26,
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '$online online',
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.2,
-                  ),
                 ),
-                Text(
-                  '$total total on this network',
-                  style: TextStyle(fontSize: 12.5, color: Colors.grey.shade700),
-                ),
-              ],
-            ),
-          ),
-        ],
+              ),
+          ],
+        ),
       ),
     );
   }
+}
 
-  Widget _sectionHeader(String label, int count, Color accent) {
-    return Row(
-      children: [
-        Container(
-          width: 8,
-          height: 8,
-          decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
-        ),
-        const SizedBox(width: 8),
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 0.2,
-          ),
-        ),
-        const SizedBox(width: 6),
-        Text(
-          '· $count',
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w500,
-            color: Colors.grey.shade600,
-          ),
-        ),
-      ],
-    );
-  }
+IconData _linkIcon(DeviceLink link) => switch (link) {
+  DeviceLink.wired => Icons.settings_ethernet_rounded,
+  DeviceLink.wireless => Icons.wifi_rounded,
+  DeviceLink.unknown => Icons.device_unknown_rounded,
+};
 
-  Widget _deviceCard(DeviceEntity d) {
-    final hasTraffic = d.uploadSpeed > 0 || d.downloadSpeed > 0;
-    final iconBg = d.isOnline
-        ? Colors.blue.withValues(alpha: 0.12)
-        : Colors.grey.shade100;
-    final iconColor = d.isOnline ? Colors.blue : Colors.grey;
+String _linkLabel(DeviceLink link) => switch (link) {
+  DeviceLink.wired => 'Wired',
+  DeviceLink.wireless => 'Wi-Fi',
+  DeviceLink.unknown => 'Link unknown',
+};
 
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.black.withValues(alpha: 0.05)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+class _DeviceTile extends StatelessWidget {
+  const _DeviceTile({required this.device, required this.onTap});
+
+  final DeviceEntity device;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final d = device;
+    final subtitle = [
+      d.ipAddress ?? d.mac,
+      if (d.link != DeviceLink.unknown) _linkLabel(d.link),
+      if (!d.isOnline && d.lastSeen != null) 'seen ${formatAge(d.lastSeen)}',
+    ].join(' · ');
+
+    return Card(
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(Space.md),
+          child: Row(
             children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: iconBg,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(
-                  _deviceIcon(d.deviceType),
-                  color: iconColor,
-                  size: 22,
-                ),
+              IconBadge(
+                d.link == DeviceLink.wired
+                    ? Icons.lan_rounded
+                    : Icons.devices_rounded,
+                tone: d.isOnline ? Tone.info : Tone.neutral,
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: Space.md),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -285,118 +304,199 @@ class _DevicesScreenState extends State<DevicesScreen> {
                       d.displayName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                      ),
+                      style: theme.textTheme.titleSmall,
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      d.ipAddress ?? d.mac,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey.shade700,
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
                   ],
                 ),
               ),
-              _statusPill(d.isOnline),
+              const SizedBox(width: Space.sm),
+              if (d.isActive)
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    _Rate(Icons.south_rounded, d.downloadSpeed, Tone.info),
+                    _Rate(Icons.north_rounded, d.uploadSpeed, Tone.brand),
+                  ],
+                )
+              else
+                StatusPill(
+                  label: d.isOnline ? 'Idle' : 'Offline',
+                  tone: d.isOnline ? Tone.success : Tone.neutral,
+                ),
             ],
           ),
-          if (hasTraffic) ...[
-            const SizedBox(height: 12),
-            const Divider(height: 1),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: _rateChip(
-                    icon: Icons.arrow_upward_rounded,
-                    value: _formatRate(d.uploadSpeed),
-                    color: Colors.orange,
+        ),
+      ),
+    );
+  }
+}
+
+class _Rate extends StatelessWidget {
+  const _Rate(this.icon, this.rate, this.tone);
+
+  final IconData icon;
+  final int rate;
+  final Tone tone;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 14, color: context.tone(tone).foreground),
+        const SizedBox(width: 2),
+        Text(formatRate(rate), style: Theme.of(context).textTheme.labelMedium),
+      ],
+    );
+  }
+}
+
+/// Bottom sheet with everything the router reports about [device].
+Future<void> showDeviceDetails(BuildContext context, DeviceEntity device) {
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    builder: (context) => DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.7,
+      maxChildSize: 0.95,
+      builder: (context, controller) =>
+          _DeviceDetails(device: device, controller: controller),
+    ),
+  );
+}
+
+class _DeviceDetails extends StatelessWidget {
+  const _DeviceDetails({required this.device, required this.controller});
+
+  final DeviceEntity device;
+  final ScrollController controller;
+
+  String _time(DateTime? t) {
+    if (t == null) return 'Not reported';
+    final local = t.toLocal();
+    String two(int v) => v.toString().padLeft(2, '0');
+    return '${local.year}-${two(local.month)}-${two(local.day)} '
+        '${two(local.hour)}:${two(local.minute)} (${formatAge(t)})';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final d = device;
+    final rows = <(String, String, bool)>[
+      ('IP address', d.ipAddress ?? 'Not reported', true),
+      ('MAC address', d.mac.isEmpty ? 'Not reported' : d.mac, true),
+      ('Host name', d.hostName ?? 'Not reported', false),
+      if (d.nickName != null) ('Nickname', d.nickName!, false),
+      (
+        'Connection',
+        d.link == DeviceLink.unknown
+            ? 'Not reported (type ${d.raw['ClientType'] ?? '—'})'
+            : '${_linkLabel(d.link)} (inferred from router client type)',
+        false,
+      ),
+      ('Download now', d.isOnline ? formatRate(d.downloadSpeed) : '—', false),
+      ('Upload now', d.isOnline ? formatRate(d.uploadSpeed) : '—', false),
+      ('Connected since', d.isOnline ? _time(d.connectedSince) : '—', false),
+      ('Last seen', _time(d.lastSeen), false),
+      ('First seen', _time(d.firstSeen), false),
+      (
+        'Data usage',
+        d.hasByteCounters
+            ? '${formatBytes(d.downBytes)} down · ${formatBytes(d.upBytes)} up'
+            : 'Not reported by this router',
+        false,
+      ),
+    ];
+
+    return ListView(
+      controller: controller,
+      padding: const EdgeInsets.fromLTRB(Space.xl, 0, Space.xl, Space.xxl),
+      children: [
+        Row(
+          children: [
+            IconBadge(
+              _linkIcon(d.link),
+              tone: d.isOnline ? Tone.info : Tone.neutral,
+              size: 52,
+            ),
+            const SizedBox(width: Space.lg),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(d.displayName, style: theme.textTheme.titleLarge),
+                  const SizedBox(height: Space.xs),
+                  StatusPill(
+                    label: d.isActive
+                        ? 'Active'
+                        : d.isOnline
+                        ? 'Online'
+                        : 'Offline',
+                    tone: d.isOnline ? Tone.success : Tone.neutral,
                   ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _rateChip(
-                    icon: Icons.arrow_downward_rounded,
-                    value: _formatRate(d.downloadSpeed),
-                    color: const Color(0xff10b981),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ],
-          const SizedBox(height: 6),
-          Text(
-            'MAC ${d.mac}',
-            style: TextStyle(
-              fontSize: 11,
-              color: Colors.grey.shade500,
-              letterSpacing: 0.2,
+        ),
+        const SizedBox(height: Space.lg),
+        for (final (label, value, copyable) in rows)
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            title: Text(
+              label,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ),
+            subtitle: Text(value, style: theme.textTheme.bodyLarge),
+            trailing: copyable && !value.startsWith('Not')
+                ? IconButton(
+                    tooltip: 'Copy $label',
+                    icon: const Icon(Icons.copy_rounded, size: 20),
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: value));
+                      ScaffoldMessenger.of(
+                        context,
+                      ).showSnackBar(SnackBar(content: Text('$label copied')));
+                    },
+                  )
+                : null,
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _rateChip({
-    required IconData icon,
-    required String value,
-    required Color color,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: color, size: 16),
-          const SizedBox(width: 6),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w700,
-              color: color,
-            ),
+        const SizedBox(height: Space.sm),
+        Card(
+          child: ExpansionTile(
+            title: const Text('All router fields'),
+            subtitle: const Text('Raw values from GetDevListInfo'),
+            shape: const Border(),
+            collapsedShape: const Border(),
+            children: [
+              for (final entry in d.raw.entries)
+                ListTile(
+                  dense: true,
+                  title: Text(entry.key),
+                  trailing: Text(
+                    '${entry.value}',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ),
+            ],
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _statusPill(bool online) {
-    final color = online ? const Color(0xff10b981) : Colors.grey.shade500;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 6,
-            height: 6,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-          ),
-          const SizedBox(width: 5),
-          Text(
-            online ? 'Online' : 'Offline',
-            style: TextStyle(
-              color: color,
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

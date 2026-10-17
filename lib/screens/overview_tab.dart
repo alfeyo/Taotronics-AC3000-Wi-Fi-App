@@ -440,10 +440,14 @@ class _RateBlock extends StatelessWidget {
                 children: [
                   Icon(icon, size: 16, color: colors.foreground),
                   const SizedBox(width: Space.xs),
-                  Text(
-                    label,
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      color: colors.onContainer,
+                  Flexible(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: colors.onContainer,
+                      ),
                     ),
                   ),
                 ],
