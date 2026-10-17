@@ -97,6 +97,12 @@ class PiProvider extends ChangeNotifier {
                 DateTime.now().difference(_routerDetailsAt!).inSeconds >= 60)) {
           _routerDetailsAt = DateTime.now();
           await router.refreshWanSettings();
+          if (generation != _generation ||
+              _disposed ||
+              !_foreground ||
+              !sharing) {
+            return;
+          }
           await router.loadGuestWifiSettings(quiet: true);
         }
         if (generation != _generation ||

@@ -44,6 +44,7 @@ class _PiGatewayScreenState extends State<PiGatewayScreen>
     _pi.setForeground(true);
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       _refresh();
       _timer = Timer.periodic(const Duration(seconds: 15), (_) {
         if (_foreground) _refresh();
