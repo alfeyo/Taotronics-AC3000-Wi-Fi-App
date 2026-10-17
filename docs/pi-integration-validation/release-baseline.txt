@@ -1,0 +1,7 @@
+Flutter baseline: 68759d9, v1.3.1+6
+Galaxy Z Fold4: RFCTB0AH5BN, SM-F936B
+Package: com.ttrouter.tt_router_flutter
+Prior built APK: artifacts/releases/tt-router-1.3.1-verified.apk
+Prior installed APK: artifacts/releases/tt-router-1.3.1-from-fold4.apk
+Phone and Pi Unix clocks matched before bridge validation.
+Existing Tailscale profile connected without changing Pi networking.

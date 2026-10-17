@@ -1,0 +1,28 @@
+{
+  "tool": "CodeRabbit",
+  "completed": true,
+  "raised": 4,
+  "resolution": "Applied response-contract, stale/async and quiet-read fixes; defensive history error string conversion also applied although hook already returns strings. See commits and validation logs.",
+  "issues": [
+    {
+      "severity": "minor",
+      "file": "lib/services/pi_snapshot.dart",
+      "addressed": true
+    },
+    {
+      "severity": "minor",
+      "file": "lib/services/pi_api.dart",
+      "addressed": true
+    },
+    {
+      "severity": "minor",
+      "file": "lib/providers/pi_provider.dart",
+      "addressed": true
+    },
+    {
+      "severity": "minor",
+      "file": "lib/providers/pi_provider.dart",
+      "addressed": true
+    }
+  ]
+}
