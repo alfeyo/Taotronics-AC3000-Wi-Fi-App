@@ -98,3 +98,82 @@ Open:
   stall); values stay on screen and are refreshed on the next answer.
 - Replies are matched by topic; a reply arriving after its request timed out
   could be taken by the next request to the same path (protocol has no id).
+
+## Router behaviour observed (live, 2026-10-17)
+
+- Commands are processed one at a time. `GetWirelessInfoListV2` is never
+  answered and blocked all other commands for ~10 s; V1 works.
+- The router periodically stalls for ~4–5 s (roughly every 12–24 s), so an
+  occasional telemetry batch misses its 4 s timeout.
+- No web server: TCP 80/443 are refused. Reachability must not depend on them.
+- `GetDevListInfo` has no per-device byte counters (`UpBytes`/`DownBytes`
+  absent); `ConnTime`, `CreateTime`, `UpdateTime` are epoch seconds.
+  `ClientType` 0 was seen for an Ethernet-only device and 2 for Wi-Fi clients
+  (the app labels links on that basis and says it is inferred).
+- `GetExistNode` reports `Uptime` (s), `LocalConn`, `Model`, `Role`; no
+  firmware version.
+- `GetSystemState` returns an empty list.
+
+## Stages A–B — design system, shell, overview (tag `stageAB-overview`)
+
+- Theme tokens (light/dark, status colours, spacing, radii, breakpoints),
+  shared widgets, connection and pending-change banners.
+- Home shell: Home / Devices / Wi-Fi / Settings; bottom bar folded, rail
+  unfolded; back returns to Home before asking to leave.
+- Overview: internet state, labelled live throughput with staleness,
+  devices/nodes/uptime/storage tiles, quick actions, connection details.
+- Removed "Total Data Usage" (always 0 B: the router has no such counters).
+
+## Stages C–E — devices, Wi-Fi, settings (tag `stageCDE-ux`)
+
+- Devices: search, filters, sorting, detail sheet with every reported field.
+- Mesh nodes: uptime, clients, model; firmware/signal only when reported.
+- Wi-Fi: cards with reveal/copy, validated edit sheet, reconnection warning,
+  pending/confirmed/failed result flow.
+- Settings regrouped; all forms validate input and confirm risky changes.
+- Version 1.1.0 (2).
+
+## Stages F–G — diagnostics and setup (tag `stageFG-diagnostics-setup`)
+
+- Diagnostics: measured gateway latency and router response time, findings
+  with next steps, theme-aware, export without passwords.
+- Discovery/setup/pairing: dark-mode safe, permission recovery, Bluetooth
+  error guidance, superseded searches ignored, "Set up a router" in Settings.
+
+## Final verification (2026-10-17, build 1.1.0 (2))
+
+- `flutter analyze`: no issues. `flutter test`: 71 passed. Kotlin unit tests:
+  3 passed.
+- APK `releases/TaoTronics-Router-App.apk`, 36.1 MB,
+  SHA-256 `7b22cf0f915c16db7ce193acb0068880d710d682dfec440af1f92c1d96a8225a`,
+  package `com.ttrouter.tt_router_flutter`, versionCode 2, INTERNET declared,
+  debug-key signed (same key as the installed app).
+- Galaxy Z Fold4 (user 0): in-place upgrade from 1.0.0 kept the pairing; router
+  discovered; certificate `signedByPinnedAuthority`; MQTT connected; no crash
+  in a 60 s run; Home, Devices (filters, details), Wi-Fi (edit sheet opened and
+  cancelled), Settings, WAN (read only), Diagnostics (gateway 9 ms, router
+  99 ms, no findings), discovery, setup wizard Bluetooth search (not-found path
+  and superseded search) checked on screen.
+- Wide layout checked by temporarily setting the cover display to 240 dpi
+  (~603 dp, navigation rail); density reset afterwards. Light mode checked by
+  switching night mode off and back to its original "yes".
+- Wi-Fi off/on recovery verified (Stage 1).
+
+Not exercised on the live router (by design — disruptive or needs consent):
+saving Wi-Fi/WAN/LAN/guest/security/VPN/DDNS/QoS/LED/schedule changes,
+reboot, provisioning a router over Bluetooth. Their request/verification
+logic is covered by unit and widget tests against a fake router.
+
+## Outstanding risks
+
+- Release is signed with the Android debug key (sideload only). A store
+  release needs a private key; switching keys requires a reinstall.
+- Replies are matched by topic (protocol has no request id); a very late reply
+  could be taken by the next request to the same path.
+- `ClientType` link labels and the bundled band labels (index → 2.4/5 GHz)
+  are inferred, not documented by the vendor.
+- The pinned TaoTronics CA and router certificate expire in May 2030; after
+  that the app will refuse the router unless the clock is wrong or the
+  firmware ships a new certificate.
+- The physical unfolded screen was emulated with a density override, not
+  tested by unfolding.

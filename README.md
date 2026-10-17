@@ -10,12 +10,15 @@ This app provides local network control for TaoTronics AC3000 mesh routers witho
 
 ### Features
 
-- **Router Discovery**: Automatic discovery of TaoTronics mesh routers on your local network
-- **MQTT Control**: Direct local communication with router via MQTT protocol
-- **Dashboard**: View mesh nodes, connected devices, and live network throughput
-- **Wi-Fi Settings**: View and edit Wi-Fi network names (SSIDs) and passwords
-- **Device Management**: See all connected devices with their IP/MAC addresses
-- **Diagnostics**: Network connectivity checks and troubleshooting tools
+- **Router discovery**: finds TaoTronics mesh routers on the local network and reconnects automatically
+- **Verified local control**: MQTT over TLS; the router's certificate is cryptographically checked against the TaoTronics CA
+- **Network overview**: internet status, live throughput (router WAN rate or connected-device sum, always labelled), devices, mesh nodes, router uptime, USB storage
+- **Devices**: search, filters (online / active / offline), sorting and per-device details reported by the router
+- **Wi-Fi**: view and edit network names and passwords with validation; changes are confirmed by reading the router back after it reconnects
+- **Settings**: guest Wi-Fi, WAN/DNS, LAN/DHCP, firewall, UPnP/DMZ, Fast NAT, QoS, VPN client, port forwarding, DDNS, LEDs, restart schedule, USB storage
+- **Setup**: Bluetooth provisioning of new or reset routers, and local pairing
+- **Diagnostics**: measured gateway latency and router response time, plain-language findings, exportable report (passwords excluded)
+- **Light and dark mode**, folded and unfolded layouts (Galaxy Z Fold), large text
 
 ## Legal Disclaimer
 
@@ -45,7 +48,17 @@ This project is provided to help owners of TaoTronics AC3000 routers maintain co
 
 ## Download
 
-**[Download APK](https://github.com/alfeyo/Taotronics-AC3000-Wi-Fi-App/raw/main/releases/TaoTronics-Router-App.apk)** - Ready-to-install Android app
+**[Download APK](https://github.com/alfeyo/Taotronics-AC3000-Wi-Fi-App/raw/main/releases/TaoTronics-Router-App.apk)** - TT Router 1.1.0 (build 2), package `com.ttrouter.tt_router_flutter`
+
+SHA-256: `7b22cf0f915c16db7ce193acb0068880d710d682dfec440af1f92c1d96a8225a`
+
+This is a sideload build signed with a development (debug) key, not a store
+release. Installing it over an earlier sideloaded TT Router build keeps your
+saved router pairing.
+
+> Note: before 1.1.0 this download path contained the vendor's original app
+> (`com.taotronics.router` 1.0.0.33), not this project. That file is still
+> available in the git history at commit `f2d27a3`.
 
 To install:
 1. Download the APK file
@@ -54,7 +67,7 @@ To install:
 
 ## Requirements
 
-- Android device (Android 6.0+)
+- Android device (Android 7.0+)
 - TaoTronics AC3000 Mesh Router on your local network
 - Device must be connected to the router's Wi-Fi network
 
@@ -69,12 +82,27 @@ cd Taotronics-AC3000-Wi-Fi-App
 # Get dependencies
 flutter pub get
 
-# Build debug APK
-flutter build apk --debug
+# Static checks and tests
+flutter analyze
+flutter test
+(cd android && ./gradlew :app:testDebugUnitTest)
 
-# Install on connected device
-adb install -r build/app/outputs/flutter-apk/app-debug.apk
+# Release APK for phones
+flutter build apk --release --target-platform android-arm,android-arm64
+
+# Install on a connected device (main Android user)
+adb install -r --user 0 build/app/outputs/flutter-apk/app-release.apk
 ```
+
+Release signing: without `android/key.properties` the release build uses the
+debug key (sideload only). To sign with your own key, create
+`android/key.properties` with `storeFile`, `storePassword`, `keyAlias` and
+`keyPassword`. Note that a build signed with a different key cannot be
+installed over an existing debug-signed install without uninstalling it
+(which removes saved pairings).
+
+See `docs/OVERHAUL_LOG.md` for the change and verification history and
+`docs/FEATURE_INVENTORY.md` for where every control lives.
 
 ## Usage
 

@@ -131,3 +131,19 @@ No block/prioritise/schedule actions exist today; none will be added.
 | Reconnect with backoff 1/2/4/8 s for paired routers | Serialized, cancellable |
 | Live refresh every 3 s (devices + telemetry), full refresh every 30 s | Unchanged cadence; paused in background; no overlapping requests |
 | Saved pairings in SharedPreferences (with MQTT password) | Passwords moved to Android Keystore-backed storage, with migration |
+
+## Verification record (build 1.1.0 (2), 2026-10-17)
+
+Every row above was mapped to its new location and is reachable in the
+finished build. Checked on the Galaxy Z Fold4: discovery checks and buttons,
+diagnostics (run, findings, copy), dashboard (refresh, menu: diagnostics/log
+out, metric tiles, quick actions, connection details), Devices (search,
+filters, sort menu, details sheet), Wi-Fi (cards, reveal, edit sheet,
+guest Wi-Fi and both-bands links), Settings (all groups; WAN read-only open),
+setup wizard Bluetooth search. Write paths were tested against a fake router
+in automated tests rather than on the live router.
+
+New since baseline: Settings → Mesh nodes, Diagnostics, Set up a router;
+device search/filter/sort/details; measured latency in diagnostics.
+Replaced: Parental "coming soon" tile → Settings → Not available entry;
+"Total Data Usage" card removed (router reports no per-device usage).
