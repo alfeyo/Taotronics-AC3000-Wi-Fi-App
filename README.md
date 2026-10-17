@@ -20,7 +20,7 @@ This app provides local network control for TaoTronics AC3000 mesh routers witho
 - **Settings**: six expandable groups — guest Wi-Fi, WAN/DNS, LAN/DHCP, firewall, UPnP/DMZ, Fast NAT, QoS, VPN client, port forwarding, DDNS, LEDs, restart schedule, USB storage
 - **Setup**: Bluetooth provisioning of new or reset routers, and local pairing
 - **Diagnostics**: measured gateway latency and router response time, plain-language findings, exportable report (passwords excluded)
-- **Design**: near-black layered surfaces with an icy-blue accent (amber only for the LED), five-item floating navigation, light and dark mode, folded and unfolded layouts (Galaxy Z Fold), large text
+- **Design**: near-black layered surfaces (matching splash and launcher icon) with an icy-blue accent (amber only for the LED), five-item floating navigation, light and dark mode, folded and unfolded layouts (Galaxy Z Fold), large text
 - **Protocol handoff**: [`docs/ROUTER_PROTOCOL_HANDOFF.md`](docs/ROUTER_PROTOCOL_HANDOFF.md) documents the local protocol for other clients (e.g. a Raspberry Pi)
 
 | Home | Wi-Fi | Devices | Statistics | Settings |

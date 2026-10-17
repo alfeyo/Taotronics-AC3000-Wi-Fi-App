@@ -98,42 +98,21 @@ class _SplashScreenState extends State<SplashScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        color: Palette.charcoal,
+        color: Palette.background,
         child: Stack(
           children: [
-            Positioned(
-              right: -80,
-              top: -60,
-              child: Container(
-                width: 280,
-                height: 280,
+            // Soft spotlight behind the router, as on the Home hero.
+            Positioned.fill(
+              child: DecoratedBox(
                 decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Palette.panelRaised.withValues(alpha: 0.6),
-                ),
-              ),
-            ),
-            Positioned(
-              left: -60,
-              bottom: -80,
-              child: Container(
-                width: 220,
-                height: 220,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Palette.panelRaised.withValues(alpha: 0.45),
-                ),
-              ),
-            ),
-            Positioned(
-              right: 80,
-              top: 220,
-              child: Container(
-                width: 110,
-                height: 110,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Palette.indigo.withValues(alpha: 0.18),
+                  gradient: RadialGradient(
+                    center: const Alignment(0, -0.12),
+                    radius: 0.7,
+                    colors: [
+                      Palette.icy.withValues(alpha: 0.08),
+                      Colors.transparent,
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -155,24 +134,18 @@ class _SplashScreenState extends State<SplashScreen>
                         ),
                       );
                     },
-                    child: Container(
-                      width: 120,
-                      height: 120,
-                      decoration: BoxDecoration(
-                        color: Palette.indigoLight,
-                        borderRadius: BorderRadius.circular(36),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.15),
-                            blurRadius: 30,
-                            offset: const Offset(0, 12),
-                          ),
-                        ],
-                      ),
-                      child: const Icon(
-                        Icons.router_rounded,
-                        size: 64,
-                        color: Palette.charcoal,
+                    child: SizedBox(
+                      width: 104,
+                      height: 138,
+                      child: ColorFiltered(
+                        colorFilter: const ColorFilter.mode(
+                          Color(0xff767b86),
+                          BlendMode.modulate,
+                        ),
+                        child: Image.asset(
+                          'assets/original_setup/ic_guide_need.png',
+                          fit: BoxFit.contain,
+                        ),
                       ),
                     ),
                   ),
@@ -195,7 +168,7 @@ class _SplashScreenState extends State<SplashScreen>
                           style: TextStyle(
                             fontSize: 34,
                             fontWeight: FontWeight.w800,
-                            color: Colors.white,
+                            color: Palette.softWhite,
                             letterSpacing: -0.5,
                           ),
                         ),
@@ -204,7 +177,7 @@ class _SplashScreenState extends State<SplashScreen>
                           'Mesh network control',
                           style: TextStyle(
                             fontSize: 14,
-                            color: Colors.white,
+                            color: Palette.muted,
                             fontWeight: FontWeight.w500,
                             letterSpacing: 0.2,
                           ),
@@ -227,7 +200,7 @@ class _SplashScreenState extends State<SplashScreen>
                     child: CircularProgressIndicator(
                       strokeWidth: 2.4,
                       valueColor: AlwaysStoppedAnimation<Color>(
-                        Colors.white.withValues(alpha: 0.85),
+                        Palette.icy.withValues(alpha: 0.85),
                       ),
                     ),
                   ),
@@ -237,7 +210,7 @@ class _SplashScreenState extends State<SplashScreen>
                         ? 'Connecting to your router…'
                         : 'v${AppInfo.version}',
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.7),
+                      color: Palette.muted,
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                       letterSpacing: 1.5,

@@ -288,3 +288,17 @@ events; left **on**, as found. Wi-Fi band switches were not toggled; no
 Wi-Fi, WAN, credential or reboot command was sent. Light mode and the wide
 layout were checked and the device settings restored (night mode on,
 density reset). The live Wi-Fi password was not revealed.
+
+## 1.3.1 — branding close-out (2026-10-17, tag `v1.3.1`)
+
+- Flutter splash: near-black background with a soft spotlight and the
+  TaoTronics router illustration (matte, as on Home); orange-era blobs and
+  the generic router glyph removed.
+- Android launch window and Android 12+ system splash: `#17181B` instead
+  of the orange gradient / `brand_orange`.
+- Launcher icon: vector router symbol (matte body, feet, icy LED ring) as
+  the adaptive foreground on `#17181B`, a silhouette as the Android 13
+  themed (monochrome) layer, and regenerated legacy square/round PNGs for
+  all densities. Package id and signing unchanged.
+- Verified on the Fold4: in-place upgrade kept the saved pairing (cold
+  start → Home, LED state read), new splash and app-drawer icon checked.
