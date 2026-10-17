@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 /// Semantic tones used by status pills, banners and metric tiles.
-enum Tone { success, warning, danger, info, neutral, brand }
+enum Tone { success, warning, danger, info, neutral, brand, accent }
 
 /// Spacing scale (4 pt grid).
 abstract final class Space {
@@ -140,6 +140,11 @@ extension ToneTheme on BuildContext {
         scheme.primary,
         scheme.primaryContainer,
         scheme.onPrimaryContainer,
+      ),
+      Tone.accent => ToneColors(
+        status.warning,
+        status.warningContainer,
+        status.onWarningContainer,
       ),
       Tone.neutral => ToneColors(
         scheme.onSurfaceVariant,

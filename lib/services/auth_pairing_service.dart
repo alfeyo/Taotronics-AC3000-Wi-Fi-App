@@ -52,7 +52,7 @@ class PairedRouter {
 
   /// Preferences form. The password is only included when it could not be
   /// stored in secure storage, so a pairing is never silently lost.
-  Map<String, dynamic> toJson({bool includePassword = true}) => {
+  Map<String, dynamic> toJson({bool includePassword = false}) => {
     'meshId': meshId,
     'ipAddress': ipAddress,
     'alias': alias,

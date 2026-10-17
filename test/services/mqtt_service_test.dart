@@ -204,6 +204,50 @@ void main() {
       },
     );
 
+    test('a late write reply is not taken by the next write', () {
+      fakeAsync((async) {
+        final factory = FakeTransportFactory();
+        final service = _service(factory);
+        service.connect('mesh1', '10.0.0.1');
+        async.elapse(const Duration(milliseconds: 1));
+        final transport = factory.last;
+
+        Map<String, dynamic>? first = {'sentinel': 1};
+        service.setFirewallSettings(true).then((r) => first = r);
+        async.elapse(const Duration(seconds: 11));
+        expect(first, isNull, reason: 'first write timed out');
+
+        Map<String, dynamic>? second;
+        service.setFirewallSettings(false).then((r) => second = r);
+        async.elapse(const Duration(seconds: 1));
+        expect(transport.published, hasLength(1), reason: 'second waits');
+
+        // The first write's reply finally arrives: it must be discarded.
+        transport.deliver('$_appId/SetFirewallInfo', '{"ErrorCode":0,"n":1}');
+        async.elapse(const Duration(milliseconds: 10));
+        expect(second, isNull);
+        expect(transport.published, hasLength(2));
+
+        transport.deliver('$_appId/SetFirewallInfo', '{"ErrorCode":0,"n":2}');
+        async.elapse(const Duration(milliseconds: 10));
+        expect(second, containsPair('n', 2));
+      });
+    });
+
+    test('reads are not held back after a read timeout', () {
+      fakeAsync((async) {
+        final factory = FakeTransportFactory();
+        final service = _service(factory);
+        service.connect('mesh1', '10.0.0.1');
+        async.elapse(const Duration(milliseconds: 1));
+        service.getQosSettings();
+        async.elapse(const Duration(seconds: 11));
+        service.getQosSettings();
+        async.elapse(const Duration(milliseconds: 10));
+        expect(factory.last.published, hasLength(2));
+      });
+    });
+
     test('stops sending V2 wireless queries a router never answers', () {
       fakeAsync((async) {
         final factory = FakeTransportFactory()

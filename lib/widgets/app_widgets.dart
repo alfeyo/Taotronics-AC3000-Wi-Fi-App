@@ -71,11 +71,13 @@ class IconBadge extends StatelessWidget {
     super.key,
     this.tone = Tone.brand,
     this.size = 44,
+    this.round = false,
   });
 
   final IconData icon;
   final Tone tone;
   final double size;
+  final bool round;
 
   @override
   Widget build(BuildContext context) {
@@ -85,7 +87,8 @@ class IconBadge extends StatelessWidget {
       height: size,
       decoration: BoxDecoration(
         color: colors.container,
-        borderRadius: BorderRadius.circular(size * 0.3),
+        shape: round ? BoxShape.circle : BoxShape.rectangle,
+        borderRadius: round ? null : BorderRadius.circular(size * 0.3),
       ),
       child: Icon(icon, color: colors.onContainer, size: size * 0.52),
     );
@@ -533,6 +536,212 @@ class SettingsTile extends StatelessWidget {
           trailing ??
           (onTap == null ? null : const Icon(Icons.chevron_right_rounded)),
       onTap: onTap,
+    );
+  }
+}
+
+/// Screen title block: small uppercase kicker, large title, subtitle.
+class PageHeader extends StatelessWidget {
+  const PageHeader({
+    super.key,
+    required this.title,
+    this.kicker,
+    this.subtitle,
+    this.trailing,
+  });
+
+  final String title;
+  final String? kicker;
+  final String? subtitle;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = theme.colorScheme.onSurfaceVariant;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (kicker != null)
+                Text(
+                  kicker!.toUpperCase(),
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: muted,
+                    letterSpacing: 1.1,
+                  ),
+                ),
+              const SizedBox(height: Space.xs),
+              Semantics(
+                header: true,
+                child: Text(title, style: theme.textTheme.headlineMedium),
+              ),
+              if (subtitle != null) ...[
+                const SizedBox(height: Space.xs),
+                Text(
+                  subtitle!,
+                  style: theme.textTheme.bodyMedium?.copyWith(color: muted),
+                ),
+              ],
+            ],
+          ),
+        ),
+        ?trailing,
+      ],
+    );
+  }
+}
+
+/// Rounded panel used for primary content blocks.
+class PanelCard extends StatelessWidget {
+  const PanelCard({
+    super.key,
+    required this.child,
+    this.padding = const EdgeInsets.all(20),
+    this.onTap,
+  });
+
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final body = Padding(padding: padding, child: child);
+    return Card(
+      child: onTap == null ? body : InkWell(onTap: onTap, child: body),
+    );
+  }
+}
+
+/// Stadium-shaped action; tonal by default, filled when [primary].
+class PillButton extends StatelessWidget {
+  const PillButton({
+    super.key,
+    required this.label,
+    this.icon,
+    this.onPressed,
+    this.primary = false,
+  });
+
+  final String label;
+  final IconData? icon;
+  final VoidCallback? onPressed;
+  final bool primary;
+
+  @override
+  Widget build(BuildContext context) {
+    const style = ButtonStyle(
+      shape: WidgetStatePropertyAll(StadiumBorder()),
+      minimumSize: WidgetStatePropertyAll(Size(64, 46)),
+      padding: WidgetStatePropertyAll(
+        EdgeInsets.symmetric(horizontal: Space.lg),
+      ),
+    );
+    final text = Text(label, maxLines: 1, overflow: TextOverflow.ellipsis);
+    final iconWidget = icon == null ? null : Icon(icon, size: 18);
+    if (primary) {
+      return iconWidget == null
+          ? FilledButton(onPressed: onPressed, style: style, child: text)
+          : FilledButton.icon(
+              onPressed: onPressed,
+              style: style,
+              icon: iconWidget,
+              label: text,
+            );
+    }
+    return iconWidget == null
+        ? FilledButton.tonal(onPressed: onPressed, style: style, child: text)
+        : FilledButton.tonalIcon(
+            onPressed: onPressed,
+            style: style,
+            icon: iconWidget,
+            label: text,
+          );
+  }
+}
+
+/// Card row with icon, title, subtitle and chevron (or a custom trailing).
+class ActionTile extends StatelessWidget {
+  const ActionTile({
+    super.key,
+    required this.icon,
+    required this.title,
+    this.subtitle,
+    this.tone = Tone.brand,
+    this.onTap,
+    this.trailing,
+    this.enabled = true,
+  });
+
+  final IconData icon;
+  final String title;
+  final String? subtitle;
+  final Tone tone;
+  final VoidCallback? onTap;
+  final Widget? trailing;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = theme.colorScheme.onSurfaceVariant;
+    return Semantics(
+      button: onTap != null,
+      enabled: enabled,
+      label: '$title${subtitle == null ? '' : '. $subtitle'}',
+      child: ExcludeSemantics(
+        excluding: trailing == null,
+        child: PanelCard(
+          padding: const EdgeInsets.symmetric(
+            horizontal: Space.lg,
+            vertical: 14,
+          ),
+          onTap: enabled ? onTap : null,
+          child: Row(
+            children: [
+              IconBadge(
+                icon,
+                tone: enabled ? tone : Tone.neutral,
+                size: 42,
+                round: true,
+              ),
+              const SizedBox(width: Space.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        color: enabled ? null : muted,
+                      ),
+                    ),
+                    if (subtitle != null)
+                      Text(
+                        subtitle!,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: muted,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              trailing ??
+                  (onTap == null
+                      ? const SizedBox.shrink()
+                      : Icon(Icons.chevron_right_rounded, color: muted)),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

@@ -105,6 +105,7 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
   DateTime? _devicesUpdatedAt;
   DateTime? _telemetryUpdatedAt;
   DateTime? _nodesUpdatedAt;
+  DateTime? _wirelessUpdatedAt;
 
   RouterDiscoveryState _discoveryState = RouterDiscoveryState.idle;
   NetworkState _networkState = NetworkState.unknown;
@@ -170,6 +171,9 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
   DateTime? get devicesUpdatedAt => _devicesUpdatedAt;
   DateTime? get telemetryUpdatedAt => _telemetryUpdatedAt;
   DateTime? get nodesUpdatedAt => _nodesUpdatedAt;
+
+  /// When the wireless list was last read successfully from the router.
+  DateTime? get wirelessUpdatedAt => _wirelessUpdatedAt;
   CertificateVerdict? get certificateVerdict => _mqtt.lastCertificateVerdict;
 
   /// True when live telemetry has not refreshed for a while although the
@@ -913,58 +917,111 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
         ok = true;
       }
     }
+    if (ok) _wirelessUpdatedAt = DateTime.now();
     notifyListeners();
     return ok;
   }
 
-  Future<SaveResult> updateWirelessNetwork(WirelessNetwork updated) {
-    final payloadList = _wirelessNetworksParsed
-        .map((n) => n.index == updated.index ? updated : n)
-        .map((n) => n.toRouterPayload())
-        .toList();
-    return setWirelessSettings(payloadList);
+  /// Saves one edited network (name, password, or on/off).
+  Future<SaveResult> updateWirelessNetwork(WirelessNetwork updated) =>
+      saveWirelessNetworks([updated]);
+
+  /// Turns one network on or off without changing its name or password.
+  Future<SaveResult> setWirelessNetworkEnabled(int index, bool enabled) {
+    final network = _wirelessNetworksParsed
+        .where((n) => n.index == index)
+        .firstOrNull;
+    if (network == null) {
+      return Future.value(
+        const SaveResult.failed('That network is not in the router list.'),
+      );
+    }
+    return saveWirelessNetworks([network.withEnabled(enabled)]);
   }
 
+  /// Applies [changed] entries (matched by index) on top of the full list the
+  /// router reported and sends it with SetWirelessInfoList. Untouched entries
+  /// are sent back exactly as the router reported them.
+  Future<SaveResult> saveWirelessNetworks(List<WirelessNetwork> changed) async {
+    if (!_wirelessLoaded || _wirelessNetworksParsed.isEmpty) {
+      return const SaveResult.failed(
+        'The Wi-Fi list has not loaded from the router yet, so nothing was sent.',
+      );
+    }
+    final unknown = changed.where(
+      (c) => !_wirelessNetworksParsed.any((n) => n.index == c.index),
+    );
+    if (unknown.isNotEmpty) {
+      return const SaveResult.failed(
+        'A network changed on the router. Refresh and try again.',
+      );
+    }
+    final merged = [
+      for (final n in _wirelessNetworksParsed)
+        changed.where((c) => c.index == n.index).firstOrNull ?? n,
+    ];
+    final missing = {
+      for (final n in merged)
+        for (final f in n.missingRequiredFields) '${n.bandLabel}: $f',
+    };
+    if (missing.isNotEmpty) {
+      return SaveResult.failed(
+        'The router did not report ${missing.join(', ')}, so saving could '
+        'overwrite it. Nothing was sent.',
+      );
+    }
+    if (!merged.any((n) => n.isEnabled)) {
+      return const SaveResult.failed(
+        'At least one Wi-Fi network must stay on, or this phone could lose '
+        'access to the router.',
+      );
+    }
+    return _sendWirelessPayload(
+      merged.map((n) => n.toRouterPayload()).toList(),
+    );
+  }
+
+  /// Sends a full wireless list. Kept for callers that build payload maps;
+  /// every entry must carry the router's own fields (no defaults are added).
   Future<SaveResult> setWirelessSettings(
     List<Map<String, dynamic>> networks,
   ) async {
-    final normalized = networks
-        .map(
-          (net) => <String, dynamic>{
-            ...net,
-            'Ssid': net['Ssid'] ?? '',
-            'Encrypt': net['Encrypt'] ?? 0,
-            'Password': net['Password'] ?? '',
-            'Vlanid': net['Vlanid'] ?? 0,
-            'SsidIsolate': net['SsidIsolate'] ?? 0,
-            'StaIsolate': net['StaIsolate'] ?? 0,
-            'Index': net['Index'] ?? 0,
-            'Create': net['Create'] ?? 1,
-            'VlanEnable': net['VlanEnable'] ?? 0,
-          },
-        )
-        .toList();
+    final incomplete = networks.where(
+      (n) => !n.containsKey('Index') || !n.containsKey('Ssid'),
+    );
+    if (networks.isEmpty || incomplete.isNotEmpty) {
+      return const SaveResult.failed(
+        'Wi-Fi settings are incomplete, so nothing was sent.',
+      );
+    }
+    return _sendWirelessPayload(networks);
+  }
+
+  Future<SaveResult> _sendWirelessPayload(
+    List<Map<String, dynamic>> payload,
+  ) async {
+    // Compare only fields this router reports: V1 has Create but no Disable.
+    final keys = [
+      'Ssid',
+      'Password',
+      'Create',
+      if (payload.any((n) => n.containsKey('Disable'))) 'Disable',
+    ];
 
     // The router restarts Wi-Fi when applying this and often drops the
     // session before replying, so a missing reply is verified afterwards.
     final result = await _writeRouterSetting(
       label: 'Wi-Fi change',
       failureMessage: 'Failed to update Wi-Fi settings',
-      request: () => _mqtt.setWirelessSettings(normalized),
+      request: () => _mqtt.setWirelessSettings(payload),
       verify: () async {
         if (!await refreshWirelessSettings()) return null;
-        return _matchesByIndex(_wirelessNetworksRaw, normalized, const [
-          'Ssid',
-          'Password',
-          'Disable',
-        ]);
+        return _matchesByIndex(_wirelessNetworksRaw, payload, keys);
       },
     );
     if (result.isConfirmed) {
-      _wirelessNetworksRaw = normalized;
-      _wirelessNetworksParsed = normalized
-          .map(WirelessNetwork.fromJson)
-          .toList();
+      _wirelessNetworksRaw = payload;
+      _wirelessNetworksParsed = payload.map(WirelessNetwork.fromJson).toList();
       notifyListeners();
     }
     return result;
@@ -1031,9 +1088,25 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
     );
   }
 
-  Future<Map<String, dynamic>?> loadGuestWifiSettings() {
-    return _readRouterSetting(_mqtt.getGuestWifi);
+  Future<Map<String, dynamic>?> loadGuestWifiSettings() async {
+    final response = await _readRouterSetting(_mqtt.getGuestWifi);
+    final data = response?['Data'];
+    final guest = data is List && data.isNotEmpty && data.first is Map
+        ? Map<String, dynamic>.from(data.first as Map)
+        : data is Map
+        ? Map<String, dynamic>.from(data)
+        : null;
+    if (guest != null) {
+      _guestWifi = guest;
+      notifyListeners();
+    }
+    return response;
   }
+
+  Map<String, dynamic>? _guestWifi;
+
+  /// Last guest network entry reported by GetGuestInfo, if loaded.
+  Map<String, dynamic>? get guestWifi => _guestWifi;
 
   Future<SaveResult> updateGuestWifiSettings(Map<String, dynamic> settings) {
     return _writeRouterSetting(
@@ -1328,38 +1401,58 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
         ? [Map<String, dynamic>.from(data)]
         : null;
     if (fresh == null || fresh.length < sent.length) return null;
+    var unknown = false;
     for (var i = 0; i < sent.length; i++) {
-      if (!_subsetMatches(fresh[i], sent[i], keys)) return false;
+      final match = _subsetMatches(fresh[i], sent[i], keys);
+      if (match == false) return false;
+      if (match == null) unknown = true;
     }
-    return true;
+    return unknown ? null : true;
   }
 
-  static bool _matchesByIndex(
+  /// True when every sent entry is present with the same values, false when
+  /// any compared value differs, null when the router's reply lacks an entry
+  /// or a compared field (the change cannot be confirmed either way).
+  static bool? _matchesByIndex(
     List<Map<String, dynamic>> fresh,
     List<Map<String, dynamic>> sent,
     List<String> keys,
   ) {
+    var unknown = false;
     for (final expected in sent) {
       final actual = fresh
           .where((n) => '${n['Index']}' == '${expected['Index']}')
           .firstOrNull;
-      if (actual == null || !_subsetMatches(actual, expected, keys)) {
-        return false;
+      if (actual == null) {
+        unknown = true;
+        continue;
       }
+      final match = _subsetMatches(actual, expected, keys);
+      if (match == false) return false;
+      if (match == null) unknown = true;
     }
-    return true;
+    return unknown ? null : true;
   }
 
-  static bool _subsetMatches(
+  /// Compares [keys] that were sent. A sent key missing from [actual] makes
+  /// the result unknown (null) instead of silently counting as a match.
+  static bool? _subsetMatches(
     Map<String, dynamic> actual,
     Map<String, dynamic> expected,
     List<String> keys,
   ) {
+    var compared = 0;
+    var unknown = false;
     for (final key in keys) {
-      if (!expected.containsKey(key) || !actual.containsKey(key)) continue;
+      if (!expected.containsKey(key)) continue;
+      if (!actual.containsKey(key)) {
+        unknown = true;
+        continue;
+      }
+      compared++;
       if ('${actual[key]}' != '${expected[key]}') return false;
     }
-    return true;
+    return unknown || compared == 0 ? null : true;
   }
 
   Future<void> refreshUsbStorage() async {
@@ -1482,6 +1575,7 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
     _usbStorageSettings = null;
     _usbDisks = [];
     _usbVisitAddress = null;
+    _guestWifi = null;
     _usbStorageLoading = false;
     _usbStorageSaving = false;
     _liveTelemetryResponsive = true;
@@ -1489,6 +1583,7 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
     _devicesUpdatedAt = null;
     _telemetryUpdatedAt = null;
     _nodesUpdatedAt = null;
+    _wirelessUpdatedAt = null;
     _pendingChanges.clear();
     _isLoading = false;
     _errorMessage = null;

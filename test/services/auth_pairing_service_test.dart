@@ -105,4 +105,17 @@ void main() {
     expect(store.values, isEmpty);
     expect(service.isPaired('mesh3'), isFalse);
   });
+
+  test('pairing serialization excludes the password unless asked', () {
+    final router = PairedRouter(
+      meshId: 'm',
+      ipAddress: '10.0.0.1',
+      pairedAt: DateTime(2026),
+      credentialHash: 'h',
+      mqttPassword: 'secret',
+    );
+    expect(router.toJson(), isNot(contains('mqttPassword')));
+    expect(router.toJson(includePassword: true)['mqttPassword'], 'secret');
+    expect(router.toDiagnosticsJson().toString(), isNot(contains('secret')));
+  });
 }

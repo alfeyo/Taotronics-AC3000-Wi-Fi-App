@@ -523,20 +523,20 @@ class _WifiSettingsDetailScreenState extends State<WifiSettingsDetailScreen> {
     final currentNetworks = provider.wirelessNetworksParsed;
     final patchedNetworks = currentNetworks.map((network) {
       if (network.index == 0) {
-        return network.copyWith(
-          ssid: _ssid2gController.text.trim(),
-          password: _password2gController.text,
-          create: _enable2g ? 1 : 0,
-          disable: _enable2g ? 0 : 1,
-        );
+        return network
+            .copyWith(
+              ssid: _ssid2gController.text.trim(),
+              password: _password2gController.text,
+            )
+            .withEnabled(_enable2g);
       }
       if (network.index == 1) {
-        return network.copyWith(
-          ssid: _ssid5gController.text.trim(),
-          password: _password5gController.text,
-          create: _enable5g ? 1 : 0,
-          disable: _enable5g ? 0 : 1,
-        );
+        return network
+            .copyWith(
+              ssid: _ssid5gController.text.trim(),
+              password: _password5gController.text,
+            )
+            .withEnabled(_enable5g);
       }
       return network;
     }).toList();
@@ -545,9 +545,7 @@ class _WifiSettingsDetailScreenState extends State<WifiSettingsDetailScreen> {
     final pause = provider.pauseLiveUpdates('Wi-Fi save');
     final SaveResult result;
     try {
-      result = await provider.setWirelessSettings(
-        patchedNetworks.map((network) => network.toRouterPayload()).toList(),
-      );
+      result = await provider.saveWirelessNetworks(patchedNetworks);
     } finally {
       pause.release();
     }

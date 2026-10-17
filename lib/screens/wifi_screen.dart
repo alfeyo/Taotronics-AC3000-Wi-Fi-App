@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../models/save_result.dart';
 import '../models/wireless_network.dart';
 import '../providers/router_provider.dart';
 import '../theme/app_theme.dart';
+import '../utils/format.dart';
 import '../utils/validators.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/connection_banner.dart';
@@ -13,6 +15,8 @@ import 'router_settings_screens.dart';
 import 'settings_screen.dart';
 import 'setup_wizard_screen.dart';
 
+/// Every wireless network the router reports, each with its own switch,
+/// editor and password controls.
 class WifiSettingsScreen extends StatefulWidget {
   const WifiSettingsScreen({super.key});
 
@@ -21,13 +25,63 @@ class WifiSettingsScreen extends StatefulWidget {
 }
 
 class _WifiSettingsScreenState extends State<WifiSettingsScreen> {
+  /// Router index of the network currently being saved.
+  int? _savingIndex;
+
   @override
   void initState() {
     super.initState();
     final provider = context.read<RouterProvider>();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && provider.isConnected) provider.refreshWirelessSettings();
+      if (!mounted || !provider.isConnected) return;
+      provider.refreshWirelessSettings();
+      provider.loadGuestWifiSettings();
     });
+  }
+
+  Future<void> _apply(
+    RouterProvider provider,
+    WirelessNetwork network,
+    Future<SaveResult> Function() save,
+  ) async {
+    setState(() => _savingIndex = network.index);
+    final pause = provider.pauseLiveUpdates('Wi-Fi save');
+    try {
+      final result = await save();
+      if (mounted) showSaveResult(context, result);
+    } finally {
+      pause.release();
+      if (mounted) setState(() => _savingIndex = null);
+    }
+  }
+
+  Future<void> _toggle(
+    RouterProvider provider,
+    WirelessNetwork network,
+    bool enable,
+  ) async {
+    final name = network.ssid.isEmpty ? network.bandLabel : '"${network.ssid}"';
+    final confirmed = await confirmAction(
+      context,
+      title: enable
+          ? 'Turn on ${network.bandLabel} Wi-Fi?'
+          : 'Turn off ${network.bandLabel} Wi-Fi?',
+      message: enable
+          ? 'The router starts broadcasting $name with its saved name and '
+                'password. Other networks restart briefly while it applies.'
+          : 'Devices on $name (${network.bandLabel}) disconnect. Its name, '
+                'password and settings are kept so you can turn it back on. '
+                'If this phone uses this network it will lose its connection.',
+      confirmLabel: enable ? 'Turn on' : 'Turn off',
+      destructive: !enable,
+      icon: enable ? Icons.wifi_rounded : Icons.wifi_off_rounded,
+    );
+    if (!confirmed || !mounted) return;
+    await _apply(
+      provider,
+      network,
+      () => provider.setWirelessNetworkEnabled(network.index, enable),
+    );
   }
 
   Future<void> _edit(RouterProvider provider, WirelessNetwork network) async {
@@ -39,67 +93,106 @@ class _WifiSettingsScreenState extends State<WifiSettingsScreen> {
     );
     if (updated == null || !mounted) return;
 
+    final renamed = updated.ssid != network.ssid;
+    final newPassword =
+        updated.toRouterPayload()['Password'] != null &&
+        updated.toRouterPayload()['Password'] !=
+            network.toRouterPayload()['Password'];
     final confirmed = await confirmAction(
       context,
       title: 'Apply Wi-Fi changes?',
-      message:
-          'The router restarts ${network.bandLabel} Wi-Fi to apply this. '
-          'Devices on "${network.ssid}", possibly including this phone, '
-          'disconnect and must rejoin${updated.ssid != network.ssid ? ' "${updated.ssid}"' : ''}'
-          '${updated.password != network.password ? ' with the new password' : ''}.',
+      message: network.isEnabled
+          ? 'The router restarts ${network.bandLabel} Wi-Fi to apply this. '
+                'Devices on "${network.ssid}", possibly including this phone, '
+                'disconnect and must rejoin'
+                '${renamed ? ' "${updated.ssid}"' : ''}'
+                '${newPassword ? ' with the new password' : ''}.'
+          : 'This network is off. The new settings are saved and used when '
+                'you turn it on.',
       confirmLabel: 'Apply',
       icon: Icons.wifi_rounded,
     );
     if (!confirmed || !mounted) return;
-
-    final pause = provider.pauseLiveUpdates('Wi-Fi save');
-    try {
-      final result = await provider.updateWirelessNetwork(updated);
-      if (mounted) showSaveResult(context, result);
-    } finally {
-      pause.release();
-    }
+    await _apply(
+      provider,
+      network,
+      () => provider.updateWirelessNetwork(updated),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<RouterProvider>();
     final networks = provider.wirelessNetworksParsed;
+    final connected = provider.isConnected;
+    final editable = connected && _savingIndex == null;
+
+    final enabled = networks.where((n) => n.isEnabled).toList();
+    final names = enabled.map((n) => n.ssid).where((s) => s.isNotEmpty).toSet();
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Wi-Fi'),
-        actions: [
-          IconButton(
-            tooltip: 'Refresh',
-            onPressed: provider.wirelessLoading || !provider.isConnected
-                ? null
-                : provider.refreshWirelessSettings,
-            icon: provider.wirelessLoading
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.refresh_rounded),
-          ),
-        ],
-      ),
       body: RefreshIndicator(
-        onRefresh: provider.refreshWirelessSettings,
+        onRefresh: () async {
+          await provider.refreshWirelessSettings();
+          if (provider.isConnected) await provider.loadGuestWifiSettings();
+        },
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(
+          padding: EdgeInsets.fromLTRB(
             Space.lg,
-            Space.sm,
+            MediaQuery.paddingOf(context).top + Space.lg,
             Space.lg,
-            Space.xxl,
+            120,
           ),
           children: [
             ContentWidth(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  PageHeader(
+                    kicker: 'Wireless management',
+                    title: 'Wi-Fi networks',
+                    subtitle: 'Edit each band, its password and availability',
+                    trailing: IconButton(
+                      tooltip: 'Refresh',
+                      onPressed: provider.wirelessLoading || !connected
+                          ? null
+                          : provider.refreshWirelessSettings,
+                      icon: provider.wirelessLoading
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.refresh_rounded),
+                    ),
+                  ),
+                  if (networks.isNotEmpty) ...[
+                    const SizedBox(height: Space.md),
+                    Wrap(
+                      spacing: Space.sm,
+                      runSpacing: Space.sm,
+                      children: [
+                        StatusPill(
+                          label:
+                              '${networks.length} network${networks.length == 1 ? '' : 's'} reported',
+                          tone: Tone.neutral,
+                          dot: false,
+                        ),
+                        StatusPill(
+                          label: '${enabled.length} on',
+                          tone: enabled.isEmpty ? Tone.danger : Tone.success,
+                        ),
+                        StatusPill(
+                          label:
+                              '${names.length} name${names.length == 1 ? '' : 's'} broadcasting',
+                          tone: Tone.info,
+                          dot: false,
+                        ),
+                      ],
+                    ),
+                  ],
+                  const SizedBox(height: Space.lg),
                   ConnectionStatusBanners(
                     onOpenSetup: () => Navigator.push(
                       context,
@@ -108,78 +201,47 @@ class _WifiSettingsScreenState extends State<WifiSettingsScreen> {
                       ),
                     ),
                   ),
-                  if (!provider.isConnected && networks.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.only(top: 48),
-                      child: EmptyState(
-                        icon: Icons.lock_outline_rounded,
-                        title: 'Router access required',
-                        message:
-                            'Connect to the router to see and change Wi-Fi settings.',
-                      ),
-                    )
-                  else if (networks.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 48),
-                      child:
-                          provider.wirelessLoading || !provider.wirelessLoaded
-                          ? const Center(child: CircularProgressIndicator())
-                          : EmptyState(
-                              icon: Icons.wifi_off_rounded,
-                              title: 'No Wi-Fi networks reported',
-                              message:
-                                  'The router did not return its wireless list.',
-                              action: FilledButton.icon(
-                                onPressed: provider.refreshWirelessSettings,
-                                icon: const Icon(Icons.refresh_rounded),
-                                label: const Text('Try again'),
-                              ),
-                            ),
-                    )
+                  if (networks.isEmpty)
+                    _emptyState(provider)
                   else ...[
-                    const SectionLabel('Wireless networks'),
+                    if (provider.wirelessUpdatedAt != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: Space.sm),
+                        child: Text(
+                          'Read from the router ${formatAge(provider.wirelessUpdatedAt)}',
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                              ),
+                        ),
+                      ),
                     for (final network in networks)
                       Padding(
                         padding: const EdgeInsets.only(bottom: Space.md),
-                        child: _WifiNetworkCard(
+                        child: WifiNetworkCard(
                           network: network,
-                          editable: provider.isConnected,
+                          saving: _savingIndex == network.index,
+                          editable: editable,
+                          onToggle: (on) => _toggle(provider, network, on),
                           onEdit: () => _edit(provider, network),
                         ),
                       ),
                   ],
-                  const SectionLabel('More Wi-Fi settings'),
-                  Card(
-                    child: Column(
-                      children: [
-                        SettingsTile(
-                          icon: Icons.wifi_tethering_rounded,
-                          tone: Tone.success,
-                          title: 'Guest Wi-Fi',
-                          subtitle: 'Separate network for visitors',
-                          enabled: provider.isConnected,
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const GuestWifiSettingsScreen(),
-                            ),
-                          ),
-                        ),
-                        const Divider(indent: 72),
-                        SettingsTile(
-                          icon: Icons.edit_note_rounded,
-                          tone: Tone.info,
-                          title: 'Edit both bands together',
-                          subtitle: 'Names, passwords and on/off per band',
-                          enabled: provider.isConnected,
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const WifiSettingsDetailScreen(),
-                            ),
-                          ),
-                        ),
-                      ],
+                  _GuestCard(provider: provider),
+                  const SizedBox(height: Space.md),
+                  ActionTile(
+                    icon: Icons.edit_note_rounded,
+                    tone: Tone.info,
+                    title: 'Edit both bands together',
+                    subtitle: '2.4 GHz and 5 GHz names, passwords and on/off',
+                    enabled: connected,
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const WifiSettingsDetailScreen(),
+                      ),
                     ),
                   ),
                 ],
@@ -190,24 +252,64 @@ class _WifiSettingsScreenState extends State<WifiSettingsScreen> {
       ),
     );
   }
+
+  Widget _emptyState(RouterProvider provider) {
+    if (!provider.isConnected) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 48),
+        child: EmptyState(
+          icon: Icons.lock_outline_rounded,
+          title: 'Router access required',
+          message: 'Connect to the router to see and change Wi-Fi settings.',
+        ),
+      );
+    }
+    if (provider.wirelessLoading || !provider.wirelessLoaded) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 48),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 32),
+      child: EmptyState(
+        icon: Icons.wifi_off_rounded,
+        title: 'No Wi-Fi networks reported',
+        message:
+            'The router did not return its wireless list, so nothing can be '
+            'changed yet.',
+        action: FilledButton.icon(
+          onPressed: provider.refreshWirelessSettings,
+          icon: const Icon(Icons.refresh_rounded),
+          label: const Text('Try again'),
+        ),
+      ),
+    );
+  }
 }
 
-class _WifiNetworkCard extends StatefulWidget {
-  const _WifiNetworkCard({
+/// Card for one router-reported wireless network.
+class WifiNetworkCard extends StatefulWidget {
+  const WifiNetworkCard({
+    super.key,
     required this.network,
     required this.editable,
+    required this.saving,
+    required this.onToggle,
     required this.onEdit,
   });
 
   final WirelessNetwork network;
   final bool editable;
+  final bool saving;
+  final ValueChanged<bool> onToggle;
   final VoidCallback onEdit;
 
   @override
-  State<_WifiNetworkCard> createState() => _WifiNetworkCardState();
+  State<WifiNetworkCard> createState() => _WifiNetworkCardState();
 }
 
-class _WifiNetworkCardState extends State<_WifiNetworkCard> {
+class _WifiNetworkCardState extends State<WifiNetworkCard> {
   bool _reveal = false;
 
   @override
@@ -215,113 +317,217 @@ class _WifiNetworkCardState extends State<_WifiNetworkCard> {
     final theme = Theme.of(context);
     final n = widget.network;
     final secured = n.encrypt > 0;
+    final muted = theme.colorScheme.onSurfaceVariant;
+    final passwordShown = secured && n.passwordKnown && n.password.isNotEmpty;
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(Space.lg),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                IconBadge(
-                  n.isEnabled ? Icons.wifi_rounded : Icons.wifi_off_rounded,
-                  tone: n.isEnabled ? Tone.info : Tone.neutral,
-                ),
-                const SizedBox(width: Space.md),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        n.ssid.isEmpty ? 'Not configured' : n.ssid,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.titleMedium,
-                      ),
-                      Text(
-                        n.bandLabel,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                StatusPill(
-                  label: n.isEnabled ? 'On' : 'Off',
-                  tone: n.isEnabled ? Tone.success : Tone.neutral,
-                ),
-              ],
-            ),
-            const SizedBox(height: Space.md),
-            Row(
-              children: [
-                Icon(
-                  secured ? Icons.lock_rounded : Icons.lock_open_rounded,
-                  size: 18,
-                  color: secured
-                      ? theme.colorScheme.onSurfaceVariant
-                      : context.tone(Tone.warning).foreground,
-                ),
-                const SizedBox(width: Space.sm),
-                Text(
-                  secured ? n.encryptionLabel : 'Open network (no password)',
-                  style: theme.textTheme.bodyMedium,
-                ),
-              ],
-            ),
-            if (secured && n.password.isNotEmpty) ...[
-              const SizedBox(height: Space.xs),
-              Row(
-                children: [
-                  Icon(
-                    Icons.key_rounded,
-                    size: 18,
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                  const SizedBox(width: Space.sm),
-                  Expanded(
-                    child: Text(
-                      _reveal ? n.password : '•' * 10,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontFamily: _reveal ? 'monospace' : null,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: _reveal ? 'Hide password' : 'Show password',
-                    onPressed: () => setState(() => _reveal = !_reveal),
-                    icon: Icon(
-                      _reveal
-                          ? Icons.visibility_off_rounded
-                          : Icons.visibility_rounded,
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: 'Copy password',
-                    onPressed: () {
-                      Clipboard.setData(ClipboardData(text: n.password));
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Password copied')),
-                      );
-                    },
-                    icon: const Icon(Icons.copy_rounded),
-                  ),
-                ],
+    return PanelCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              IconBadge(
+                n.isEnabled ? Icons.wifi_rounded : Icons.wifi_off_rounded,
+                tone: n.isEnabled ? Tone.brand : Tone.neutral,
+                size: 44,
+                round: true,
               ),
+              const SizedBox(width: Space.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${n.bandLabel} · network ${n.index + 1}',
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: muted,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      n.ssid.isEmpty ? 'No name set' : n.ssid,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleLarge,
+                    ),
+                  ],
+                ),
+              ),
+              if (widget.saving)
+                const Padding(
+                  padding: EdgeInsets.all(Space.md),
+                  child: SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(strokeWidth: 2.4),
+                  ),
+                )
+              else
+                Semantics(
+                  label: '${n.bandLabel} ${n.ssid} Wi-Fi',
+                  toggled: n.isEnabled,
+                  child: Switch(
+                    value: n.isEnabled,
+                    onChanged: widget.editable ? widget.onToggle : null,
+                  ),
+                ),
             ],
+          ),
+          const SizedBox(height: Space.sm),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: StatusPill(
+              label: n.isEnabled ? 'Broadcasting' : 'Off · settings kept',
+              tone: n.isEnabled ? Tone.success : Tone.neutral,
+            ),
+          ),
+          const Divider(height: Space.xl),
+          _detailRow(
+            context,
+            secured ? Icons.lock_rounded : Icons.lock_open_rounded,
+            secured ? n.encryptionLabel : 'Open network (no password)',
+            color: secured ? muted : context.tone(Tone.warning).foreground,
+          ),
+          if (secured) ...[
             const SizedBox(height: Space.sm),
-            Align(
-              alignment: Alignment.centerRight,
-              child: FilledButton.tonalIcon(
-                onPressed: widget.editable ? widget.onEdit : null,
-                icon: const Icon(Icons.edit_rounded, size: 18),
-                label: const Text('Edit'),
-              ),
+            _detailRow(
+              context,
+              Icons.key_rounded,
+              !n.passwordKnown
+                  ? 'Password not reported by the router'
+                  : n.password.isEmpty
+                  ? 'No password set'
+                  : _reveal
+                  ? n.password
+                  : '•' * 12,
+              monospace: _reveal && passwordShown,
+              trailing: passwordShown
+                  ? IconButton(
+                      tooltip: 'Copy password',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () {
+                        Clipboard.setData(ClipboardData(text: n.password));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Password copied')),
+                        );
+                      },
+                      icon: const Icon(Icons.copy_rounded, size: 20),
+                    )
+                  : null,
             ),
           ],
+          const SizedBox(height: Space.lg),
+          Row(
+            children: [
+              Expanded(
+                child: PillButton(
+                  label: 'Edit',
+                  icon: Icons.edit_rounded,
+                  onPressed: widget.editable ? widget.onEdit : null,
+                ),
+              ),
+              const SizedBox(width: Space.sm),
+              Expanded(
+                child: PillButton(
+                  label: _reveal ? 'Hide' : 'Show',
+                  icon: _reveal
+                      ? Icons.visibility_off_rounded
+                      : Icons.visibility_rounded,
+                  onPressed: passwordShown
+                      ? () => setState(() => _reveal = !_reveal)
+                      : null,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _detailRow(
+    BuildContext context,
+    IconData icon,
+    String text, {
+    Color? color,
+    bool monospace = false,
+    Widget? trailing,
+  }) {
+    final theme = Theme.of(context);
+    return Row(
+      children: [
+        Icon(
+          icon,
+          size: 18,
+          color: color ?? theme.colorScheme.onSurfaceVariant,
         ),
+        const SizedBox(width: Space.md),
+        Expanded(
+          child: Text(
+            text,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontFamily: monospace ? 'monospace' : null,
+              letterSpacing: monospace ? 0.5 : null,
+            ),
+          ),
+        ),
+        ?trailing,
+      ],
+    );
+  }
+}
+
+class _GuestCard extends StatelessWidget {
+  const _GuestCard({required this.provider});
+
+  final RouterProvider provider;
+
+  @override
+  Widget build(BuildContext context) {
+    final guest = provider.guestWifi;
+    final theme = Theme.of(context);
+    final on = guest != null && '${guest['Enable']}' == '1';
+    final ssid = '${guest?['Ssid'] ?? ''}'.trim();
+    return PanelCard(
+      child: Row(
+        children: [
+          IconBadge(
+            Icons.wifi_tethering_rounded,
+            tone: on ? Tone.accent : Tone.neutral,
+            size: 44,
+            round: true,
+          ),
+          const SizedBox(width: Space.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Guest Wi-Fi', style: theme.textTheme.titleMedium),
+                Text(
+                  guest == null
+                      ? 'Separate access for visitors'
+                      : on
+                      ? (ssid.isEmpty ? 'On' : 'On · $ssid')
+                      : 'Off',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          PillButton(
+            label: 'Manage',
+            onPressed: provider.isConnected
+                ? () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const GuestWifiSettingsScreen(),
+                    ),
+                  )
+                : null,
+          ),
+        ],
       ),
     );
   }
@@ -340,7 +546,9 @@ class WifiEditSheet extends StatefulWidget {
 class _WifiEditSheetState extends State<WifiEditSheet> {
   final _form = GlobalKey<FormState>();
   late final _ssid = TextEditingController(text: widget.network.ssid);
-  late final _password = TextEditingController(text: widget.network.password);
+  late final _password = TextEditingController(
+    text: widget.network.passwordKnown ? widget.network.password : '',
+  );
   bool _showPassword = false;
 
   @override
@@ -353,16 +561,11 @@ class _WifiEditSheetState extends State<WifiEditSheet> {
   void _submit() {
     if (!_form.currentState!.validate()) return;
     final n = widget.network;
-    final ssid = _ssid.text.trim();
-    final password = _password.text;
-    if (ssid == n.ssid && password == n.password) {
-      Navigator.pop(context);
-      return;
-    }
-    Navigator.pop(
-      context,
-      n.copyWith(ssid: ssid, password: password, create: 1),
+    final updated = n.copyWith(
+      ssid: _ssid.text.trim(),
+      password: _password.text,
     );
+    Navigator.pop(context, updated.hasEdits ? updated : null);
   }
 
   @override
@@ -385,12 +588,13 @@ class _WifiEditSheetState extends State<WifiEditSheet> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                'Edit ${n.bandLabel} Wi-Fi',
+                'Edit ${n.bandLabel} network',
                 style: theme.textTheme.titleLarge,
               ),
               const SizedBox(height: Space.xs),
               Text(
-                'Security: ${n.encryptionLabel}',
+                'Security: ${n.encryptionLabel} · '
+                '${n.isEnabled ? 'currently on' : 'currently off'}',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
@@ -398,7 +602,6 @@ class _WifiEditSheetState extends State<WifiEditSheet> {
               const SizedBox(height: Space.lg),
               TextFormField(
                 controller: _ssid,
-                autofocus: false,
                 textInputAction: TextInputAction.next,
                 maxLength: 32,
                 decoration: const InputDecoration(
@@ -417,9 +620,13 @@ class _WifiEditSheetState extends State<WifiEditSheet> {
                 autofillHints: const [AutofillHints.newPassword],
                 decoration: InputDecoration(
                   labelText: secured ? 'Password' : 'Password (open network)',
-                  helperText: secured
+                  helperText: !secured
+                      ? 'Change the security type on the router to add a password'
+                      : n.passwordKnown
                       ? '8–63 characters, or a 64-digit hex key'
-                      : 'Change the security type on the router to add a password',
+                      : 'The router did not report the current password; '
+                            'enter a new one to save this network',
+                  helperMaxLines: 2,
                   prefixIcon: const Icon(Icons.key_rounded),
                   suffixIcon: IconButton(
                     tooltip: _showPassword ? 'Hide password' : 'Show password',
@@ -435,13 +642,17 @@ class _WifiEditSheetState extends State<WifiEditSheet> {
                 validator: (v) => Validators.wifiPassword(v, secured: secured),
               ),
               const SizedBox(height: Space.lg),
-              const InfoBanner(
+              InfoBanner(
                 tone: Tone.warning,
                 icon: Icons.info_outline_rounded,
-                title: 'Devices will reconnect',
-                message:
-                    'Applying restarts this Wi-Fi network. The app confirms '
-                    'the new settings once it is connected again.',
+                title: n.isEnabled
+                    ? 'Devices will reconnect'
+                    : 'Saved for when it is turned on',
+                message: n.isEnabled
+                    ? 'Applying restarts this Wi-Fi network. The app confirms '
+                          'the new settings once it is connected again.'
+                    : 'This network stays off; on/off is changed with the '
+                          'switch on its card.',
               ),
               const SizedBox(height: Space.lg),
               Row(

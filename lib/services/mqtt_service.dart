@@ -43,6 +43,13 @@ class MqttService {
   Future<void> _connectQueue = Future.value();
 
   final _pendingByTopic = <String, Completer<Map<String, dynamic>?>>{};
+
+  /// Write commands that timed out: their reply may still arrive and must
+  /// not be mistaken for the reply to the next write on the same command.
+  final _lateReplies = <String, Completer<void>>{};
+
+  /// How long a later write waits for a late reply before giving up on it.
+  static const lateReplyGrace = Duration(seconds: 15);
   final _pathQueues = <String, Future<void>>{};
   final _sharedRequests = <String, Future<Map<String, dynamic>?>>{};
 
@@ -169,7 +176,14 @@ class MqttService {
     }
 
     final pending = _pendingByTopic.remove(message.topic);
-    if (pending == null || pending.isCompleted) return;
+    if (pending == null || pending.isCompleted) {
+      final late = _lateReplies.remove(message.topic);
+      if (late != null && !late.isCompleted) {
+        debugPrint('MqttService: discarded late reply on ${message.topic}');
+        late.complete();
+      }
+      return;
+    }
     if (data == null) {
       debugPrint('MqttService: Non-object reply on ${message.topic} ignored');
     }
@@ -224,6 +238,12 @@ class MqttService {
 
     final appId = await _loadAppId();
     final responseTopic = '$appId$path';
+    final late = _lateReplies[responseTopic];
+    if (late != null) {
+      await late.future.timeout(lateReplyGrace, onTimeout: () {});
+      _lateReplies.remove(responseTopic);
+      if (!_isConnected || !identical(_transport, transport)) return null;
+    }
     final completer = Completer<Map<String, dynamic>?>();
     _pendingByTopic[responseTopic] = completer;
 
@@ -251,6 +271,7 @@ class MqttService {
       if (identical(_pendingByTopic[responseTopic], completer)) {
         _pendingByTopic.remove(responseTopic);
       }
+      if (_isWrite(path)) _lateReplies[responseTopic] = Completer<void>();
       completer.complete(null);
     });
     try {
@@ -717,6 +738,11 @@ class MqttService {
       if (!pending.isCompleted) pending.complete(null);
     }
     _pendingByTopic.clear();
+    // A new session cannot receive the old session's replies.
+    for (final late in _lateReplies.values) {
+      if (!late.isCompleted) late.complete();
+    }
+    _lateReplies.clear();
     if (transport != null) {
       transport.onDisconnected = null;
       try {
@@ -726,6 +752,8 @@ class MqttService {
       }
     }
   }
+
+  static bool _isWrite(String path) => !path.startsWith('/Get');
 
   void dispose() {
     _teardown();
