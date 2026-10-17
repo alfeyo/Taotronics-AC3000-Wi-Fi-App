@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../app_info.dart';
+import '../theme/app_theme.dart';
 import 'discovery_screen.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -69,14 +71,7 @@ class _SplashScreenState extends State<SplashScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xfff37a4d), Color(0xffe85d2f), Color(0xffc14524)],
-            stops: [0.0, 0.55, 1.0],
-          ),
-        ),
+        color: Palette.charcoal,
         child: Stack(
           children: [
             Positioned(
@@ -87,7 +82,7 @@ class _SplashScreenState extends State<SplashScreen>
                 height: 280,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Colors.white.withValues(alpha: 0.08),
+                  color: Palette.panelRaised.withValues(alpha: 0.6),
                 ),
               ),
             ),
@@ -99,7 +94,7 @@ class _SplashScreenState extends State<SplashScreen>
                 height: 220,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Colors.white.withValues(alpha: 0.07),
+                  color: Palette.panelRaised.withValues(alpha: 0.45),
                 ),
               ),
             ),
@@ -111,7 +106,7 @@ class _SplashScreenState extends State<SplashScreen>
                 height: 110,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Colors.white.withValues(alpha: 0.06),
+                  color: Palette.indigo.withValues(alpha: 0.18),
                 ),
               ),
             ),
@@ -137,8 +132,8 @@ class _SplashScreenState extends State<SplashScreen>
                       width: 120,
                       height: 120,
                       decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(28),
+                        color: Palette.indigoLight,
+                        borderRadius: BorderRadius.circular(36),
                         boxShadow: [
                           BoxShadow(
                             color: Colors.black.withValues(alpha: 0.15),
@@ -150,7 +145,7 @@ class _SplashScreenState extends State<SplashScreen>
                       child: const Icon(
                         Icons.router_rounded,
                         size: 64,
-                        color: Color(0xffe85d2f),
+                        color: Palette.charcoal,
                       ),
                     ),
                   ),
@@ -211,7 +206,7 @@ class _SplashScreenState extends State<SplashScreen>
                   ),
                   const SizedBox(height: 14),
                   Text(
-                    'v1.0',
+                    'v${AppInfo.version}',
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.7),
                       fontSize: 12,

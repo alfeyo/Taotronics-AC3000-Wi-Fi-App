@@ -1417,7 +1417,7 @@ class NodeLedSettingsScreen extends StatefulWidget {
 class _NodeLedSettingsScreenState extends State<NodeLedSettingsScreen> {
   bool _loading = true;
   bool _loadFailed = false;
-  List<Map<String, dynamic>> _nodes = [];
+  final Set<String> _saving = {};
 
   @override
   void initState() {
@@ -1428,53 +1428,81 @@ class _NodeLedSettingsScreenState extends State<NodeLedSettingsScreen> {
   Future<void> _load() async {
     final response = await context.read<RouterProvider>().loadLedSettings();
     _loadFailed = response == null;
-    _nodes = _mapList(response?['Data']);
     if (mounted) setState(() => _loading = false);
   }
 
-  Future<void> _setLed(Map<String, dynamic> node, bool enabled) async {
+  Future<void> _setLed(String sn, bool enabled) async {
+    setState(() => _saving.add(sn));
     final result = await context.read<RouterProvider>().updateNodeLed(
-      nodeSn: _asText(node['NodeSn']),
+      nodeSn: sn,
       led: enabled ? 1 : 0,
     );
     if (!mounted) return;
+    setState(() => _saving.remove(sn));
     showSaveResult(
       context,
-      result.isConfirmed ? const SaveResult.confirmed('LED updated.') : result,
+      result.isConfirmed
+          ? SaveResult.confirmed(enabled ? 'LED turned on.' : 'LED turned off.')
+          : result,
     );
-    if (result.isConfirmed) {
-      node['Led'] = enabled ? 1 : 0;
-      setState(() {});
-    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final provider = context.watch<RouterProvider>();
+    final leds = provider.ledNodes;
+    final masterSn = provider.nodes.where((n) => n.isMaster).firstOrNull?.sn;
     return _SettingsScaffold(
       title: 'Router LEDs',
       loading: _loading,
       loadFailed: _loadFailed,
       onRefresh: _load,
-      child: _nodes.isEmpty
+      child: leds.isEmpty
           ? const _EmptySettings(
               icon: Icons.lightbulb_outline,
               title: 'No LED-capable node reported',
               subtitle: 'Refresh after the mesh nodes finish connecting.',
             )
           : Column(
-              children: _nodes.map((node) {
-                return Card(
-                  child: SwitchListTile.adaptive(
-                    value: _asInt(node['Led']) == 1,
-                    onChanged: (value) => _setLed(node, value),
-                    title: Text(
-                      _asText(node['NickName'], fallback: 'Mesh node'),
+              children: [
+                for (final node in leds)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: Space.md),
+                    child: ActionTile(
+                      icon: Icons.lightbulb_outline_rounded,
+                      tone: RouterProvider.isLedOn(node)
+                          ? Tone.accent
+                          : Tone.neutral,
+                      title: _asText(
+                        node['NickName'],
+                        fallback: _asText(node['NodeSn']) == masterSn
+                            ? 'Main router'
+                            : 'Mesh node',
+                      ),
+                      subtitle:
+                          '${_asText(node['NodeSn'])} · LED '
+                          '${RouterProvider.isLedOn(node) ? 'on' : 'off'}',
+                      trailing: _saving.contains(_asText(node['NodeSn']))
+                          ? const Padding(
+                              padding: EdgeInsets.all(Space.md),
+                              child: SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.4,
+                                ),
+                              ),
+                            )
+                          : Switch(
+                              value: RouterProvider.isLedOn(node),
+                              onChanged: provider.isConnected
+                                  ? (value) =>
+                                        _setLed(_asText(node['NodeSn']), value)
+                                  : null,
+                            ),
                     ),
-                    subtitle: Text(_asText(node['NodeSn'])),
-                    secondary: const Icon(Icons.lightbulb_outline),
                   ),
-                );
-              }).toList(),
+              ],
             ),
     );
   }

@@ -139,11 +139,11 @@ void main() {
       await tester.pumpWidget(_app(provider, const HomeScreen()));
       await tester.pump();
 
-      expect(find.text('Internet online'), findsOneWidget);
+      expect(find.text('Internet online'), findsWidgets);
       expect(find.text('Game labs'), findsWidgets);
-      expect(find.text('2h 0m'), findsOneWidget, reason: 'node uptime');
+      expect(find.text('Router lights'), findsOneWidget);
       expect(
-        find.byType(size.width >= 600 ? NavigationRail : NavigationBar),
+        find.byType(size.width >= 600 ? NavigationRail : FloatingNavBar),
         findsOneWidget,
       );
       expect(tester.takeException(), isNull);
@@ -198,7 +198,7 @@ void main() {
       await tester.pumpWidget(_app(provider, HomeScreen(initialTab: tab)));
       await tester.pump();
       final scaler = MediaQuery.textScalerOf(
-        tester.element(find.byType(NavigationBar)),
+        tester.element(find.byType(FloatingNavBar)),
       );
       expect(scaler.scale(10), closeTo(16, 0.01));
       expect(tester.takeException(), isNull);

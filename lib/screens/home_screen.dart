@@ -10,10 +10,10 @@ import 'wifi_screen.dart';
 
 /// Top-level destinations of the signed-in app.
 enum HomeTab {
-  overview('Home', Icons.space_dashboard_outlined, Icons.space_dashboard),
-  devices('Devices', Icons.devices_outlined, Icons.devices),
-  wifi('Wi-Fi', Icons.wifi_outlined, Icons.wifi),
-  settings('Settings', Icons.settings_outlined, Icons.settings);
+  overview('Home', Icons.home_outlined, Icons.home_rounded),
+  devices('Devices', Icons.devices_other_outlined, Icons.devices_other_rounded),
+  wifi('Wi-Fi', Icons.wifi_rounded, Icons.wifi_rounded),
+  settings('Settings', Icons.settings_outlined, Icons.settings_rounded);
 
   const HomeTab(this.label, this.icon, this.selectedIcon);
 
@@ -132,20 +132,98 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             )
           : Scaffold(
+              extendBody: true,
               body: body,
-              bottomNavigationBar: NavigationBar(
-                selectedIndex: _tab.index,
-                onDestinationSelected: (i) => _select(HomeTab.values[i]),
-                destinations: [
-                  for (final tab in HomeTab.values)
-                    NavigationDestination(
-                      icon: Icon(tab.icon),
-                      selectedIcon: Icon(tab.selectedIcon),
-                      label: tab.label,
-                    ),
-                ],
+              bottomNavigationBar: FloatingNavBar(
+                selected: _tab,
+                onSelected: _select,
               ),
             ),
+    );
+  }
+}
+
+/// Rounded navigation bar that floats above the content.
+class FloatingNavBar extends StatelessWidget {
+  const FloatingNavBar({
+    super.key,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final HomeTab selected;
+  final ValueChanged<HomeTab> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.statusColors;
+    final theme = Theme.of(context);
+    return SafeArea(
+      minimum: const EdgeInsets.fromLTRB(Space.lg, 0, Space.lg, Space.md),
+      child: Material(
+        color: colors.navBar,
+        elevation: 6,
+        shadowColor: Colors.black.withValues(alpha: 0.35),
+        shape: const StadiumBorder(),
+        child: Padding(
+          padding: const EdgeInsets.all(6),
+          child: Row(
+            children: [
+              for (final tab in HomeTab.values)
+                Expanded(
+                  child: Semantics(
+                    button: true,
+                    selected: tab == selected,
+                    label: tab.label,
+                    child: ExcludeSemantics(
+                      child: InkWell(
+                        customBorder: const StadiumBorder(),
+                        onTap: () => onSelected(tab),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          curve: Curves.easeOut,
+                          height: 56,
+                          decoration: ShapeDecoration(
+                            shape: const StadiumBorder(),
+                            color: tab == selected
+                                ? colors.navIndicator
+                                : Colors.transparent,
+                          ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                tab == selected ? tab.selectedIcon : tab.icon,
+                                size: 22,
+                                color: tab == selected
+                                    ? colors.onNavIndicator
+                                    : colors.onNavBar,
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                tab.label,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.labelSmall?.copyWith(
+                                  color: tab == selected
+                                      ? colors.onNavIndicator
+                                      : colors.onNavBar,
+                                  fontWeight: tab == selected
+                                      ? FontWeight.w700
+                                      : FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

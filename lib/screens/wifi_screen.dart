@@ -131,123 +131,123 @@ class _WifiSettingsScreenState extends State<WifiSettingsScreen> {
     final names = enabled.map((n) => n.ssid).where((s) => s.isNotEmpty).toSet();
 
     return Scaffold(
-      body: RefreshIndicator(
-        onRefresh: () async {
-          await provider.refreshWirelessSettings();
-          if (provider.isConnected) await provider.loadGuestWifiSettings();
-        },
-        child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: EdgeInsets.fromLTRB(
-            Space.lg,
-            MediaQuery.paddingOf(context).top + Space.lg,
-            Space.lg,
-            120,
-          ),
-          children: [
-            ContentWidth(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  PageHeader(
-                    kicker: 'Wireless management',
-                    title: 'Wi-Fi networks',
-                    subtitle: 'Edit each band, its password and availability',
-                    trailing: IconButton(
-                      tooltip: 'Refresh',
-                      onPressed: provider.wirelessLoading || !connected
-                          ? null
-                          : provider.refreshWirelessSettings,
-                      icon: provider.wirelessLoading
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.refresh_rounded),
+      body: SafeArea(
+        bottom: false,
+        child: RefreshIndicator(
+          onRefresh: () async {
+            await provider.refreshWirelessSettings();
+            if (provider.isConnected) await provider.loadGuestWifiSettings();
+          },
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: EdgeInsets.fromLTRB(Space.lg, Space.lg, Space.lg, 120),
+            children: [
+              ContentWidth(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    PageHeader(
+                      kicker: 'Wireless management',
+                      title: 'Wi-Fi networks',
+                      subtitle: 'Edit each band, its password and availability',
+                      trailing: IconButton(
+                        tooltip: 'Refresh',
+                        onPressed: provider.wirelessLoading || !connected
+                            ? null
+                            : provider.refreshWirelessSettings,
+                        icon: provider.wirelessLoading
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.refresh_rounded),
+                      ),
                     ),
-                  ),
-                  if (networks.isNotEmpty) ...[
+                    if (networks.isNotEmpty) ...[
+                      const SizedBox(height: Space.md),
+                      Wrap(
+                        spacing: Space.sm,
+                        runSpacing: Space.sm,
+                        children: [
+                          StatusPill(
+                            label:
+                                '${networks.length} network${networks.length == 1 ? '' : 's'} reported',
+                            tone: Tone.neutral,
+                            dot: false,
+                          ),
+                          StatusPill(
+                            label: '${enabled.length} on',
+                            tone: enabled.isEmpty ? Tone.danger : Tone.success,
+                          ),
+                          StatusPill(
+                            label:
+                                '${names.length} name${names.length == 1 ? '' : 's'} broadcasting',
+                            tone: Tone.info,
+                            dot: false,
+                          ),
+                        ],
+                      ),
+                    ],
+                    const SizedBox(height: Space.lg),
+                    ConnectionStatusBanners(
+                      onOpenSetup: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const SetupWizardScreen(),
+                        ),
+                      ),
+                    ),
+                    if (networks.isEmpty)
+                      _emptyState(provider)
+                    else ...[
+                      if (provider.wirelessUpdatedAt != null)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: Space.sm),
+                          child: Text(
+                            'Read from the router ${formatAge(provider.wirelessUpdatedAt)}',
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
+                                ),
+                          ),
+                        ),
+                      for (final network in networks)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: Space.md),
+                          child: WifiNetworkCard(
+                            network: network,
+                            saving: _savingIndex == network.index,
+                            editable: editable,
+                            onToggle: (on) => _toggle(provider, network, on),
+                            onEdit: () => _edit(provider, network),
+                          ),
+                        ),
+                    ],
+                    _GuestCard(provider: provider),
                     const SizedBox(height: Space.md),
-                    Wrap(
-                      spacing: Space.sm,
-                      runSpacing: Space.sm,
-                      children: [
-                        StatusPill(
-                          label:
-                              '${networks.length} network${networks.length == 1 ? '' : 's'} reported',
-                          tone: Tone.neutral,
-                          dot: false,
+                    ActionTile(
+                      icon: Icons.edit_note_rounded,
+                      tone: Tone.info,
+                      title: 'Edit both bands together',
+                      subtitle: '2.4 GHz and 5 GHz names, passwords and on/off',
+                      enabled: connected,
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const WifiSettingsDetailScreen(),
                         ),
-                        StatusPill(
-                          label: '${enabled.length} on',
-                          tone: enabled.isEmpty ? Tone.danger : Tone.success,
-                        ),
-                        StatusPill(
-                          label:
-                              '${names.length} name${names.length == 1 ? '' : 's'} broadcasting',
-                          tone: Tone.info,
-                          dot: false,
-                        ),
-                      ],
+                      ),
                     ),
                   ],
-                  const SizedBox(height: Space.lg),
-                  ConnectionStatusBanners(
-                    onOpenSetup: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const SetupWizardScreen(),
-                      ),
-                    ),
-                  ),
-                  if (networks.isEmpty)
-                    _emptyState(provider)
-                  else ...[
-                    if (provider.wirelessUpdatedAt != null)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: Space.sm),
-                        child: Text(
-                          'Read from the router ${formatAge(provider.wirelessUpdatedAt)}',
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.onSurfaceVariant,
-                              ),
-                        ),
-                      ),
-                    for (final network in networks)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: Space.md),
-                        child: WifiNetworkCard(
-                          network: network,
-                          saving: _savingIndex == network.index,
-                          editable: editable,
-                          onToggle: (on) => _toggle(provider, network, on),
-                          onEdit: () => _edit(provider, network),
-                        ),
-                      ),
-                  ],
-                  _GuestCard(provider: provider),
-                  const SizedBox(height: Space.md),
-                  ActionTile(
-                    icon: Icons.edit_note_rounded,
-                    tone: Tone.info,
-                    title: 'Edit both bands together',
-                    subtitle: '2.4 GHz and 5 GHz names, passwords and on/off',
-                    enabled: connected,
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const WifiSettingsDetailScreen(),
-                      ),
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

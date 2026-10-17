@@ -748,6 +748,11 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
     try {
       await refreshUsbStorage().timeout(const Duration(seconds: 8));
     } catch (_) {}
+    if (!ledsLoaded) {
+      try {
+        await refreshLeds().timeout(const Duration(seconds: 8));
+      } catch (_) {}
+    }
     // Skip traffic-flow refresh: /GetSumOfNetworkFlow* endpoints are cloud-only
     // on this router family (see APK g/c.bA list) and always time out on the
     // local MQTT broker. Live throughput is derived from device UpRate/DownRate
@@ -1244,15 +1249,69 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
     );
   }
 
-  Future<Map<String, dynamic>?> loadLedSettings() {
-    return _readRouterSetting(_mqtt.getLedSettings);
+  Future<Map<String, dynamic>?> loadLedSettings() async {
+    final response = await _readRouterSetting(_mqtt.getLedSettings);
+    final data = response?['Data'];
+    if (data is List) {
+      _ledNodes = _mapList(data);
+      _ledUpdatedAt = DateTime.now();
+      notifyListeners();
+    }
+    return response;
   }
 
-  Future<SaveResult> updateNodeLed({required String nodeSn, required int led}) {
-    return _writeRouterSetting(
+  /// Background LED read: no error banner when the router does not answer.
+  Future<void> refreshLeds() async {
+    if (!isConnected) return;
+    final response = await _mqtt.getLedSettings();
+    final data = response?['Data'];
+    if (response?['ErrorCode'] == 0 && data is List) {
+      _ledNodes = _mapList(data);
+      _ledUpdatedAt = DateTime.now();
+      notifyListeners();
+    }
+  }
+
+  List<Map<String, dynamic>> _ledNodes = [];
+  DateTime? _ledUpdatedAt;
+
+  /// GetLedList entries ({NodeSn, NickName, Led}); empty until loaded.
+  List<Map<String, dynamic>> get ledNodes => List.unmodifiable(_ledNodes);
+  bool get ledsLoaded => _ledUpdatedAt != null;
+  DateTime? get ledUpdatedAt => _ledUpdatedAt;
+
+  /// LED entry of the main router: the node reported with Role `mpp`, or
+  /// the only/first LED entry when roles are unknown.
+  Map<String, dynamic>? get mainRouterLed {
+    if (_ledNodes.isEmpty) return null;
+    final master = _nodes.where((n) => n.isMaster).firstOrNull;
+    return _ledNodes
+            .where((l) => master != null && '${l['NodeSn']}' == master.sn)
+            .firstOrNull ??
+        _ledNodes.first;
+  }
+
+  static bool isLedOn(Map<String, dynamic> entry) => '${entry['Led']}' == '1';
+
+  Future<SaveResult> updateNodeLed({
+    required String nodeSn,
+    required int led,
+  }) async {
+    final result = await _writeRouterSetting(
+      label: 'LED change',
       failureMessage: 'Failed to update node LED',
       request: () => _mqtt.setNodeLed(nodeSn: nodeSn, led: led),
     );
+    if (result.isConfirmed) {
+      _ledNodes = [
+        for (final entry in _ledNodes)
+          '${entry['NodeSn']}' == nodeSn ? {...entry, 'Led': led} : entry,
+      ];
+      notifyListeners();
+      // Read back so the switch shows what the router actually reports.
+      refreshLeds();
+    }
+    return result;
   }
 
   Future<Map<String, dynamic>?> loadRestartSchedule() {
@@ -1576,6 +1635,8 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
     _usbDisks = [];
     _usbVisitAddress = null;
     _guestWifi = null;
+    _ledNodes = [];
+    _ledUpdatedAt = null;
     _usbStorageLoading = false;
     _usbStorageSaving = false;
     _liveTelemetryResponsive = true;
