@@ -177,3 +177,48 @@ logic is covered by unit and widget tests against a fake router.
   firmware ships a new certificate.
 - The physical unfolded screen was emulated with a density override, not
   tested by unfolding.
+
+## 1.2.0 — Wi-Fi restoration and smart-home redesign (2026-10-17)
+
+Stages and tags: `redesign-s1-wifi`, `redesign-s2-home`,
+`redesign-s3-devices-settings`, `v1.2.0`.
+
+Wi-Fi regression, root causes and fixes:
+- The Wi-Fi tab had no per-band switch; on/off existed only in the
+  two-band form (indexes 0/1), so network index 2 could not be enabled or
+  edited. Every reported network now has its own switch and editor.
+- `toRouterPayload` added V2-only `Disable`/`ConfStatus`/`NodeSn` to V1
+  entries and blank `Password` when omitted. Payloads are now the router's
+  own fields plus only edited values; untouched entries are byte-identical.
+- `_subsetMatches` treated missing fields as matches; it now returns
+  unknown, so such saves are "unconfirmed", never "confirmed".
+- Saving is refused before the list loads, when a required field is
+  missing, or when it would switch off the last enabled network.
+- Late replies to timed-out write commands are discarded instead of being
+  taken by the next write on the same command.
+- Pairing JSON excludes the password unless the secure-storage fallback
+  explicitly requests it.
+
+Design: palette from the reference pack (charcoal #23242C, slate #747782,
+indigo #777DDE, amber #F0A85B, off-white #F5F6FA). The dark page background
+is slate deepened to #545864 for 6.6:1 text contrast; light-mode indigo is
+#5B61C9 (5.25:1). Floating pill navigation, pill buttons, rounded panels,
+page headers; Home, Wi-Fi, Devices, Mesh, Settings, discovery and splash
+redesigned. Typography uses the platform font (Inter was not bundled).
+
+Verification:
+- `flutter analyze` clean; `flutter test` 84 passed (stateful V1 fake router
+  for toggles/edits/drops/verification, late replies, LED, responsive
+  344/690/1100 dp, 1.6× text, dark mode). Kotlin tests 3 passed.
+- Galaxy Z Fold4 cover screen, in-place upgrade to 1.2.0 (3) with data kept:
+  TLS verified, MQTT connected, Home/Wi-Fi/Devices/Settings/Mesh/LED/
+  Diagnostics/discovery checked; all Settings entries present; light mode
+  and wide (rail) layout checked via night-mode and density overrides,
+  both restored.
+- LED switch verified on the live router: off → on → off (left off, as
+  found). No live Wi-Fi band, reboot or credential change was made.
+
+Observation: between 16:30 and 16:40 the router began reporting the 5 GHz
+network (index 1, "TT-35A0") as off (`Create` 0). The app sent no Wi-Fi
+command (every path requires the confirmation dialog, which was never
+accepted). The app now shows that state; it was not changed back.

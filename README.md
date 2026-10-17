@@ -14,11 +14,16 @@ This app provides local network control for TaoTronics AC3000 mesh routers witho
 - **Verified local control**: MQTT over TLS; the router's certificate is cryptographically checked against the TaoTronics CA
 - **Network overview**: internet status, live throughput (router WAN rate or connected-device sum, always labelled), devices, mesh nodes, router uptime, USB storage
 - **Devices**: search, filters (online / active / offline), sorting and per-device details reported by the router
-- **Wi-Fi**: view and edit network names and passwords with validation; changes are confirmed by reading the router back after it reconnects
+- **Wi-Fi**: every network the router reports gets its own card with an on/off switch, name/password editor and masked password; saves keep all other router fields and are confirmed by reading the router back after it reconnects
+- **Router LEDs**: main-router LED switch on Home and Settings, per-node LED control
 - **Settings**: guest Wi-Fi, WAN/DNS, LAN/DHCP, firewall, UPnP/DMZ, Fast NAT, QoS, VPN client, port forwarding, DDNS, LEDs, restart schedule, USB storage
 - **Setup**: Bluetooth provisioning of new or reset routers, and local pairing
 - **Diagnostics**: measured gateway latency and router response time, plain-language findings, exportable report (passwords excluded)
-- **Light and dark mode**, folded and unfolded layouts (Galaxy Z Fold), large text
+- **Smart-home design**: charcoal and slate with indigo and amber accents, floating navigation, light and dark mode, folded and unfolded layouts (Galaxy Z Fold), large text
+
+| Home | Wi-Fi | Devices | Settings |
+| --- | --- | --- | --- |
+| ![Home](docs/screenshots/1-home.png) | ![Wi-Fi](docs/screenshots/2-wifi.png) | ![Devices](docs/screenshots/3-devices.png) | ![Settings](docs/screenshots/4-settings.png) |
 
 ## Legal Disclaimer
 
@@ -48,9 +53,11 @@ This project is provided to help owners of TaoTronics AC3000 routers maintain co
 
 ## Download
 
-**[Download APK](https://github.com/alfeyo/Taotronics-AC3000-Wi-Fi-App/raw/main/releases/TaoTronics-Router-App.apk)** - TT Router 1.1.0 (build 2), package `com.ttrouter.tt_router_flutter`
+**[Download APK](https://github.com/alfeyo/Taotronics-AC3000-Wi-Fi-App/raw/main/releases/TaoTronics-Router-App.apk)** - TT Router 1.2.0 (build 3), package `com.ttrouter.tt_router_flutter`
 
-SHA-256: `7b22cf0f915c16db7ce193acb0068880d710d682dfec440af1f92c1d96a8225a`
+SHA-256: `031c59eabc7de05028f24820982fdda3ca40ae9919b731905a972e538f23eb43`
+
+The previous release (1.1.0) is available from the `v1.1.0` git tag.
 
 This is a sideload build signed with a development (debug) key, not a store
 release. Installing it over an earlier sideloaded TT Router build keeps your

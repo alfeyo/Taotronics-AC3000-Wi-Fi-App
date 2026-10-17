@@ -147,3 +147,20 @@ New since baseline: Settings → Mesh nodes, Diagnostics, Set up a router;
 device search/filter/sort/details; measured latency in diagnostics.
 Replaced: Parental "coming soon" tile → Settings → Not available entry;
 "Total Data Usage" card removed (router reports no per-device usage).
+
+## 1.2.0 smart-home redesign (2026-10-17)
+
+| Control | Location in 1.2.0 |
+| --- | --- |
+| Per-network on/off (every reported network, incl. index 2) | Wi-Fi tab → network card switch (confirmed) |
+| Per-network name/password edit | Wi-Fi tab → card → Edit |
+| Password show/copy | Wi-Fi tab → card → Show / copy icon |
+| Network counts (reported / on / names broadcasting) | Wi-Fi tab header pills; Home hero and Wi-Fi panel |
+| Edit both bands together | Wi-Fi tab → "Edit both bands together"; Settings → Wi-Fi settings |
+| Guest Wi-Fi (state + manage) | Wi-Fi tab guest card; Home "Guest Wi-Fi" pill; Settings |
+| Main router LED switch | Home → Quick controls → Router lights; Settings → Router LEDs card |
+| Per-node LEDs | Settings → View all LED settings / Router LEDs entry; LED state on Mesh nodes |
+| Diagnostics / Restart / Log out | Home header "…" menu; Home pills (Diagnostics, Restart); Settings → System |
+| USB storage | Home "USB storage" pill; Settings → Network |
+| Health and connection details (internet, quality, uptime, guest devices, storage, live statistics, address, certificate, saved password) | Home → Network health → Health details |
+| Advanced settings (WAN, LAN, security, QoS, VPN, port forwarding, DNS, DDNS, firmware, restart schedule, setup, not-available items, about) | Settings (each entry verified present on device) |

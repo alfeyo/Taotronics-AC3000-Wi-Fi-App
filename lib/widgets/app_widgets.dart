@@ -563,30 +563,33 @@ class PageHeader extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (kicker != null)
-                Text(
-                  kicker!.toUpperCase(),
-                  style: theme.textTheme.labelMedium?.copyWith(
-                    color: muted,
-                    letterSpacing: 1.1,
+          child: Semantics(
+            container: true,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (kicker != null)
+                  Text(
+                    kicker!.toUpperCase(),
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: muted,
+                      letterSpacing: 1.1,
+                    ),
                   ),
-                ),
-              const SizedBox(height: Space.xs),
-              Semantics(
-                header: true,
-                child: Text(title, style: theme.textTheme.headlineMedium),
-              ),
-              if (subtitle != null) ...[
                 const SizedBox(height: Space.xs),
-                Text(
-                  subtitle!,
-                  style: theme.textTheme.bodyMedium?.copyWith(color: muted),
+                Semantics(
+                  header: true,
+                  child: Text(title, style: theme.textTheme.headlineMedium),
                 ),
+                if (subtitle != null) ...[
+                  const SizedBox(height: Space.xs),
+                  Text(
+                    subtitle!,
+                    style: theme.textTheme.bodyMedium?.copyWith(color: muted),
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
         ?trailing,

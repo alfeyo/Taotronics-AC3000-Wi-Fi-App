@@ -278,20 +278,23 @@ class _Header extends StatelessWidget {
           ),
         ),
         const SizedBox(height: Space.md),
-        Wrap(
-          spacing: Space.sm,
-          runSpacing: Space.sm,
-          children: [
-            StatusPill(label: label, tone: tone),
-            if (internet != null)
-              StatusPill(label: internet.$1, tone: internet.$2),
-            if (connected && provider.certificateVerdict?.trusted == true)
-              const StatusPill(
-                label: 'Verified router',
-                tone: Tone.info,
-                icon: Icons.verified_user_rounded,
-              ),
-          ],
+        Semantics(
+          container: true,
+          child: Wrap(
+            spacing: Space.sm,
+            runSpacing: Space.sm,
+            children: [
+              StatusPill(label: label, tone: tone),
+              if (internet != null)
+                StatusPill(label: internet.$1, tone: internet.$2),
+              if (connected && provider.certificateVerdict?.trusted == true)
+                const StatusPill(
+                  label: 'Verified router',
+                  tone: Tone.info,
+                  icon: Icons.verified_user_rounded,
+                ),
+            ],
+          ),
         ),
       ],
     );
@@ -631,32 +634,34 @@ class _ActivityRow extends StatelessWidget {
           ],
         ),
         const SizedBox(height: Space.sm),
-        Row(
-          children: [
-            StatusPill(
-              label: !connected
-                  ? 'Offline'
-                  : stale
-                  ? 'Stale'
-                  : 'Live',
-              tone: !connected
-                  ? Tone.neutral
-                  : stale
-                  ? Tone.warning
-                  : Tone.success,
-            ),
-            const SizedBox(width: Space.sm),
-            Expanded(
-              child: Text(
-                connected
-                    ? '$source · updated ${formatAge(provider.liveDataUpdatedAt)}'
-                    : 'Live rates appear once the router is connected.',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
+        MergeSemantics(
+          child: Row(
+            children: [
+              StatusPill(
+                label: !connected
+                    ? 'Offline'
+                    : stale
+                    ? 'Stale'
+                    : 'Live',
+                tone: !connected
+                    ? Tone.neutral
+                    : stale
+                    ? Tone.warning
+                    : Tone.success,
+              ),
+              const SizedBox(width: Space.sm),
+              Expanded(
+                child: Text(
+                  connected
+                      ? '$source · updated ${formatAge(provider.liveDataUpdatedAt)}'
+                      : 'Live rates appear once the router is connected.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ],
     );
@@ -680,6 +685,7 @@ class _RateCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Semantics(
+      container: true,
       label: '$label ${value ?? 'not available'}',
       child: ExcludeSemantics(
         child: PanelCard(

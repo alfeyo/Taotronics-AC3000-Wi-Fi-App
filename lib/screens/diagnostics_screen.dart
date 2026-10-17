@@ -63,6 +63,8 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
     _routerReachable = widget.routerReachable;
     _mqttPortOpen = widget.mqttPortOpen;
     _addInitialEntries();
+    // Fill the phone's Wi-Fi details right away when the caller had none.
+    if (_wifiIP == null || _gatewayIP == null) _getNetworkInfo();
   }
 
   void _addInitialEntries() {
