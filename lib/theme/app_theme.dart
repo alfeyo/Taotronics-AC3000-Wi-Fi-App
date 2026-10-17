@@ -31,27 +31,31 @@ abstract final class Breakpoints {
   static const contentMaxWidth = 720.0;
 }
 
-/// Smart-home palette (charcoal, slate, indigo, amber, off-white).
+/// Premium router palette: near-black layers, icy-blue accent, amber only
+/// for LED activity, restrained green for confirmed positive states.
 abstract final class Palette {
-  static const charcoal = Color(0xff23242c);
-  static const panel = Color(0xff2b2d37);
-  static const panelRaised = Color(0xff353744);
-  static const line = Color(0xff444651);
+  static const background = Color(0xff17181b);
+  static const charcoal = Color(0xff24252a);
+  static const panel = Color(0xff24252a);
+  static const panelRaised = Color(0xff30323a);
+  static const line = Color(0xff3a3c44);
   static const slate = Color(0xff747782);
+  static const softWhite = Color(0xffecedf0);
 
-  /// Page background in dark mode: slate deepened so off-white text keeps
-  /// at least 6.5:1 contrast (#747782 itself only reaches 4.1:1).
-  static const slateDeep = Color(0xff545864);
-  static const indigo = Color(0xff777dde);
-  static const indigoLight = Color(0xff858ae9);
-  static const indigoPale = Color(0xffc1c4fc);
-
-  /// Indigo for light backgrounds: 5.25:1 against white.
-  static const indigoDeep = Color(0xff5b61c9);
+  /// Secondary text: >= 4.9:1 on every dark surface.
+  static const muted = Color(0xff9da1ab);
+  static const icy = Color(0xffc9d8f4);
+  static const indigo = Color(0xffa9bceb);
+  static const indigoDeep = Color(0xff4a5ca6);
   static const amber = Color(0xfff0a85b);
-  static const offWhite = Color(0xfff5f6fa);
-  static const muted = Color(0xffb2b4be);
-  static const lime = Color(0xffcbe89b);
+  static const green = Color(0xff9bd5a6);
+  static const offWhite = Color(0xfff3f4f6);
+
+  // Kept for existing references.
+  static const slateDeep = background;
+  static const indigoLight = icy;
+  static const indigoPale = icy;
+  static const lime = green;
 }
 
 /// Semantic colours that Material's ColorScheme does not cover.
@@ -96,41 +100,41 @@ class StatusColors extends ThemeExtension<StatusColors> {
   final Color onNavIndicator;
 
   static const light = StatusColors(
-    success: Color(0xff3d7a2a),
-    successContainer: Color(0xffe3f2cf),
-    onSuccessContainer: Color(0xff23471a),
+    success: Color(0xff3c7a47),
+    successContainer: Color(0xffe2f1e4),
+    onSuccessContainer: Color(0xff1f4a28),
     warning: Color(0xffa85e12),
     warningContainer: Color(0xfffcebd6),
     onWarningContainer: Color(0xff5c3307),
     info: Palette.indigoDeep,
-    infoContainer: Color(0xffe6e7fb),
-    onInfoContainer: Color(0xff2b2f7a),
+    infoContainer: Color(0xffe6ebf8),
+    onInfoContainer: Color(0xff26346b),
     accent: Color(0xffa85e12),
     accentContainer: Color(0xfffcebd6),
     onAccentContainer: Color(0xff5c3307),
-    navBar: Palette.charcoal,
+    navBar: Palette.background,
     onNavBar: Palette.muted,
-    navIndicator: Palette.offWhite,
-    onNavIndicator: Palette.charcoal,
+    navIndicator: Palette.softWhite,
+    onNavIndicator: Palette.background,
   );
 
   static const dark = StatusColors(
-    success: Palette.lime,
-    successContainer: Color(0xff2f3a26),
-    onSuccessContainer: Palette.lime,
+    success: Palette.green,
+    successContainer: Color(0xff23302a),
+    onSuccessContainer: Palette.green,
     warning: Palette.amber,
-    warningContainer: Color(0xff463826),
+    warningContainer: Color(0xff3a3127),
     onWarningContainer: Color(0xffffd9ae),
-    info: Palette.indigoPale,
+    info: Palette.icy,
     infoContainer: Palette.panelRaised,
-    onInfoContainer: Palette.indigoPale,
+    onInfoContainer: Palette.icy,
     accent: Palette.amber,
-    accentContainer: Palette.panelRaised,
+    accentContainer: Color(0xff3a3127),
     onAccentContainer: Palette.amber,
-    navBar: Palette.offWhite,
-    onNavBar: Color(0xff585d6a),
-    navIndicator: Palette.charcoal,
-    onNavIndicator: Palette.offWhite,
+    navBar: Palette.charcoal,
+    onNavBar: Palette.muted,
+    navIndicator: Palette.softWhite,
+    onNavIndicator: Palette.background,
   );
 
   @override
@@ -226,12 +230,12 @@ abstract final class AppTheme {
       brightness: Brightness.light,
       primary: Palette.indigoDeep,
       onPrimary: Colors.white,
-      primaryContainer: Color(0xffe6e7fb),
-      onPrimaryContainer: Color(0xff2b2f7a),
+      primaryContainer: Color(0xffe6ebf8),
+      onPrimaryContainer: Color(0xff26346b),
       secondary: Palette.amber,
-      onSecondary: Palette.charcoal,
+      onSecondary: Palette.background,
       secondaryContainer: Color(0xffeceef3),
-      onSecondaryContainer: Palette.charcoal,
+      onSecondaryContainer: Palette.background,
       tertiary: Color(0xffa85e12),
       onTertiary: Colors.white,
       error: Color(0xffc23b3b),
@@ -239,7 +243,7 @@ abstract final class AppTheme {
       errorContainer: Color(0xfffbe3e3),
       onErrorContainer: Color(0xff6e1515),
       surface: Colors.white,
-      onSurface: Palette.charcoal,
+      onSurface: Palette.background,
       onSurfaceVariant: Color(0xff5d616d),
       surfaceContainerLowest: Colors.white,
       surfaceContainerLow: Color(0xfffafbfd),
@@ -249,8 +253,8 @@ abstract final class AppTheme {
       outline: Color(0xff858895),
       outlineVariant: Color(0xffdfe1e8),
       inverseSurface: Palette.charcoal,
-      onInverseSurface: Palette.offWhite,
-      inversePrimary: Palette.indigoPale,
+      onInverseSurface: Palette.softWhite,
+      inversePrimary: Palette.icy,
       shadow: Colors.black,
       scrim: Colors.black,
     ),
@@ -261,38 +265,37 @@ abstract final class AppTheme {
   static ThemeData dark() => _build(
     const ColorScheme(
       brightness: Brightness.dark,
-      primary: Palette.indigoLight,
-      onPrimary: Color(0xff16172a),
+      primary: Palette.icy,
+      onPrimary: Palette.background,
       primaryContainer: Palette.panelRaised,
-      onPrimaryContainer: Palette.indigoPale,
+      onPrimaryContainer: Palette.icy,
       secondary: Palette.amber,
-      onSecondary: Palette.charcoal,
+      onSecondary: Palette.background,
       secondaryContainer: Palette.panelRaised,
-      onSecondaryContainer: Palette.offWhite,
+      onSecondaryContainer: Palette.softWhite,
       tertiary: Palette.amber,
-      onTertiary: Palette.charcoal,
-      error: Color(0xffff8a80),
+      onTertiary: Palette.background,
+      error: Color(0xffff8f86),
       onError: Color(0xff3a0b08),
-      errorContainer: Color(0xff4a2626),
+      errorContainer: Color(0xff3d2628),
       onErrorContainer: Color(0xffffd4cf),
       surface: Palette.charcoal,
-      onSurface: Palette.offWhite,
-      // Readable on both charcoal cards and the slate page background.
-      onSurfaceVariant: Color(0xffd0d2da),
-      surfaceContainerLowest: Palette.charcoal,
+      onSurface: Palette.softWhite,
+      onSurfaceVariant: Palette.muted,
+      surfaceContainerLowest: Palette.background,
       surfaceContainerLow: Palette.charcoal,
-      surfaceContainer: Palette.panel,
-      surfaceContainerHigh: Palette.panel,
+      surfaceContainer: Palette.charcoal,
+      surfaceContainerHigh: Palette.panelRaised,
       surfaceContainerHighest: Palette.panelRaised,
-      outline: Palette.slate,
+      outline: Color(0xff5a5d66),
       outlineVariant: Palette.line,
-      inverseSurface: Palette.offWhite,
-      onInverseSurface: Palette.charcoal,
+      inverseSurface: Palette.softWhite,
+      onInverseSurface: Palette.background,
       inversePrimary: Palette.indigoDeep,
       shadow: Colors.black,
       scrim: Colors.black,
     ),
-    background: Palette.slateDeep,
+    background: Palette.background,
     status: StatusColors.dark,
   );
 
@@ -340,9 +343,11 @@ abstract final class AppTheme {
     final dark = scheme.brightness == Brightness.dark;
     final cardShape = RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(Radii.lg),
-      side: dark
-          ? BorderSide.none
-          : BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.8)),
+      side: BorderSide(
+        color: dark
+            ? const Color(0xff2e3037)
+            : scheme.outlineVariant.withValues(alpha: 0.8),
+      ),
     );
     const stadium = StadiumBorder();
 
@@ -408,7 +413,7 @@ abstract final class AppTheme {
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
-          foregroundColor: dark ? Palette.indigoPale : scheme.primary,
+          foregroundColor: scheme.primary,
           minimumSize: const Size(48, 44),
           textStyle: text.labelLarge,
           shape: stadium,
@@ -486,12 +491,12 @@ abstract final class AppTheme {
       ),
       chipTheme: base.chipTheme.copyWith(
         backgroundColor: scheme.surface,
-        selectedColor: dark ? Palette.offWhite : Palette.charcoal,
+        selectedColor: dark ? Palette.softWhite : Palette.background,
         labelStyle: text.labelLarge,
         secondaryLabelStyle: text.labelLarge?.copyWith(
-          color: dark ? Palette.charcoal : Palette.offWhite,
+          color: dark ? Palette.background : Palette.softWhite,
         ),
-        checkmarkColor: dark ? Palette.charcoal : Palette.offWhite,
+        checkmarkColor: dark ? Palette.background : Palette.softWhite,
         shape: stadium,
         side: dark ? BorderSide.none : BorderSide(color: scheme.outlineVariant),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -541,12 +546,12 @@ abstract final class AppTheme {
           (states) => states.contains(WidgetState.disabled)
               ? scheme.outline
               : states.contains(WidgetState.selected)
-              ? Palette.charcoal
+              ? Palette.background
               : (dark ? Palette.muted : Colors.white),
         ),
         trackColor: WidgetStateProperty.resolveWith(
           (states) => states.contains(WidgetState.selected)
-              ? Palette.amber.withValues(
+              ? (dark ? Palette.icy : Palette.indigoDeep).withValues(
                   alpha: states.contains(WidgetState.disabled) ? 0.45 : 1,
                 )
               : (dark ? Palette.panelRaised : const Color(0xffd5d7df)),
@@ -554,12 +559,12 @@ abstract final class AppTheme {
         trackOutlineColor: const WidgetStatePropertyAll(Colors.transparent),
       ),
       progressIndicatorTheme: ProgressIndicatorThemeData(
-        color: dark ? Palette.indigoLight : scheme.primary,
+        color: scheme.primary,
         linearTrackColor: scheme.surfaceContainerHighest,
       ),
       floatingActionButtonTheme: FloatingActionButtonThemeData(
-        backgroundColor: dark ? Palette.offWhite : Palette.charcoal,
-        foregroundColor: dark ? Palette.charcoal : Palette.offWhite,
+        backgroundColor: dark ? Palette.softWhite : Palette.background,
+        foregroundColor: dark ? Palette.background : Palette.softWhite,
         shape: stadium,
         elevation: 2,
       ),

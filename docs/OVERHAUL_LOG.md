@@ -242,3 +242,49 @@ accepted). The app now shows that state; it was not changed back.
 - Observed: the router's LED changed from off (16:50) to on (17:06) without
   any app command, like the 5 GHz band earlier — external changes.
 - Future placeholder branch: `feature/nokia-wifi-extension`.
+
+## 1.3.0 — premium UI pass, Statistics, protocol handoff (2026-10-17, tag `v1.3.0`)
+
+Rollback: tag `pre-final-ui` (1.2.1 source + baseline screenshots) and tag
+`v1.2.1`; the 1.2.1 APK is kept outside the repo as the known-good build.
+
+- Palette: near-black layers (#17181B background, #24252A cards, #30323A
+  raised), soft-white text, cool-grey secondary, icy-blue accent; amber is
+  used only for the LED, green only for positive states. Switches use the
+  accent; LED switches stay amber.
+- Navigation: Home, Devices, Wi-Fi, **Statistics**, Settings (fits the
+  Fold4 cover screen at 1.6× text; rail when unfolded).
+- Home: header with search (device sheet), notifications and local router
+  preferences (no cloud profile); matte router hero with the LED ring drawn
+  on the router's top rim. Tapping the light, the bulb or the switch shows
+  the requested state as pending (breathing ring, "Applying…"), sends
+  SetNodeLed, and only shows the new state once GetLedList reports it;
+  otherwise the previous state stays. One LED command at a time.
+- LED read-back is retried (0.4/0.8/1.2/1.6 s): on the live router an
+  immediate GetLedList after SetNodeLed still reported the old value even
+  though the LED changed, which first produced a false "not applied".
+- Statistics: auto-scaling gauge, rolling charts from up to 200 samples,
+  session transfer estimate (trapezoidal, gaps > 15 s skipped, labelled as
+  an estimate), devices, Wi-Fi availability, internet/WAN details, measured
+  response time, technical details (incl. guest devices and USB storage,
+  previously in Home health details).
+- Wi-Fi: compact cards (SSID, band/status chips, switch) expanding to
+  security, password (Show/Copy only when reported) and Edit; save safety
+  unchanged.
+- Devices: total/online/active summary, search with sort, compact chips,
+  rows grouped in one card with link type, IP and live rates.
+- Settings: Router LED card (shares pending state with Home) and six
+  expandable groups holding all 22 previous entries.
+- Android 12+: the v31 window themes inherited an action bar that appeared
+  after a day/night switch; removed.
+- Tests: 90 (new: LED pending→confirmed, ignored change keeps state,
+  rejected command keeps state, overlapping commands refused, five-item
+  navigation to Statistics).
+
+Verified on the Fold4 (cover screen): cold start → Home; LED on → off via
+the router image (router confirmed off after relaunch), off → on via the
+image with read-back, on → off → on via the switch with no failure
+events; left **on**, as found. Wi-Fi band switches were not toggled; no
+Wi-Fi, WAN, credential or reboot command was sent. Light mode and the wide
+layout were checked and the device settings restored (night mode on,
+density reset). The live Wi-Fi password was not revealed.

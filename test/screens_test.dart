@@ -141,8 +141,8 @@ void main() {
       await tester.pump();
 
       expect(find.text('My Router'), findsOneWidget);
-      expect(find.text('Connected · internet online'), findsOneWidget);
-      expect(find.byType(RouterCard), findsOneWidget);
+      expect(find.text('Online'), findsOneWidget);
+      expect(find.byType(RouterHero), findsOneWidget);
       // Password is masked until revealed.
       expect(find.text('x' * 8), findsNothing);
       expect(find.text('Game labs'), findsWidgets);

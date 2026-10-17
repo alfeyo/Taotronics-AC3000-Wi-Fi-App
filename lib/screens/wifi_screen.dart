@@ -149,7 +149,7 @@ class _WifiSettingsScreenState extends State<WifiSettingsScreen> {
                     PageHeader(
                       kicker: 'Wireless management',
                       title: 'Wi-Fi networks',
-                      subtitle: 'Edit each band, its password and availability',
+                      subtitle: 'Bands, names and passwords',
                       trailing: IconButton(
                         tooltip: 'Refresh',
                         onPressed: provider.wirelessLoading || !connected
@@ -174,7 +174,7 @@ class _WifiSettingsScreenState extends State<WifiSettingsScreen> {
                         children: [
                           StatusPill(
                             label:
-                                '${networks.length} network${networks.length == 1 ? '' : 's'} reported',
+                                '${networks.length} network${networks.length == 1 ? '' : 's'}',
                             tone: Tone.neutral,
                             dot: false,
                           ),
@@ -184,7 +184,7 @@ class _WifiSettingsScreenState extends State<WifiSettingsScreen> {
                           ),
                           StatusPill(
                             label:
-                                '${names.length} name${names.length == 1 ? '' : 's'} broadcasting',
+                                '${names.length} name${names.length == 1 ? '' : 's'} live',
                             tone: Tone.info,
                             dot: false,
                           ),
@@ -311,6 +311,7 @@ class WifiNetworkCard extends StatefulWidget {
 
 class _WifiNetworkCardState extends State<WifiNetworkCard> {
   bool _reveal = false;
+  bool _expanded = false;
 
   @override
   Widget build(BuildContext context) {
@@ -321,124 +322,184 @@ class _WifiNetworkCardState extends State<WifiNetworkCard> {
     final passwordShown = secured && n.passwordKnown && n.password.isNotEmpty;
 
     return PanelCard(
+      padding: EdgeInsets.zero,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              IconBadge(
-                n.isEnabled ? Icons.wifi_rounded : Icons.wifi_off_rounded,
-                tone: n.isEnabled ? Tone.brand : Tone.neutral,
-                size: 44,
-                round: true,
+          InkWell(
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(
+                20,
+                Space.lg,
+                Space.md,
+                Space.lg,
               ),
-              const SizedBox(width: Space.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '${n.bandLabel} · network ${n.index + 1}',
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        color: muted,
+              child: Row(
+                children: [
+                  IconBadge(
+                    n.isEnabled ? Icons.wifi_rounded : Icons.wifi_off_rounded,
+                    tone: n.isEnabled ? Tone.brand : Tone.neutral,
+                    size: 42,
+                    round: true,
+                  ),
+                  const SizedBox(width: Space.md),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          n.ssid.isEmpty ? 'No name set' : n.ssid,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 6),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [
+                            StatusPill(
+                              label: n.bandLabel,
+                              tone: Tone.neutral,
+                              dot: false,
+                            ),
+                            StatusPill(
+                              label: n.isEnabled ? 'On' : 'Off',
+                              tone: n.isEnabled ? Tone.success : Tone.neutral,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (widget.saving)
+                    const Padding(
+                      padding: EdgeInsets.all(Space.md),
+                      child: SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(strokeWidth: 2.4),
+                      ),
+                    )
+                  else
+                    Semantics(
+                      label: '${n.bandLabel} ${n.ssid} Wi-Fi',
+                      toggled: n.isEnabled,
+                      child: Switch(
+                        value: n.isEnabled,
+                        onChanged: widget.editable ? widget.onToggle : null,
                       ),
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      n.ssid.isEmpty ? 'No name set' : n.ssid,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleLarge,
+                  Icon(
+                    _expanded
+                        ? Icons.expand_less_rounded
+                        : Icons.expand_more_rounded,
+                    color: muted,
+                    semanticLabel: _expanded ? 'Hide details' : 'Show details',
+                  ),
+                ],
+              ),
+            ),
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+            alignment: Alignment.topCenter,
+            child: !_expanded
+                ? const SizedBox(width: double.infinity)
+                : Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const Divider(height: 1),
+                        const SizedBox(height: Space.md),
+                        _detailRow(
+                          context,
+                          secured
+                              ? Icons.lock_rounded
+                              : Icons.lock_open_rounded,
+                          secured
+                              ? n.encryptionLabel
+                              : 'Open network (no password)',
+                          color: secured
+                              ? muted
+                              : context.tone(Tone.warning).foreground,
+                        ),
+                        if (secured) ...[
+                          const SizedBox(height: Space.sm),
+                          _detailRow(
+                            context,
+                            Icons.key_rounded,
+                            !n.passwordKnown
+                                ? 'Password not reported by the router'
+                                : n.password.isEmpty
+                                ? 'No password set'
+                                : _reveal
+                                ? n.password
+                                : '•' * 12,
+                            monospace: _reveal && passwordShown,
+                            trailing: passwordShown
+                                ? IconButton(
+                                    tooltip: 'Copy password',
+                                    visualDensity: VisualDensity.compact,
+                                    onPressed: () {
+                                      Clipboard.setData(
+                                        ClipboardData(text: n.password),
+                                      );
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('Password copied'),
+                                        ),
+                                      );
+                                    },
+                                    icon: const Icon(
+                                      Icons.copy_rounded,
+                                      size: 20,
+                                    ),
+                                  )
+                                : null,
+                          ),
+                        ],
+                        const SizedBox(height: Space.sm),
+                        Text(
+                          'Router network ${n.index + 1}',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: muted,
+                          ),
+                        ),
+                        const SizedBox(height: Space.md),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: PillButton(
+                                label: 'Edit',
+                                icon: Icons.edit_rounded,
+                                onPressed: widget.editable
+                                    ? widget.onEdit
+                                    : null,
+                              ),
+                            ),
+                            const SizedBox(width: Space.sm),
+                            Expanded(
+                              child: PillButton(
+                                label: _reveal ? 'Hide' : 'Show',
+                                icon: _reveal
+                                    ? Icons.visibility_off_rounded
+                                    : Icons.visibility_rounded,
+                                onPressed: passwordShown
+                                    ? () => setState(() => _reveal = !_reveal)
+                                    : null,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-              ),
-              if (widget.saving)
-                const Padding(
-                  padding: EdgeInsets.all(Space.md),
-                  child: SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(strokeWidth: 2.4),
                   ),
-                )
-              else
-                Semantics(
-                  label: '${n.bandLabel} ${n.ssid} Wi-Fi',
-                  toggled: n.isEnabled,
-                  child: Switch(
-                    value: n.isEnabled,
-                    onChanged: widget.editable ? widget.onToggle : null,
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: Space.sm),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: StatusPill(
-              label: n.isEnabled ? 'Broadcasting' : 'Off · settings kept',
-              tone: n.isEnabled ? Tone.success : Tone.neutral,
-            ),
-          ),
-          const Divider(height: Space.xl),
-          _detailRow(
-            context,
-            secured ? Icons.lock_rounded : Icons.lock_open_rounded,
-            secured ? n.encryptionLabel : 'Open network (no password)',
-            color: secured ? muted : context.tone(Tone.warning).foreground,
-          ),
-          if (secured) ...[
-            const SizedBox(height: Space.sm),
-            _detailRow(
-              context,
-              Icons.key_rounded,
-              !n.passwordKnown
-                  ? 'Password not reported by the router'
-                  : n.password.isEmpty
-                  ? 'No password set'
-                  : _reveal
-                  ? n.password
-                  : '•' * 12,
-              monospace: _reveal && passwordShown,
-              trailing: passwordShown
-                  ? IconButton(
-                      tooltip: 'Copy password',
-                      visualDensity: VisualDensity.compact,
-                      onPressed: () {
-                        Clipboard.setData(ClipboardData(text: n.password));
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Password copied')),
-                        );
-                      },
-                      icon: const Icon(Icons.copy_rounded, size: 20),
-                    )
-                  : null,
-            ),
-          ],
-          const SizedBox(height: Space.lg),
-          Row(
-            children: [
-              Expanded(
-                child: PillButton(
-                  label: 'Edit',
-                  icon: Icons.edit_rounded,
-                  onPressed: widget.editable ? widget.onEdit : null,
-                ),
-              ),
-              const SizedBox(width: Space.sm),
-              Expanded(
-                child: PillButton(
-                  label: _reveal ? 'Hide' : 'Show',
-                  icon: _reveal
-                      ? Icons.visibility_off_rounded
-                      : Icons.visibility_rounded,
-                  onPressed: passwordShown
-                      ? () => setState(() => _reveal = !_reveal)
-                      : null,
-                ),
-              ),
-            ],
           ),
         ],
       ),
@@ -467,7 +528,6 @@ class _WifiNetworkCardState extends State<WifiNetworkCard> {
             text,
             style: theme.textTheme.bodyMedium?.copyWith(
               fontFamily: monospace ? 'monospace' : null,
-              letterSpacing: monospace ? 0.5 : null,
             ),
           ),
         ),

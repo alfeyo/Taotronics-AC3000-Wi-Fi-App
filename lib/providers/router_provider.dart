@@ -427,7 +427,8 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   final List<RateSample> _rateSamples = [];
 
-  /// Live throughput samples from this session (newest last, max 40).
+  /// Live throughput samples from this session (newest last, max 200,
+  /// about 10 minutes at the 3 s polling rate).
   List<RateSample> get rateSamples => List.unmodifiable(_rateSamples);
 
   void _recordRates() {
@@ -438,8 +439,37 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
       return;
     }
     _rateSamples.add((time: now, down: liveDownRate, up: liveUpRate));
-    if (_rateSamples.length > 40) _rateSamples.removeAt(0);
+    if (_rateSamples.length > maxRateSamples) _rateSamples.removeAt(0);
   }
+
+  static const maxRateSamples = 200;
+
+  /// Bytes estimated to have crossed the router while this app sampled it:
+  /// trapezoidal integration of the rate samples. Gaps over 15 s (app in
+  /// background, reconnecting) are not counted. An estimate, not a meter.
+  ({int down, int up, Duration covered}) get sessionTransferEstimate {
+    var down = 0.0;
+    var up = 0.0;
+    var covered = Duration.zero;
+    for (var i = 1; i < _rateSamples.length; i++) {
+      final a = _rateSamples[i - 1];
+      final b = _rateSamples[i];
+      final dt = b.time.difference(a.time);
+      if (dt > const Duration(seconds: 15)) continue;
+      final seconds = dt.inMilliseconds / 1000;
+      down += (a.down + b.down) / 2 * seconds;
+      up += (a.up + b.up) / 2 * seconds;
+      covered += dt;
+    }
+    return (down: down.round(), up: up.round(), covered: covered);
+  }
+
+  Duration? _lastResponseTime;
+  DateTime? _lastResponseAt;
+
+  /// Most recent measured router response time, if measured.
+  Duration? get lastResponseTime => _lastResponseTime;
+  DateTime? get lastResponseAt => _lastResponseAt;
 
   Map<String, dynamic>? _wanInfo;
 
@@ -458,6 +488,19 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   bool _hadDrop = false;
+  bool _certificateEventSent = false;
+
+  void _noteCertificateRejection() {
+    final verdict = _mqtt.lastCertificateVerdict;
+    if (verdict == null || verdict.trusted || _certificateEventSent) return;
+    _certificateEventSent = true;
+    _addEvent(
+      'Router identity not verified',
+      'The device at the router address presented a certificate that is not '
+          'signed by TaoTronics, so the app refused to connect.',
+      'error',
+    );
+  }
 
   Future<void> _initialize() async {
     await _authService.loadSavedPairings();
@@ -634,6 +677,7 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
         _authState = AuthenticationState.authenticationRequired;
         _errorMessage =
             'Router requires authentication. Please pair the router first.';
+        _noteCertificateRejection();
       }
     } else {
       _authState = AuthenticationState.authenticationFailed;
@@ -761,6 +805,7 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
       _errorMessage = null;
     } else if (_shouldReconnectCurrentRouter) {
       _authState = AuthenticationState.authenticating;
+      _noteCertificateRejection();
       if (_reconnectAttempt == 3) {
         _addEvent(
           'Reconnection failing',
@@ -781,7 +826,11 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
     final watch = Stopwatch()..start();
     final response = await _mqtt.getSystemConnectionInfo();
     watch.stop();
-    return response == null ? null : watch.elapsed;
+    if (response == null) return null;
+    _lastResponseTime = watch.elapsed;
+    _lastResponseAt = DateTime.now();
+    notifyListeners();
+    return watch.elapsed;
   }
 
   /// Retries the saved router immediately, e.g. after the phone rejoins Wi-Fi.
@@ -915,6 +964,14 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
       _telemetryMisses = 0;
       _liveTelemetryResponsive = true;
     } else if (++_telemetryMisses >= telemetryMissesBeforeBackoff) {
+      if (_liveTelemetryResponsive) {
+        _addEvent(
+          'Live statistics delayed',
+          'The router missed several statistics requests. Rates use device '
+              'totals until it answers again.',
+          'warning',
+        );
+      }
       _liveTelemetryResponsive = false;
     }
 
@@ -1395,25 +1452,83 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   static bool isLedOn(Map<String, dynamic> entry) => '${entry['Led']}' == '1';
 
+  final Map<String, int> _ledPending = {};
+
+  /// Waits before each LED read-back after a write.
+  static const ledReadBackDelays = [
+    Duration(milliseconds: 400),
+    Duration(milliseconds: 800),
+    Duration(milliseconds: 1200),
+    Duration(milliseconds: 1600),
+  ];
+
+  /// LED value requested for [nodeSn] while the change is being applied and
+  /// read back; null when nothing is pending. Never a confirmed state.
+  int? ledRequested(String nodeSn) => _ledPending[nodeSn];
+  bool get ledBusy => _ledPending.isNotEmpty;
+
+  /// Reads GetLedList and returns the reported LED value for [nodeSn].
+  Future<int?> _readLedState(String nodeSn) async {
+    final response = await _mqtt.getLedSettings();
+    final data = response?['Data'];
+    if (response?['ErrorCode'] != 0 || data is! List) return null;
+    _ledNodes = _mapList(data);
+    _ledUpdatedAt = DateTime.now();
+    final entry = _ledNodes
+        .where((l) => '${l['NodeSn']}' == nodeSn)
+        .firstOrNull;
+    return entry == null ? null : _readInt(entry['Led'], -1);
+  }
+
+  /// Sets one node's LED, then reads the state back. The displayed state
+  /// only changes from the read-back; a failed or unconfirmed request
+  /// leaves the previous state. Overlapping LED commands are refused.
   Future<SaveResult> updateNodeLed({
     required String nodeSn,
     required int led,
   }) async {
-    final result = await _writeRouterSetting(
-      label: 'LED change',
-      failureMessage: 'Failed to update node LED',
-      request: () => _mqtt.setNodeLed(nodeSn: nodeSn, led: led),
-    );
-    if (result.isConfirmed) {
-      _ledNodes = [
-        for (final entry in _ledNodes)
-          '${entry['NodeSn']}' == nodeSn ? {...entry, 'Led': led} : entry,
-      ];
-      notifyListeners();
-      // Read back so the switch shows what the router actually reports.
-      refreshLeds();
+    if (_ledPending.isNotEmpty) {
+      return const SaveResult.failed('An LED change is already in progress.');
     }
-    return result;
+    _ledPending[nodeSn] = led;
+    notifyListeners();
+    try {
+      final result = await _writeRouterSetting(
+        label: 'LED change',
+        failureMessage: 'Failed to update the router LED',
+        request: () => _mqtt.setNodeLed(nodeSn: nodeSn, led: led),
+      );
+      if (!result.isConfirmed) return result;
+      // The router acknowledges SetNodeLed before the LED changes, so an
+      // immediate read can still report the old state. Re-read briefly.
+      int? reported;
+      for (final delay in ledReadBackDelays) {
+        await Future<void>.delayed(delay);
+        reported = await _readLedState(nodeSn);
+        if (reported == led) break;
+      }
+      final wanted = led == 1 ? 'on' : 'off';
+      if (reported == null) {
+        return SaveResult.pending(
+          'The router accepted the LED change but did not report the LED '
+          'state yet. Showing the last confirmed state.',
+        );
+      }
+      if (reported == led) {
+        return SaveResult.confirmed('Router LED turned $wanted.');
+      }
+      _addEvent(
+        'LED change not applied',
+        'The router still reports the LED ${reported == 1 ? 'on' : 'off'}.',
+        'error',
+      );
+      return SaveResult.failed(
+        'The router still reports the LED ${reported == 1 ? 'on' : 'off'}.',
+      );
+    } finally {
+      _ledPending.remove(nodeSn);
+      notifyListeners();
+    }
   }
 
   Future<Map<String, dynamic>?> loadRestartSchedule() {
@@ -1510,6 +1625,11 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
   void _startVerification(String label, Future<bool?> Function() verify) {
     final change = PendingChange(id: _nextChangeId++, label: label);
     _pendingChanges.add(change);
+    _addEvent(
+      '$label pending',
+      'Sent to the router. The app will confirm it after reconnecting.',
+      'info',
+    );
     notifyListeners();
     _runVerification(change, verify, _sessionGeneration);
   }

@@ -2,45 +2,52 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import '../models/save_result.dart';
 import '../providers/router_provider.dart';
 import '../theme/app_theme.dart';
 import '../utils/format.dart';
 import 'app_widgets.dart';
 import 'feedback.dart';
 
-/// Hero card: TaoTronics router illustration with a live LED badge, router
-/// name, primary SSID, status, device count and the reported password.
-class RouterCard extends StatefulWidget {
-  const RouterCard({super.key, required this.provider, this.onOpenDevices});
+/// Router hero: the TaoTronics router on a soft spotlight with its LED ring
+/// drawn in place, plus SSID, password and a conventional LED switch.
+///
+/// The LED glow only shows a state the router has confirmed by read-back.
+/// While a change is pending the ring breathes at the requested state.
+class RouterHero extends StatefulWidget {
+  const RouterHero({super.key, required this.provider, this.onOpenDevices});
 
   final RouterProvider provider;
   final VoidCallback? onOpenDevices;
 
   @override
-  State<RouterCard> createState() => _RouterCardState();
+  State<RouterHero> createState() => _RouterHeroState();
 }
 
-class _RouterCardState extends State<RouterCard> {
+class _RouterHeroState extends State<RouterHero>
+    with SingleTickerProviderStateMixin {
   bool _reveal = false;
-  bool _ledBusy = false;
+  late final AnimationController _pulse = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  );
 
-  Future<void> _toggleLed(String sn, bool on) async {
-    setState(() => _ledBusy = true);
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  Future<void> _setLed(String sn, bool on) async {
+    _pulse.repeat(reverse: true);
     final result = await widget.provider.updateNodeLed(
       nodeSn: sn,
       led: on ? 1 : 0,
     );
     if (!mounted) return;
-    setState(() => _ledBusy = false);
-    showSaveResult(
-      context,
-      result.isConfirmed
-          ? SaveResult.confirmed(
-              on ? 'Router LED turned on.' : 'Router LED turned off.',
-            )
-          : result,
-    );
+    _pulse
+      ..stop()
+      ..value = 0;
+    showSaveResult(context, result);
   }
 
   @override
@@ -53,79 +60,161 @@ class _RouterCardState extends State<RouterCard> {
         .where((n) => n.isEnabled && n.ssid.isNotEmpty)
         .firstOrNull;
     final led = p.mainRouterLed;
-    final ledOn = led == null ? null : RouterProvider.isLedOn(led);
+    final sn = led == null ? null : '${led['NodeSn']}';
+    final confirmedOn = led == null ? null : RouterProvider.isLedOn(led);
+    final requested = sn == null ? null : p.ledRequested(sn);
+    final pending = requested != null;
     final master = p.nodes.where((n) => n.isMaster).firstOrNull;
+    final canToggle = connected && sn != null && !p.ledBusy;
     final showPassword =
         connected &&
         primary != null &&
         primary.encrypt > 0 &&
         primary.passwordKnown &&
         primary.password.isNotEmpty;
+    final ledLabel = confirmedOn == null
+        ? 'Router LED, state not reported'
+        : pending
+        ? 'Router LED, turning ${requested == 1 ? 'on' : 'off'}'
+        : 'Router LED ${confirmedOn ? 'on' : 'off'}';
 
-    return PanelCard(
-      child: Column(
-        children: [
-          SizedBox(
-            height: 170,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                Image.asset(
-                  'assets/original_setup/ic_guide_need.png',
-                  height: 160,
-                  fit: BoxFit.contain,
-                  semanticLabel: 'TaoTronics mesh router',
-                ),
-                Positioned(
-                  right: 0,
-                  top: 0,
-                  child: _LedBadge(
-                    on: ledOn,
-                    busy: _ledBusy,
-                    onTap: !connected || led == null || _ledBusy
-                        ? null
-                        : () => _toggleLed('${led['NodeSn']}', !ledOn!),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          height: 268,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              // Spotlight behind the router.
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: RadialGradient(
+                      radius: 0.62,
+                      colors: [
+                        theme.colorScheme.primary.withValues(alpha: 0.10),
+                        Colors.transparent,
+                      ],
+                    ),
                   ),
                 ),
-              ],
-            ),
-          ),
-          const SizedBox(height: Space.md),
-          Text(
-            master?.model == null
-                ? 'TaoTronics router'
-                : 'TaoTronics ${master!.model}',
-            style: theme.textTheme.titleLarge,
-          ),
-          const SizedBox(height: 2),
-          Text(
-            connected && primary != null
-                ? primary.ssid
-                : connected
-                ? 'Reading Wi-Fi…'
-                : 'Not connected',
-            style: theme.textTheme.bodyMedium?.copyWith(color: muted),
-          ),
-          const SizedBox(height: Space.md),
-          Wrap(
-            alignment: WrapAlignment.center,
-            spacing: Space.sm,
-            runSpacing: Space.sm,
-            children: [
-              StatusPill(
-                label: connected
-                    ? 'Connected'
-                    : p.isReconnecting
-                    ? 'Reconnecting'
-                    : 'Offline',
-                tone: connected
-                    ? Tone.success
-                    : p.isReconnecting
-                    ? Tone.warning
-                    : Tone.danger,
               ),
-              if (connected)
-                GestureDetector(
+              // Floor shadow.
+              Positioned(
+                bottom: 14,
+                child: Container(
+                  width: 170,
+                  height: 26,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(100),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.55),
+                        blurRadius: 28,
+                        spreadRadius: 4,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Semantics(
+                image: true,
+                label: 'TaoTronics router. $ledLabel',
+                child: ExcludeSemantics(
+                  child: GestureDetector(
+                    onTap: canToggle
+                        ? () => _setLed(sn, !(confirmedOn ?? false))
+                        : null,
+                    child: SizedBox(
+                      width: 186,
+                      height: 246,
+                      child: AnimatedBuilder(
+                        animation: _pulse,
+                        builder: (context, _) => CustomPaint(
+                          foregroundPainter: _LedRingPainter(
+                            intensity: pending
+                                ? (requested == 1
+                                      ? 0.35 + 0.45 * _pulse.value
+                                      : 0.45 - 0.35 * _pulse.value)
+                                : null,
+                          ),
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              ColorFiltered(
+                                colorFilter: const ColorFilter.mode(
+                                  Color(0xff767b86),
+                                  BlendMode.modulate,
+                                ),
+                                child: Image.asset(
+                                  'assets/original_setup/ic_guide_need.png',
+                                  fit: BoxFit.contain,
+                                ),
+                              ),
+                              AnimatedOpacity(
+                                opacity: !pending && confirmedOn == true
+                                    ? 1
+                                    : 0,
+                                duration: const Duration(milliseconds: 200),
+                                child: CustomPaint(
+                                  painter: _LedRingPainter(intensity: 1),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                right: 4,
+                top: 24,
+                child: _LedButton(
+                  on: confirmedOn,
+                  pending: pending,
+                  label: ledLabel,
+                  onTap: canToggle
+                      ? () => _setLed(sn, !(confirmedOn ?? false))
+                      : null,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Text(
+          master?.model == null
+              ? 'TaoTronics router'
+              : 'TaoTronics ${master!.model}',
+          textAlign: TextAlign.center,
+          style: theme.textTheme.titleLarge,
+        ),
+        const SizedBox(height: Space.sm),
+        Wrap(
+          alignment: WrapAlignment.center,
+          spacing: Space.sm,
+          runSpacing: Space.sm,
+          children: [
+            StatusPill(
+              label: !connected
+                  ? (p.isReconnecting ? 'Reconnecting' : 'Offline')
+                  : !p.hasInternetStatus
+                  ? 'Connected'
+                  : p.internetConnected
+                  ? 'Internet online'
+                  : 'No internet',
+              tone: !connected
+                  ? (p.isReconnecting ? Tone.warning : Tone.danger)
+                  : p.hasInternetStatus && !p.internetConnected
+                  ? Tone.danger
+                  : Tone.success,
+            ),
+            if (connected)
+              Semantics(
+                button: true,
+                child: GestureDetector(
                   onTap: widget.onOpenDevices,
                   child: StatusPill(
                     label: '${p.reportedOnlineDeviceCount} devices',
@@ -133,91 +222,196 @@ class _RouterCardState extends State<RouterCard> {
                     icon: Icons.devices_other_rounded,
                   ),
                 ),
-            ],
-          ),
-          if (showPassword) ...[
-            const Divider(height: Space.xl),
-            Row(
-              children: [
-                Icon(Icons.key_rounded, size: 18, color: muted),
-                const SizedBox(width: Space.sm),
-                Expanded(
-                  child: Text(
-                    _reveal ? primary.password : '•' * 10,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontFamily: _reveal ? 'monospace' : null,
+              ),
+          ],
+        ),
+        const SizedBox(height: Space.lg),
+        PanelCard(
+          padding: const EdgeInsets.fromLTRB(20, Space.lg, Space.md, Space.lg),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      connected && primary != null
+                          ? primary.ssid
+                          : connected
+                          ? 'Reading Wi-Fi…'
+                          : 'Not connected',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        Icon(Icons.key_rounded, size: 15, color: muted),
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                            !showPassword
+                                ? (primary != null && !primary.passwordKnown
+                                      ? 'Password not reported'
+                                      : primary?.encrypt == 0
+                                      ? 'Open network'
+                                      : 'Password unavailable')
+                                : _reveal
+                                ? primary.password
+                                : 'Password  ••••••••',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: muted,
+                              fontFamily: _reveal && showPassword
+                                  ? 'monospace'
+                                  : null,
+                            ),
+                          ),
+                        ),
+                        if (showPassword)
+                          IconButton(
+                            tooltip: _reveal
+                                ? 'Hide password'
+                                : 'Show password',
+                            visualDensity: VisualDensity.compact,
+                            onPressed: () => setState(() => _reveal = !_reveal),
+                            icon: Icon(
+                              _reveal
+                                  ? Icons.visibility_off_rounded
+                                  : Icons.visibility_rounded,
+                              size: 18,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Semantics(
+                    label: 'Router LED switch',
+                    toggled: confirmedOn ?? false,
+                    child: Switch(
+                      activeTrackColor: Palette.amber,
+                      value: pending ? requested == 1 : (confirmedOn ?? false),
+                      onChanged: canToggle ? (on) => _setLed(sn, on) : null,
                     ),
                   ),
-                ),
-                PillButton(
-                  label: _reveal ? 'Hide' : 'Show',
-                  icon: _reveal
-                      ? Icons.visibility_off_rounded
-                      : Icons.visibility_rounded,
-                  onPressed: () => setState(() => _reveal = !_reveal),
-                ),
-              ],
-            ),
-          ],
-        ],
-      ),
+                  Text(
+                    pending ? 'Applying…' : 'LED',
+                    style: theme.textTheme.labelSmall?.copyWith(color: muted),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
 
-class _LedBadge extends StatelessWidget {
-  const _LedBadge({required this.on, required this.busy, this.onTap});
+/// Glow over the router's top LED ring (geometry measured from the asset:
+/// the rim sits at ~7% of the image height and spans ~52% of its width).
+class _LedRingPainter extends CustomPainter {
+  _LedRingPainter({required this.intensity});
+
+  /// 0..1 ring brightness; null draws nothing.
+  final double? intensity;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final i = intensity;
+    if (i == null || i <= 0) return;
+    // Image is drawn BoxFit.contain: compute its rect.
+    const aspect = 297 / 393;
+    final w = math.min(size.width, size.height * aspect);
+    final h = w / aspect;
+    final left = (size.width - w) / 2;
+    final top = (size.height - h) / 2;
+    final ring = Rect.fromCenter(
+      center: Offset(left + w * 0.5, top + h * 0.088),
+      width: w * 0.44,
+      height: h * 0.03,
+    );
+    canvas.drawOval(
+      ring.inflate(6),
+      Paint()
+        ..color = Palette.amber.withValues(alpha: 0.35 * i)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10),
+    );
+    canvas.drawOval(
+      ring,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3
+        ..color = Palette.amber.withValues(alpha: 0.95 * i),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_LedRingPainter old) => old.intensity != intensity;
+}
+
+class _LedButton extends StatelessWidget {
+  const _LedButton({
+    required this.on,
+    required this.pending,
+    required this.label,
+    this.onTap,
+  });
 
   final bool? on;
-  final bool busy;
+  final bool pending;
+  final String label;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.tone(on == true ? Tone.accent : Tone.neutral);
-    final label = on == null
-        ? 'Router LED: state not reported'
-        : 'Router LED ${on! ? 'on' : 'off'}. Tap to turn ${on! ? 'off' : 'on'}';
+    final lit = on == true && !pending;
+    final scheme = Theme.of(context).colorScheme;
     return Semantics(
-      button: onTap != null,
-      label: label,
-      child: Tooltip(
-        message: label,
-        child: Material(
-          color: colors.container,
-          shape: const StadiumBorder(),
-          child: InkWell(
-            customBorder: const StadiumBorder(),
-            onTap: onTap,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  busy
-                      ? SizedBox(
+      button: true,
+      enabled: onTap != null,
+      label: '$label. ${onTap == null ? '' : 'Double tap to toggle'}',
+      child: ExcludeSemantics(
+        child: Tooltip(
+          message: label,
+          child: Material(
+            color: lit
+                ? Palette.amber.withValues(alpha: 0.18)
+                : scheme.surfaceContainerHighest,
+            shape: const CircleBorder(),
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: onTap,
+              child: SizedBox(
+                width: 44,
+                height: 44,
+                child: Center(
+                  child: pending
+                      ? const SizedBox(
                           width: 18,
                           height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: colors.onContainer,
-                          ),
+                          child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : Icon(
-                          on == true
-                              ? Icons.lightbulb_rounded
-                              : Icons.lightbulb_outline_rounded,
-                          size: 18,
-                          color: colors.onContainer,
+                      : AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 200),
+                          child: Icon(
+                            lit
+                                ? Icons.lightbulb_rounded
+                                : Icons.lightbulb_outline_rounded,
+                            key: ValueKey(lit),
+                            color: lit
+                                ? Palette.amber
+                                : scheme.onSurfaceVariant,
+                          ),
                         ),
-                  const SizedBox(width: 6),
-                  Text(
-                    on == null ? 'LED' : (on! ? 'LED on' : 'LED off'),
-                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                      color: colors.onContainer,
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
           ),
@@ -273,10 +467,14 @@ class SparkCard extends StatelessWidget {
                             style: theme.textTheme.titleMedium,
                           ),
                         ),
-                        Text(
-                          label,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            label,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
                           ),
                         ),
                       ],
@@ -350,109 +548,6 @@ class _SparkPainter extends CustomPainter {
   @override
   bool shouldRepaint(_SparkPainter old) =>
       old.values != values || old.color != color;
-}
-
-/// Expandable session insights and internet source details.
-class InsightsPanel extends StatelessWidget {
-  const InsightsPanel({super.key, required this.provider});
-
-  final RouterProvider provider;
-
-  static String _wanType(dynamic proto) => switch ('$proto') {
-    '0' => 'DHCP (automatic)',
-    '1' => 'Static IP',
-    '2' => 'PPPoE',
-    '3' => 'Bridge',
-    _ => 'Not reported',
-  };
-
-  @override
-  Widget build(BuildContext context) {
-    final p = provider;
-    final samples = p.rateSamples;
-    final wan = p.wanInfo;
-    String text(dynamic v) {
-      final t = '${v ?? ''}'.trim();
-      return t.isEmpty ? 'Not reported' : t;
-    }
-
-    final peakDown = samples.isEmpty
-        ? null
-        : samples.map((s) => s.down).reduce(math.max);
-    final peakUp = samples.isEmpty
-        ? null
-        : samples.map((s) => s.up).reduce(math.max);
-    final span = samples.length < 2
-        ? null
-        : samples.last.time.difference(samples.first.time);
-    final networks = p.wirelessNetworksParsed;
-
-    final rows = <(String, String)>[
-      (
-        'Internet',
-        !p.hasInternetStatus
-            ? 'Not reported'
-            : p.internetConnected
-            ? 'Online'
-            : 'Offline',
-      ),
-      ('Connection type', _wanType(wan?['WanProto'])),
-      ('WAN IP', text(wan?['WanIp'])),
-      ('Gateway', text(wan?['WanGateway'])),
-      ('Devices online', '${p.reportedOnlineDeviceCount}'),
-      (
-        'Wi-Fi networks on',
-        networks.isEmpty
-            ? 'Not reported'
-            : '${networks.where((n) => n.isEnabled).length} of ${networks.length}',
-      ),
-      (
-        'Peak download (this session)',
-        peakDown == null ? '—' : formatRate(peakDown),
-      ),
-      ('Peak upload (this session)', peakUp == null ? '—' : formatRate(peakUp)),
-    ];
-
-    return Card(
-      child: ExpansionTile(
-        leading: const Icon(Icons.insights_rounded),
-        title: const Text('Usage & insights'),
-        subtitle: Text(
-          span == null
-              ? 'Live rates sampled by the app'
-              : 'Live samples over the last ${formatUptime(span.inSeconds)}',
-        ),
-        shape: const Border(),
-        collapsedShape: const Border(),
-        childrenPadding: const EdgeInsets.fromLTRB(
-          Space.lg,
-          0,
-          Space.lg,
-          Space.lg,
-        ),
-        children: [
-          for (final (label, value) in rows)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: Row(
-                children: [
-                  Expanded(child: Text(label)),
-                  Text(value, style: Theme.of(context).textTheme.labelLarge),
-                ],
-              ),
-            ),
-          const SizedBox(height: Space.sm),
-          Text(
-            'Graphs show live throughput collected while the app is open. '
-            'The router does not report daily or monthly data totals.',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 /// Bell with unread count; opens the in-app event list.
@@ -536,6 +631,9 @@ class EventsButton extends StatelessWidget {
               decoration: BoxDecoration(
                 color: scheme.surface,
                 shape: BoxShape.circle,
+                border: Border.all(
+                  color: scheme.outlineVariant.withValues(alpha: 0.6),
+                ),
               ),
               child: Icon(
                 Icons.notifications_none_rounded,

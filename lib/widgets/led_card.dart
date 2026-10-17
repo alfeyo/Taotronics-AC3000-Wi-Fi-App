@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../models/save_result.dart';
 import '../providers/router_provider.dart';
 import '../screens/router_settings_screens.dart';
 import '../theme/app_theme.dart';
@@ -19,8 +18,6 @@ class RouterLedCard extends StatefulWidget {
 }
 
 class _RouterLedCardState extends State<RouterLedCard> {
-  bool _saving = false;
-
   @override
   void initState() {
     super.initState();
@@ -33,18 +30,8 @@ class _RouterLedCardState extends State<RouterLedCard> {
   }
 
   Future<void> _set(RouterProvider provider, String sn, bool on) async {
-    setState(() => _saving = true);
     final result = await provider.updateNodeLed(nodeSn: sn, led: on ? 1 : 0);
-    if (!mounted) return;
-    setState(() => _saving = false);
-    showSaveResult(
-      context,
-      result.isConfirmed
-          ? SaveResult.confirmed(
-              on ? 'Router LED turned on.' : 'Router LED turned off.',
-            )
-          : result,
-    );
+    if (mounted) showSaveResult(context, result);
   }
 
   @override
@@ -55,92 +42,80 @@ class _RouterLedCardState extends State<RouterLedCard> {
     final entry = provider.mainRouterLed;
     final sn = entry == null ? null : '${entry['NodeSn']}';
     final on = entry == null ? null : RouterProvider.isLedOn(entry);
+    // Shared with the Home hero: a change started there shows here as pending.
+    final requested = sn == null ? null : provider.ledRequested(sn);
+    final pending = requested != null;
     final count = provider.ledNodes.length;
-    final master = provider.nodes.where((n) => n.isMaster).firstOrNull;
+
+    final status = !provider.isConnected
+        ? 'Connect to the router to change'
+        : pending
+        ? 'Turning ${requested == 1 ? 'on' : 'off'}…'
+        : on == null
+        ? (provider.ledsLoaded
+              ? 'Router reported no LED'
+              : 'LED state not reported yet')
+        : [on ? 'On' : 'Off', if (count > 1) '$count mesh nodes'].join(' · ');
 
     return PanelCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      padding: const EdgeInsets.fromLTRB(
+        Space.lg,
+        Space.md,
+        Space.sm,
+        Space.md,
+      ),
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const NodeLedSettingsScreen()),
+      ),
+      child: Row(
         children: [
-          Row(
-            children: [
-              IconBadge(
-                Icons.lightbulb_outline_rounded,
-                tone: on == true ? Tone.accent : Tone.neutral,
-                size: 44,
-                round: true,
-              ),
-              const SizedBox(width: Space.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Router LEDs', style: theme.textTheme.titleMedium),
-                    Text(
-                      count > 1
-                          ? 'Lights on your $count mesh nodes'
-                          : 'Indicator light on your router',
-                      style: theme.textTheme.bodySmall?.copyWith(color: muted),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+          IconBadge(
+            on == true
+                ? Icons.lightbulb_rounded
+                : Icons.lightbulb_outline_rounded,
+            tone: on == true ? Tone.accent : Tone.neutral,
+            size: 40,
+            round: true,
           ),
-          const Divider(height: Space.xl),
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Main router', style: theme.textTheme.titleSmall),
-                    Text(
-                      !provider.isConnected
-                          ? 'Connect to the router to change'
-                          : on == null
-                          ? (provider.ledsLoaded
-                                ? 'Router reported no LED'
-                                : 'LED state not reported yet')
-                          : [
-                              if (master?.model != null) master!.model!,
-                              on ? 'LED on' : 'LED off',
-                            ].join(' · '),
-                      style: theme.textTheme.bodySmall?.copyWith(color: muted),
-                    ),
-                  ],
+          const SizedBox(width: Space.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Router LED', style: theme.textTheme.titleSmall),
+                Text(
+                  status,
+                  style: theme.textTheme.bodySmall?.copyWith(color: muted),
                 ),
-              ),
-              if (_saving)
-                const Padding(
-                  padding: EdgeInsets.all(Space.md),
-                  child: SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(strokeWidth: 2.4),
-                  ),
-                )
-              else
-                Semantics(
-                  label: 'Main router LED',
-                  toggled: on ?? false,
-                  child: Switch(
-                    value: on ?? false,
-                    onChanged: on == null || sn == null || !provider.isConnected
-                        ? null
-                        : (value) => _set(provider, sn, value),
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: Space.md),
-          PillButton(
-            label: 'View all LED settings',
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const NodeLedSettingsScreen()),
+              ],
             ),
           ),
+          if (pending)
+            const Padding(
+              padding: EdgeInsets.all(Space.md),
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2.2),
+              ),
+            ),
+          Semantics(
+            label: 'Main router LED',
+            toggled: on ?? false,
+            child: Switch(
+              activeTrackColor: Palette.amber,
+              value: pending ? requested == 1 : (on ?? false),
+              onChanged:
+                  on == null ||
+                      sn == null ||
+                      !provider.isConnected ||
+                      provider.ledBusy
+                  ? null
+                  : (value) => _set(provider, sn, value),
+            ),
+          ),
+          Icon(Icons.chevron_right_rounded, color: muted),
         ],
       ),
     );

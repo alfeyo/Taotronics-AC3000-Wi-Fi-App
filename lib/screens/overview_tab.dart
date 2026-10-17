@@ -1,55 +1,48 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../models/save_result.dart';
 import '../providers/router_provider.dart';
-import '../services/router_certificate_verifier.dart';
 import '../theme/app_theme.dart';
 import '../utils/format.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/connection_banner.dart';
-import '../widgets/feedback.dart';
+import '../widgets/home_sheets.dart';
 import '../widgets/home_widgets.dart';
 import 'diagnostics_screen.dart';
-import 'discovery_screen.dart';
 import 'home_screen.dart';
 import 'nodes_screen.dart';
 import 'router_settings_screens.dart';
-import 'settings_screen.dart';
 import 'setup_wizard_screen.dart';
 
-/// Home dashboard: router status, live activity, Wi-Fi networks, health
-/// and quick controls. Every value comes from the router; missing or old
-/// values are labelled as such.
+/// Home: router hero with live LED, live activity, network summary and
+/// quick controls. Every value comes from the router or from this
+/// session's measurements; missing values are shown as such.
 class OverviewTab extends StatelessWidget {
   const OverviewTab({super.key});
 
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<RouterProvider>();
-    final connected = provider.isConnected;
-    final wide = MediaQuery.sizeOf(context).width >= Breakpoints.expanded;
+    final wide = MediaQuery.sizeOf(context).width >= Breakpoints.medium;
+    void select(HomeTab tab) => HomeNavigation.maybeOf(context)?.select(tab);
 
-    final primary = <Widget>[
-      RouterCard(
-        provider: provider,
-        onOpenDevices: () =>
-            HomeNavigation.maybeOf(context)?.select(HomeTab.devices),
+    final hero = RouterHero(
+      provider: provider,
+      onOpenDevices: () => select(HomeTab.devices),
+    );
+    final details = <Widget>[
+      SectionLabel(
+        'Live activity',
+        trailing: TextButton(
+          onPressed: () => select(HomeTab.statistics),
+          child: const Text('Statistics'),
+        ),
       ),
-      const SectionLabel('Network activity'),
-      _ActivityRow(provider: provider),
-      const SectionLabel('Wi-Fi networks'),
-      _WifiSummary(provider: provider),
-    ];
-    final secondary = <Widget>[
+      _LiveRow(provider: provider),
+      const SectionLabel('Network'),
+      _NetworkTiles(provider: provider, select: select),
       const SectionLabel('Quick controls'),
-      _QuickControls(provider: provider),
-      const SizedBox(height: Space.md),
-      _MoreActions(provider: provider),
-      const SectionLabel('Insights & health'),
-      InsightsPanel(provider: provider),
-      const SizedBox(height: Space.md),
-      _HealthPanel(provider: provider),
+      _QuickControls(provider: provider, select: select),
     ];
 
     return Scaffold(
@@ -59,19 +52,24 @@ class OverviewTab extends StatelessWidget {
           onRefresh: provider.refreshAll,
           child: ListView(
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: EdgeInsets.fromLTRB(Space.lg, Space.lg, Space.lg, 120),
+            padding: const EdgeInsets.fromLTRB(
+              Space.lg,
+              Space.md,
+              Space.lg,
+              120,
+            ),
             children: [
               ContentWidth(
-                maxWidth: wide ? 1100 : Breakpoints.contentMaxWidth,
+                maxWidth: wide ? 1040 : Breakpoints.contentMaxWidth,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     _Header(provider: provider),
-                    const SizedBox(height: Space.lg),
+                    const SizedBox(height: Space.md),
                     ConnectionStatusBanners(
                       onOpenSetup: () => _openSetup(context),
                     ),
-                    if (!connected) ...[
+                    if (!provider.isConnected) ...[
                       _SetupCard(provider: provider),
                       const SizedBox(height: Space.md),
                     ],
@@ -79,14 +77,14 @@ class OverviewTab extends StatelessWidget {
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(child: Column(children: primary)),
+                          Expanded(child: hero),
                           const SizedBox(width: Space.xl),
-                          Expanded(child: Column(children: secondary)),
+                          Expanded(child: Column(children: details)),
                         ],
                       )
                     else ...[
-                      ...primary,
-                      ...secondary,
+                      hero,
+                      ...details,
                     ],
                   ],
                 ),
@@ -105,21 +103,6 @@ void _openSetup(BuildContext context) {
     MaterialPageRoute(builder: (_) => const SetupWizardScreen()),
   );
 }
-
-void _openDiagnostics(BuildContext context, RouterProvider provider) {
-  Navigator.push(
-    context,
-    MaterialPageRoute(
-      builder: (_) => DiagnosticsScreen(
-        routerReachable: provider.isNetworkReachable,
-        mqttPortOpen: provider.isMqttPortOpen,
-      ),
-    ),
-  );
-}
-
-void _push(BuildContext context, Widget screen) =>
-    Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
 
 /// Runs [action] when connected; otherwise explains that pairing is needed.
 void _whenConnected(
@@ -159,148 +142,82 @@ void _whenConnected(
   );
 }
 
-Future<void> _restart(BuildContext context, RouterProvider provider) async {
-  if (!provider.isConnected) {
-    _whenConnected(context, provider, () {});
-    return;
-  }
-  final confirmed = await confirmAction(
-    context,
-    title: 'Restart all mesh nodes?',
-    message:
-        'Every device loses its connection for a few minutes while the '
-        'router restarts. The app reconnects automatically.',
-    confirmLabel: 'Restart',
-    destructive: true,
-    icon: Icons.restart_alt_rounded,
-  );
-  if (!confirmed || !context.mounted) return;
-  final result = await provider.rebootRouter();
-  if (context.mounted) showSaveResult(context, result);
-}
-
 class _Header extends StatelessWidget {
   const _Header({required this.provider});
 
   final RouterProvider provider;
 
-  Future<void> _logout(BuildContext context) async {
-    final confirmed = await confirmAction(
-      context,
-      title: 'Log out of this router?',
-      message:
-          'The app disconnects and returns to discovery. Your pairing stays '
-          'saved, so you can reconnect later.',
-      confirmLabel: 'Log out',
-      icon: Icons.logout_rounded,
-    );
-    if (!confirmed || !context.mounted) return;
-    await provider.logout();
-    if (!context.mounted) return;
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (_) => const DiscoveryScreen()),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final connected = provider.isConnected;
-    final (label, tone) = connected
-        ? ('Connected', Tone.success)
+    final (text, tone) = connected
+        ? (
+            !provider.hasInternetStatus
+                ? 'Connected'
+                : provider.internetConnected
+                ? 'Online'
+                : 'No internet',
+            provider.hasInternetStatus && !provider.internetConnected
+                ? Tone.danger
+                : Tone.success,
+          )
         : provider.isReconnecting
-        ? ('Reconnecting', Tone.warning)
+        ? ('Reconnecting…', Tone.warning)
         : ('Not connected', Tone.danger);
-    final internet = !connected || !provider.hasInternetStatus
-        ? null
-        : provider.internetConnected
-        ? ('Internet online', Tone.success)
-        : ('No internet', Tone.danger);
 
-    return PageHeader(
-      title: 'My Router',
-      subtitle: connected
-          ? [
-              'Connected',
-              if (internet != null) internet.$1.toLowerCase(),
-            ].join(' · ')
-          : label,
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          EventsButton(provider: provider),
-          const SizedBox(width: Space.sm),
-          PopupMenuButton<String>(
-            tooltip: 'More',
-            onSelected: (value) => switch (value) {
-              'refresh' =>
-                connected ? provider.refreshAll() : provider.reconnectNow(),
-              'diagnostics' => _openDiagnostics(context, provider),
-              'restart' => _restart(context, provider),
-              'logout' => _logout(context),
-              _ => null,
-            },
-            itemBuilder: (context) => const [
-              PopupMenuItem(
-                value: 'refresh',
-                child: ListTile(
-                  leading: Icon(Icons.refresh_rounded),
-                  title: Text('Refresh'),
+    return Row(
+      children: [
+        Expanded(
+          child: Semantics(
+            container: true,
+            header: true,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('My Router', style: theme.textTheme.headlineSmall),
+                const SizedBox(height: 2),
+                Row(
+                  children: [
+                    Container(
+                      width: 7,
+                      height: 7,
+                      decoration: BoxDecoration(
+                        color: context.tone(tone).foreground,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        text,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-              PopupMenuItem(
-                value: 'diagnostics',
-                child: ListTile(
-                  leading: Icon(Icons.monitor_heart_outlined),
-                  title: Text('Diagnostics'),
-                ),
-              ),
-              PopupMenuItem(
-                value: 'restart',
-                child: ListTile(
-                  leading: Icon(Icons.restart_alt_rounded),
-                  title: Text('Restart router'),
-                ),
-              ),
-              PopupMenuItem(
-                value: 'logout',
-                child: ListTile(
-                  leading: Icon(Icons.logout_rounded),
-                  title: Text('Log out'),
-                ),
-              ),
-            ],
-            child: const _RoundIconButton(
-              icon: Icons.more_horiz_rounded,
-              tooltip: 'More',
+              ],
             ),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _RoundIconButton extends StatelessWidget {
-  const _RoundIconButton({required this.icon, required this.tooltip});
-
-  final IconData icon;
-  final String tooltip;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Tooltip(
-      message: tooltip,
-      child: Container(
-        width: 44,
-        height: 44,
-        decoration: BoxDecoration(
-          color: scheme.surface,
-          shape: BoxShape.circle,
         ),
-        child: Icon(icon, color: scheme.onSurface, size: 22),
-      ),
+        HeaderIconButton(
+          icon: Icons.search_rounded,
+          tooltip: 'Search devices',
+          onPressed: () => showDeviceSearch(context, provider),
+        ),
+        const SizedBox(width: Space.sm),
+        EventsButton(provider: provider),
+        const SizedBox(width: Space.sm),
+        HeaderIconButton(
+          icon: Icons.tune_rounded,
+          tooltip: 'Router & preferences',
+          onPressed: () => showRouterPreferences(context, provider),
+        ),
+      ],
     );
   }
 }
@@ -312,23 +229,19 @@ class _SetupCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final steps = [
-      ('Router found', provider.isRouterFound),
-      ('Gateway reachable', provider.isNetworkReachable),
-      ('Control port open', provider.isMqttPortOpen),
-      ('Signed in', provider.isConnected),
-    ];
     return PanelCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            'Finish setting up',
+            provider.isReconnecting
+                ? 'Reconnecting to your router'
+                : 'Router not connected',
             style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(height: Space.xs),
           Text(
-            'Provision the router, join its Wi-Fi, then pair this phone.',
+            'Join the router Wi-Fi, or set up and pair a router.',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
@@ -338,33 +251,28 @@ class _SetupCard extends StatelessWidget {
             spacing: Space.sm,
             runSpacing: Space.sm,
             children: [
-              for (final (label, done) in steps)
-                StatusPill(
-                  label: label,
-                  tone: done ? Tone.success : Tone.neutral,
-                  icon: done
-                      ? Icons.check_circle_rounded
-                      : Icons.radio_button_unchecked_rounded,
-                ),
-            ],
-          ),
-          const SizedBox(height: Space.lg),
-          Row(
-            children: [
-              Expanded(
-                child: PillButton(
-                  primary: true,
-                  label: 'Set up router',
-                  icon: Icons.play_arrow_rounded,
-                  onPressed: () => _openSetup(context),
-                ),
+              PillButton(
+                primary: true,
+                label: 'Retry',
+                icon: Icons.refresh_rounded,
+                onPressed: provider.reconnectNow,
               ),
-              const SizedBox(width: Space.sm),
-              Expanded(
-                child: PillButton(
-                  label: 'Diagnose',
-                  icon: Icons.monitor_heart_outlined,
-                  onPressed: () => _openDiagnostics(context, provider),
+              PillButton(
+                label: 'Set up',
+                icon: Icons.add_rounded,
+                onPressed: () => _openSetup(context),
+              ),
+              PillButton(
+                label: 'Diagnose',
+                icon: Icons.monitor_heart_outlined,
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => DiagnosticsScreen(
+                      routerReachable: provider.isNetworkReachable,
+                      mqttPortOpen: provider.isMqttPortOpen,
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -375,19 +283,15 @@ class _SetupCard extends StatelessWidget {
   }
 }
 
-class _ActivityRow extends StatelessWidget {
-  const _ActivityRow({required this.provider});
+class _LiveRow extends StatelessWidget {
+  const _LiveRow({required this.provider});
 
   final RouterProvider provider;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final connected = provider.isConnected;
     final stale = connected && provider.liveDataStale;
-    final source = provider.hasLiveWanRates
-        ? 'Router internet (WAN) rate'
-        : 'Sum of connected device rates';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -415,33 +319,16 @@ class _ActivityRow extends StatelessWidget {
           ],
         ),
         const SizedBox(height: Space.sm),
-        MergeSemantics(
-          child: Row(
-            children: [
-              StatusPill(
-                label: !connected
-                    ? 'Offline'
-                    : stale
-                    ? 'Stale'
-                    : 'Live',
-                tone: !connected
-                    ? Tone.neutral
-                    : stale
-                    ? Tone.warning
-                    : Tone.success,
-              ),
-              const SizedBox(width: Space.sm),
-              Expanded(
-                child: Text(
-                  connected
-                      ? '$source · updated ${formatAge(provider.liveDataUpdatedAt)}'
-                      : 'Live rates appear once the router is connected.',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-            ],
+        Text(
+          !connected
+              ? 'Live rates appear once the router is connected.'
+              : '${stale ? 'Stale · ' : ''}'
+                    '${provider.hasLiveWanRates ? 'Router internet (WAN) rate' : 'Sum of connected device rates'}'
+                    ' · updated ${formatAge(provider.liveDataUpdatedAt)}',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: stale
+                ? context.tone(Tone.warning).foreground
+                : Theme.of(context).colorScheme.onSurfaceVariant,
           ),
         ),
       ],
@@ -449,385 +336,127 @@ class _ActivityRow extends StatelessWidget {
   }
 }
 
-class _WifiSummary extends StatelessWidget {
-  const _WifiSummary({required this.provider});
+class _NetworkTiles extends StatelessWidget {
+  const _NetworkTiles({required this.provider, required this.select});
 
   final RouterProvider provider;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final muted = theme.colorScheme.onSurfaceVariant;
-    final networks = provider.wirelessNetworksParsed;
-    void openWifi() => _whenConnected(
-      context,
-      provider,
-      () => HomeNavigation.maybeOf(context)?.select(HomeTab.wifi),
-    );
-
-    return PanelCard(
-      onTap: openWifi,
-      child: networks.isEmpty
-          ? Row(
-              children: [
-                const IconBadge(
-                  Icons.wifi_rounded,
-                  tone: Tone.neutral,
-                  size: 40,
-                  round: true,
-                ),
-                const SizedBox(width: Space.md),
-                Expanded(
-                  child: Text(
-                    !provider.isConnected
-                        ? 'Wi-Fi networks appear once the router is connected.'
-                        : provider.wirelessLoaded
-                        ? 'The router did not report its Wi-Fi networks.'
-                        : 'Reading Wi-Fi networks…',
-                    style: theme.textTheme.bodyMedium?.copyWith(color: muted),
-                  ),
-                ),
-              ],
-            )
-          : Column(
-              children: [
-                for (var i = 0; i < networks.length; i++) ...[
-                  if (i > 0) const Divider(height: Space.lg),
-                  Row(
-                    children: [
-                      IconBadge(
-                        networks[i].isEnabled
-                            ? Icons.wifi_rounded
-                            : Icons.wifi_off_rounded,
-                        tone: networks[i].isEnabled ? Tone.brand : Tone.neutral,
-                        size: 36,
-                        round: true,
-                      ),
-                      const SizedBox(width: Space.md),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              networks[i].ssid.isEmpty
-                                  ? 'No name set'
-                                  : networks[i].ssid,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.titleSmall,
-                            ),
-                            Text(
-                              networks[i].bandLabel,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: muted,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      StatusPill(
-                        label: networks[i].isEnabled ? 'On' : 'Off',
-                        tone: networks[i].isEnabled
-                            ? Tone.success
-                            : Tone.neutral,
-                      ),
-                    ],
-                  ),
-                ],
-                const SizedBox(height: Space.md),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: PillButton(
-                    label: 'Manage Wi-Fi',
-                    icon: Icons.tune_rounded,
-                    onPressed: openWifi,
-                  ),
-                ),
-              ],
-            ),
-    );
-  }
-}
-
-class _QuickControls extends StatelessWidget {
-  const _QuickControls({required this.provider});
-
-  final RouterProvider provider;
-
-  Future<void> _setLed(BuildContext context, String sn, bool on) async {
-    final result = await provider.updateNodeLed(nodeSn: sn, led: on ? 1 : 0);
-    if (!context.mounted) return;
-    showSaveResult(
-      context,
-      result.isConfirmed
-          ? SaveResult.confirmed(
-              on ? 'Router LED turned on.' : 'Router LED turned off.',
-            )
-          : result,
-    );
-  }
+  final ValueChanged<HomeTab> select;
 
   @override
   Widget build(BuildContext context) {
     final connected = provider.isConnected;
     final networks = provider.wirelessNetworksParsed;
     final wifiOn = networks.where((n) => n.isEnabled).length;
+    final master = provider.nodes.where((n) => n.isMaster).firstOrNull;
+    final online = provider.reportedOnlineNodeCount;
+    final total = provider.reportedTotalNodeCount;
+    return ResponsiveGrid(
+      minTileWidth: 140,
+      maxColumns: 4,
+      spacing: Space.md,
+      children: [
+        StatTile(
+          icon: Icons.devices_other_rounded,
+          tone: Tone.brand,
+          value: connected ? '${provider.reportedOnlineDeviceCount}' : null,
+          label: 'Devices online',
+          onTap: () => select(HomeTab.devices),
+        ),
+        StatTile(
+          icon: Icons.wifi_rounded,
+          tone: Tone.info,
+          value: connected && networks.isNotEmpty
+              ? '$wifiOn/${networks.length}'
+              : null,
+          label: 'Wi-Fi networks on',
+          onTap: () => select(HomeTab.wifi),
+        ),
+        StatTile(
+          icon: Icons.hub_rounded,
+          tone: total > online ? Tone.warning : Tone.success,
+          value: connected
+              ? (total > online ? '$online/$total' : '$online')
+              : null,
+          label: 'Mesh nodes online',
+          onTap: () => _whenConnected(
+            context,
+            provider,
+            () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const NodesScreen()),
+            ),
+          ),
+        ),
+        StatTile(
+          icon: Icons.timer_outlined,
+          tone: Tone.neutral,
+          value: connected && master != null && master.uptimeSeconds > 0
+              ? formatUptime(master.uptimeSeconds)
+              : null,
+          label: 'Router uptime',
+        ),
+      ],
+    );
+  }
+}
+
+class _QuickControls extends StatelessWidget {
+  const _QuickControls({required this.provider, required this.select});
+
+  final RouterProvider provider;
+  final ValueChanged<HomeTab> select;
+
+  @override
+  Widget build(BuildContext context) {
+    final connected = provider.isConnected;
     final led = provider.mainRouterLed;
     final ledOn = led == null ? null : RouterProvider.isLedOn(led);
-    final nodesOnline = provider.reportedOnlineNodeCount;
-
     return ResponsiveGrid(
       minTileWidth: 260,
       maxColumns: 2,
+      spacing: Space.sm,
       children: [
         ActionTile(
           icon: Icons.wifi_rounded,
           tone: Tone.brand,
           title: 'Wi-Fi networks',
-          subtitle: !connected || networks.isEmpty
-              ? 'Bands, names and passwords'
-              : '$wifiOn of ${networks.length} on',
-          onTap: () => _whenConnected(
-            context,
-            provider,
-            () => HomeNavigation.maybeOf(context)?.select(HomeTab.wifi),
-          ),
+          subtitle: 'Bands, names, passwords, guest',
+          onTap: () => select(HomeTab.wifi),
         ),
         ActionTile(
           icon: Icons.lightbulb_outline_rounded,
           tone: ledOn == true ? Tone.accent : Tone.neutral,
           title: 'Router lights',
-          subtitle: !connected
+          subtitle: !connected || ledOn == null
               ? 'LED controls'
-              : ledOn == null
-              ? 'LED state not reported yet'
               : 'Main router LED ${ledOn ? 'on' : 'off'}',
-          onTap: () => _push(context, const NodeLedSettingsScreen()),
-          trailing: Semantics(
-            label: 'Main router LED',
-            toggled: ledOn ?? false,
-            child: Switch(
-              value: ledOn ?? false,
-              onChanged: !connected || led == null
-                  ? null
-                  : (on) => _setLed(context, '${led['NodeSn']}', on),
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const NodeLedSettingsScreen()),
+          ),
+        ),
+        ActionTile(
+          icon: Icons.hub_outlined,
+          tone: Tone.success,
+          title: 'Mesh',
+          subtitle: 'Nodes, uptime and LEDs',
+          onTap: () => _whenConnected(
+            context,
+            provider,
+            () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const NodesScreen()),
             ),
           ),
         ),
         ActionTile(
-          icon: Icons.devices_other_rounded,
-          tone: Tone.info,
-          title: 'Devices',
-          subtitle: connected
-              ? '${provider.reportedOnlineDeviceCount} connected'
-              : 'Manage connected',
-          onTap: () => _whenConnected(
-            context,
-            provider,
-            () => HomeNavigation.maybeOf(context)?.select(HomeTab.devices),
-          ),
-        ),
-        ActionTile(
-          icon: Icons.hub_rounded,
-          tone: Tone.success,
-          title: 'Mesh',
-          subtitle: connected
-              ? '$nodesOnline node${nodesOnline == 1 ? '' : 's'} online'
-              : 'Nodes & health',
-          onTap: () => _whenConnected(
-            context,
-            provider,
-            () => _push(context, const NodesScreen()),
-          ),
-        ),
-        ActionTile(
-          icon: Icons.settings_rounded,
+          icon: Icons.settings_outlined,
           tone: Tone.neutral,
           title: 'Settings',
           subtitle: 'Internet, LAN, security and more',
-          onTap: () =>
-              HomeNavigation.maybeOf(context)?.select(HomeTab.settings),
+          onTap: () => select(HomeTab.settings),
         ),
       ],
-    );
-  }
-}
-
-/// Secondary shortcuts that used to be dashboard quick actions.
-class _MoreActions extends StatelessWidget {
-  const _MoreActions({required this.provider});
-
-  final RouterProvider provider;
-
-  @override
-  Widget build(BuildContext context) {
-    return Wrap(
-      spacing: Space.sm,
-      runSpacing: Space.sm,
-      children: [
-        PillButton(
-          label: 'Guest Wi-Fi',
-          icon: Icons.wifi_tethering_rounded,
-          onPressed: () => _whenConnected(
-            context,
-            provider,
-            () => _push(context, const GuestWifiSettingsScreen()),
-          ),
-        ),
-        PillButton(
-          label: 'USB storage',
-          icon: Icons.usb_rounded,
-          onPressed: () => _whenConnected(
-            context,
-            provider,
-            () => _push(context, const UsbStorageScreen()),
-          ),
-        ),
-        PillButton(
-          label: 'Diagnostics',
-          icon: Icons.monitor_heart_outlined,
-          onPressed: () => _openDiagnostics(context, provider),
-        ),
-        PillButton(
-          label: 'Restart',
-          icon: Icons.restart_alt_rounded,
-          onPressed: () => _restart(context, provider),
-        ),
-      ],
-    );
-  }
-}
-
-class _HealthPanel extends StatelessWidget {
-  const _HealthPanel({required this.provider});
-
-  final RouterProvider provider;
-
-  @override
-  Widget build(BuildContext context) {
-    final connected = provider.isConnected;
-    final router = provider.currentRouter;
-    final verdict = provider.certificateVerdict;
-    final meshId = router?.meshId;
-    final master = provider.nodes.where((n) => n.isMaster).firstOrNull;
-    String na(String? v) => connected && v != null ? v : 'Not available';
-
-    final rows = <(String, String, Tone)>[
-      (
-        'Internet',
-        !connected || !provider.hasInternetStatus
-            ? 'Not reported'
-            : provider.internetConnected
-            ? 'Online'
-            : 'Offline',
-        !connected || !provider.hasInternetStatus
-            ? Tone.neutral
-            : provider.internetConnected
-            ? Tone.success
-            : Tone.danger,
-      ),
-      (
-        'Connection quality',
-        !connected || !provider.internetConnected
-            ? 'Not reported'
-            : provider.networkQualityLabel,
-        provider.networkQuality == 2 ? Tone.warning : Tone.success,
-      ),
-      (
-        'Router uptime',
-        na(
-          master != null && master.uptimeSeconds > 0
-              ? formatUptime(master.uptimeSeconds)
-              : null,
-        ),
-        Tone.neutral,
-      ),
-      (
-        'Guest devices',
-        connected ? '${provider.reportedGuestDeviceCount}' : 'Not available',
-        Tone.neutral,
-      ),
-      (
-        'USB storage',
-        !connected
-            ? 'Not available'
-            : provider.usbDisks.isEmpty
-            ? 'No disk'
-            : '${formatBytes(provider.usbAvailableBytes)} free',
-        Tone.neutral,
-      ),
-      (
-        'Live statistics',
-        !connected
-            ? 'Offline'
-            : provider.liveTelemetrySupported
-            ? 'Answering'
-            : 'Slow; using device totals',
-        provider.liveTelemetrySupported ? Tone.success : Tone.warning,
-      ),
-      (
-        'Router address',
-        router?.ipAddress ?? 'Unknown',
-        router?.ipAddress == null ? Tone.neutral : Tone.success,
-      ),
-      (
-        'Router certificate',
-        verdict == null
-            ? 'Not checked'
-            : verdict.trusted
-            ? 'Verified'
-            : 'Rejected',
-        verdict == null
-            ? Tone.neutral
-            : verdict.trusted
-            ? Tone.success
-            : Tone.danger,
-      ),
-      if (meshId != null && provider.authService.isPaired(meshId))
-        (
-          'Saved password',
-          provider.authService.isPasswordStoredSecurely(meshId)
-              ? 'Android Keystore'
-              : 'App storage',
-          provider.authService.isPasswordStoredSecurely(meshId)
-              ? Tone.success
-              : Tone.warning,
-        ),
-    ];
-
-    return Card(
-      child: ExpansionTile(
-        leading: const Icon(Icons.monitor_heart_outlined),
-        title: const Text('Health details'),
-        subtitle: Text(
-          meshId == null ? 'No router selected' : 'Mesh $meshId',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        shape: const Border(),
-        collapsedShape: const Border(),
-        childrenPadding: const EdgeInsets.fromLTRB(
-          Space.lg,
-          0,
-          Space.lg,
-          Space.lg,
-        ),
-        children: [
-          for (final (label, value, tone) in rows)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: Space.xs),
-              child: Row(
-                children: [
-                  Expanded(child: Text(label)),
-                  const SizedBox(width: Space.md),
-                  Flexible(
-                    child: StatusPill(label: value, tone: tone),
-                  ),
-                ],
-              ),
-            ),
-        ],
-      ),
     );
   }
 }

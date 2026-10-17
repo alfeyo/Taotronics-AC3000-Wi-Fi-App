@@ -1494,6 +1494,7 @@ class _NodeLedSettingsScreenState extends State<NodeLedSettingsScreen> {
                               ),
                             )
                           : Switch(
+                              activeTrackColor: Palette.amber,
                               value: RouterProvider.isLedOn(node),
                               onChanged: provider.isConnected
                                   ? (value) =>

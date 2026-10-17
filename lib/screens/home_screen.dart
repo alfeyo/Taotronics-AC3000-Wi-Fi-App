@@ -6,6 +6,7 @@ import '../widgets/app_widgets.dart';
 import 'devices_screen.dart';
 import 'overview_tab.dart';
 import 'settings_screen.dart';
+import 'statistics_screen.dart';
 import 'wifi_screen.dart';
 
 /// Top-level destinations of the signed-in app.
@@ -13,6 +14,7 @@ enum HomeTab {
   overview('Home', Icons.home_outlined, Icons.home_rounded),
   devices('Devices', Icons.devices_other_outlined, Icons.devices_other_rounded),
   wifi('Wi-Fi', Icons.wifi_rounded, Icons.wifi_rounded),
+  statistics('Statistics', Icons.insights_outlined, Icons.insights_rounded),
   settings('Settings', Icons.settings_outlined, Icons.settings_rounded);
 
   const HomeTab(this.label, this.icon, this.selectedIcon);
@@ -88,6 +90,7 @@ class _HomeScreenState extends State<HomeScreen> {
       HomeTab.overview => const OverviewTab(),
       HomeTab.devices => const DevicesScreen(),
       HomeTab.wifi => const WifiSettingsScreen(),
+      HomeTab.statistics => const StatisticsScreen(),
       HomeTab.settings => const SettingsScreen(),
     },
   );
@@ -159,12 +162,14 @@ class FloatingNavBar extends StatelessWidget {
     final colors = context.statusColors;
     final theme = Theme.of(context);
     return SafeArea(
-      minimum: const EdgeInsets.fromLTRB(Space.lg, 0, Space.lg, Space.md),
+      minimum: const EdgeInsets.fromLTRB(Space.md, 0, Space.md, Space.md),
       child: Material(
         color: colors.navBar,
-        elevation: 6,
-        shadowColor: Colors.black.withValues(alpha: 0.35),
-        shape: const StadiumBorder(),
+        elevation: 8,
+        shadowColor: Colors.black.withValues(alpha: 0.5),
+        shape: StadiumBorder(
+          side: BorderSide(color: Colors.white.withValues(alpha: 0.06)),
+        ),
         child: Padding(
           padding: const EdgeInsets.all(6),
           child: Row(
@@ -180,9 +185,10 @@ class FloatingNavBar extends StatelessWidget {
                         customBorder: const StadiumBorder(),
                         onTap: () => onSelected(tab),
                         child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
+                          duration: const Duration(milliseconds: 220),
                           curve: Curves.easeOut,
-                          height: 56,
+                          height: 54,
+                          margin: const EdgeInsets.symmetric(horizontal: 2),
                           decoration: ShapeDecoration(
                             shape: const StadiumBorder(),
                             color: tab == selected
@@ -194,23 +200,31 @@ class FloatingNavBar extends StatelessWidget {
                             children: [
                               Icon(
                                 tab == selected ? tab.selectedIcon : tab.icon,
-                                size: 22,
+                                size: 21,
                                 color: tab == selected
                                     ? colors.onNavIndicator
                                     : colors.onNavBar,
                               ),
                               const SizedBox(height: 2),
-                              Text(
-                                tab.label,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.labelSmall?.copyWith(
-                                  color: tab == selected
-                                      ? colors.onNavIndicator
-                                      : colors.onNavBar,
-                                  fontWeight: tab == selected
-                                      ? FontWeight.w700
-                                      : FontWeight.w500,
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 4,
+                                ),
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Text(
+                                    tab.label,
+                                    maxLines: 1,
+                                    style: theme.textTheme.labelSmall?.copyWith(
+                                      fontSize: 10.5,
+                                      color: tab == selected
+                                          ? colors.onNavIndicator
+                                          : colors.onNavBar,
+                                      fontWeight: tab == selected
+                                          ? FontWeight.w700
+                                          : FontWeight.w500,
+                                    ),
+                                  ),
                                 ),
                               ),
                             ],

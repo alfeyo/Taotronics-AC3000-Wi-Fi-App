@@ -116,7 +116,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
     final active = all.where((d) => d.isActive).length;
 
     final sortMenu = PopupMenuButton<DeviceSort>(
-      tooltip: 'Sort',
+      tooltip: 'Sort: ${_sort.label}',
       initialValue: _sort,
       onSelected: (sort) => setState(() => _sort = sort),
       itemBuilder: (context) => [
@@ -127,19 +127,9 @@ class _DevicesScreenState extends State<DevicesScreen> {
             child: Text(sort.label),
           ),
       ],
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: Space.sm, vertical: 10),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'SORT',
-              style: theme.textTheme.labelLarge?.copyWith(letterSpacing: 1),
-            ),
-            const SizedBox(width: Space.xs),
-            const Icon(Icons.sort_rounded, size: 18),
-          ],
-        ),
+      child: const Padding(
+        padding: EdgeInsets.all(Space.sm),
+        child: Icon(Icons.sort_rounded),
       ),
     );
 
@@ -158,7 +148,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
                       Space.lg,
                       Space.lg,
                       Space.lg,
-                      0,
+                      120,
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -167,7 +157,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
                           kicker: 'Network clients',
                           title: 'Devices',
                           subtitle: provider.isConnected
-                              ? '$online connected · ${all.length - online} offline'
+                              ? 'Updated ${formatAge(provider.devicesUpdatedAt)}'
                               : 'Connect to the router to see devices',
                           trailing: IconButton(
                             tooltip: 'Refresh',
@@ -179,11 +169,18 @@ class _DevicesScreenState extends State<DevicesScreen> {
                         ),
                         const SizedBox(height: Space.lg),
                         const ConnectionStatusBanners(),
+                        _Summary(
+                          total: all.length,
+                          online: online,
+                          active: active,
+                        ),
+                        const SizedBox(height: Space.md),
                         SearchBar(
                           controller: _search,
                           hintText: 'Search name, IP or MAC',
                           leading: const Icon(Icons.search_rounded),
                           elevation: const WidgetStatePropertyAll(0),
+                          constraints: const BoxConstraints(minHeight: 48),
                           trailing: [
                             if (_search.text.isNotEmpty)
                               IconButton(
@@ -191,97 +188,107 @@ class _DevicesScreenState extends State<DevicesScreen> {
                                 onPressed: () => setState(_search.clear),
                                 icon: const Icon(Icons.close_rounded),
                               ),
+                            sortMenu,
                           ],
                           onChanged: (_) => setState(() {}),
                         ),
-                        const SizedBox(height: Space.md),
-                        SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Row(
-                            children: [
-                              for (final filter in DeviceFilter.values)
-                                Padding(
-                                  padding: const EdgeInsets.only(
-                                    right: Space.sm,
-                                  ),
-                                  child: ChoiceChip(
-                                    label: Text(
-                                      '${filter.label} '
-                                      '${all.where(filter.matches).length}',
-                                    ),
-                                    selected: _filter == filter,
-                                    onSelected: (_) =>
-                                        setState(() => _filter = filter),
-                                  ),
+                        const SizedBox(height: Space.sm),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [
+                            for (final filter in DeviceFilter.values)
+                              ChoiceChip(
+                                label: Text(
+                                  '${filter.label} '
+                                  '${all.where(filter.matches).length}',
                                 ),
-                            ],
-                          ),
+                                visualDensity: VisualDensity.compact,
+                                showCheckmark: false,
+                                labelPadding: const EdgeInsets.symmetric(
+                                  horizontal: 2,
+                                ),
+                                labelStyle: theme.textTheme.labelMedium
+                                    ?.copyWith(
+                                      color: _filter == filter
+                                          ? theme
+                                                .chipTheme
+                                                .secondaryLabelStyle
+                                                ?.color
+                                          : null,
+                                    ),
+                                selected: _filter == filter,
+                                onSelected: (_) =>
+                                    setState(() => _filter = filter),
+                              ),
+                          ],
                         ),
-                        const SizedBox(height: Space.md),
+                        const SizedBox(height: Space.lg),
                         Row(
                           children: [
                             Expanded(
                               child: Text(
                                 'Your devices',
-                                style: theme.textTheme.titleLarge,
+                                style: theme.textTheme.titleMedium,
                               ),
                             ),
-                            sortMenu,
+                            Flexible(
+                              child: Text(
+                                'by ${_sort.label.toLowerCase()}',
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ),
                           ],
                         ),
-                        Text(
-                          provider.isConnected
-                              ? '$active active now · sorted by '
-                                    '${_sort.label.toLowerCase()} · updated '
-                                    '${formatAge(provider.devicesUpdatedAt)}'
-                              : 'Device data appears once the router is connected.',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
+                        const SizedBox(height: Space.sm),
+                        if (visible.isEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: Space.xl),
+                            child: EmptyState(
+                              icon: all.isEmpty
+                                  ? Icons.devices_other_rounded
+                                  : Icons.search_off_rounded,
+                              title: all.isEmpty
+                                  ? (provider.isConnected
+                                        ? 'No devices reported yet'
+                                        : 'Not connected')
+                                  : 'No devices match',
+                              message: all.isEmpty
+                                  ? 'Pull down to refresh.'
+                                  : 'Try another filter or search term.',
+                            ),
+                          )
+                        else
+                          PanelCard(
+                            padding: const EdgeInsets.symmetric(
+                              vertical: Space.xs,
+                            ),
+                            child: Column(
+                              children: [
+                                for (var i = 0; i < visible.length; i++) ...[
+                                  if (i > 0)
+                                    const Divider(
+                                      height: 1,
+                                      indent: 72,
+                                      endIndent: Space.lg,
+                                    ),
+                                  _DeviceTile(
+                                    device: visible[i],
+                                    onTap: () =>
+                                        showDeviceDetails(context, visible[i]),
+                                  ),
+                                ],
+                              ],
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: Space.md),
                       ],
                     ),
                   ),
                 ),
               ),
-              if (visible.isEmpty)
-                SliverFillRemaining(
-                  hasScrollBody: false,
-                  child: EmptyState(
-                    icon: all.isEmpty
-                        ? Icons.devices_other_rounded
-                        : Icons.search_off_rounded,
-                    title: all.isEmpty
-                        ? (provider.isConnected
-                              ? 'No devices reported yet'
-                              : 'Not connected')
-                        : 'No devices match',
-                    message: all.isEmpty
-                        ? 'Pull down to refresh.'
-                        : 'Try another filter or search term.',
-                  ),
-                )
-              else
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(
-                    Space.lg,
-                    0,
-                    Space.lg,
-                    120,
-                  ),
-                  sliver: SliverList.separated(
-                    itemCount: visible.length,
-                    separatorBuilder: (_, _) =>
-                        const SizedBox(height: Space.md),
-                    itemBuilder: (context, i) => ContentWidth(
-                      child: _DeviceTile(
-                        device: visible[i],
-                        onTap: () => showDeviceDetails(context, visible[i]),
-                      ),
-                    ),
-                  ),
-                ),
             ],
           ),
         ),
@@ -302,6 +309,83 @@ String _linkLabel(DeviceLink link) => switch (link) {
   DeviceLink.unknown => 'Link unknown',
 };
 
+/// Total / online / active counts in one compact card.
+class _Summary extends StatelessWidget {
+  const _Summary({
+    required this.total,
+    required this.online,
+    required this.active,
+  });
+
+  final int total;
+  final int online;
+  final int active;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    Widget cell(String value, String label, Color? dot) => Expanded(
+      child: Semantics(
+        container: true,
+        label: '$label: $value',
+        child: ExcludeSemantics(
+          child: Column(
+            children: [
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(value, style: theme.textTheme.headlineSmall),
+              ),
+              const SizedBox(height: 2),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (dot != null) ...[
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: dot,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 5),
+                  ],
+                  Flexible(
+                    child: Text(
+                      label,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    final divider = SizedBox(
+      height: 36,
+      child: VerticalDivider(width: 1, color: theme.dividerColor),
+    );
+    return PanelCard(
+      padding: const EdgeInsets.symmetric(vertical: Space.lg),
+      child: Row(
+        children: [
+          cell('$total', 'Total', null),
+          divider,
+          cell('$online', 'Online', context.tone(Tone.success).foreground),
+          divider,
+          cell('$active', 'Active', theme.colorScheme.primary),
+        ],
+      ),
+    );
+  }
+}
+
 class _DeviceTile extends StatelessWidget {
   const _DeviceTile({required this.device, required this.onTap});
 
@@ -317,87 +401,90 @@ class _DeviceTile extends StatelessWidget {
         ? (d.isActive ? 'Active' : 'Online')
         : d.lastSeen == null
         ? 'Offline'
-        : 'Offline · seen ${formatAge(d.lastSeen)}';
+        : 'Seen ${formatAge(d.lastSeen)}';
     final statusColor = d.isOnline
         ? context.tone(Tone.success).foreground
         : muted;
 
-    return PanelCard(
+    return InkWell(
       onTap: onTap,
-      padding: const EdgeInsets.fromLTRB(Space.lg, Space.lg, 20, Space.lg),
-      child: Row(
-        children: [
-          IconBadge(
-            d.link == DeviceLink.wired
-                ? Icons.lan_rounded
-                : Icons.devices_other_rounded,
-            tone: d.isOnline
-                ? (d.link == DeviceLink.wired ? Tone.success : Tone.brand)
-                : Tone.neutral,
-            size: 46,
-            round: true,
-          ),
-          const SizedBox(width: Space.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  d.displayName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.titleMedium,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  [
-                    if (d.link != DeviceLink.unknown) _linkLabel(d.link),
-                    d.ipAddress ?? d.mac,
-                  ].join(' · '),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall?.copyWith(color: muted),
-                ),
-                const SizedBox(height: Space.xs),
-                Row(
-                  children: [
-                    Container(
-                      width: 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                        color: statusColor,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Flexible(
-                      child: Text(
-                        status,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.labelMedium?.copyWith(
-                          color: statusColor,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          Space.lg,
+          Space.md,
+          Space.lg,
+          Space.md,
+        ),
+        child: Row(
+          children: [
+            IconBadge(
+              _linkIcon(d.link),
+              tone: d.isOnline ? Tone.brand : Tone.neutral,
+              size: 40,
+              round: true,
             ),
-          ),
-          const SizedBox(width: Space.sm),
-          if (d.isActive)
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                _Rate(Icons.south_rounded, d.downloadSpeed, Tone.brand),
-                const SizedBox(height: 2),
-                _Rate(Icons.north_rounded, d.uploadSpeed, Tone.accent),
-              ],
-            )
-          else if (d.isOnline)
-            Text('Idle', style: theme.textTheme.labelLarge),
-        ],
+            const SizedBox(width: Space.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    d.displayName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleSmall,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    [
+                      d.ipAddress ?? d.mac,
+                      if (d.link != DeviceLink.unknown) _linkLabel(d.link),
+                    ].join(' · '),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(color: muted),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: Space.sm),
+            if (d.isActive)
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  _Rate(Icons.south_rounded, d.downloadSpeed, Tone.brand),
+                  const SizedBox(height: 2),
+                  _Rate(Icons.north_rounded, d.uploadSpeed, Tone.accent),
+                ],
+              )
+            else
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 7,
+                    height: 7,
+                    decoration: BoxDecoration(
+                      color: statusColor,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 96),
+                    child: Text(
+                      d.isOnline ? 'Idle' : status,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: statusColor,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+          ],
+        ),
       ),
     );
   }

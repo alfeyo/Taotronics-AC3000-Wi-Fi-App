@@ -29,24 +29,6 @@ class SettingsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final provider = context.watch<RouterProvider>();
 
-    // Each entry is its own rounded card, as in the smart-home layout.
-    Widget group(List<SettingsTile> tiles) => Column(
-      children: [
-        for (var i = 0; i < tiles.length; i++) ...[
-          if (i > 0) const SizedBox(height: Space.sm),
-          ActionTile(
-            icon: tiles[i].icon,
-            tone: tiles[i].tone,
-            title: tiles[i].title,
-            subtitle: tiles[i].subtitle,
-            onTap: tiles[i].onTap,
-            trailing: tiles[i].trailing,
-            enabled: tiles[i].enabled,
-          ),
-        ],
-      ],
-    );
-
     return Scaffold(
       body: SafeArea(
         bottom: false,
@@ -57,219 +39,254 @@ class SettingsScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const PageHeader(
-                    kicker: 'System & controls',
-                    title: 'Router settings',
-                    subtitle: 'Fast access to essential router functions',
-                  ),
+                  const PageHeader(kicker: 'Control centre', title: 'Settings'),
                   const SizedBox(height: Space.lg),
                   const ConnectionStatusBanners(),
                   const RouterLedCard(),
-                  const SectionLabel('Network'),
-                  group([
-                    SettingsTile(
-                      icon: Icons.wifi_rounded,
-                      tone: Tone.info,
-                      title: 'Wi-Fi settings',
-                      subtitle: provider.isConnected
-                          ? provider.currentWifiName
-                          : 'Names, passwords, bands',
-                      onTap: () =>
-                          _push(context, const WifiSettingsDetailScreen()),
-                    ),
-                    SettingsTile(
-                      icon: Icons.wifi_tethering_rounded,
-                      tone: Tone.success,
-                      title: 'Guest Wi-Fi',
-                      subtitle: 'Visitor network access',
-                      onTap: () =>
-                          _push(context, const GuestWifiSettingsScreen()),
-                    ),
-                    SettingsTile(
-                      icon: Icons.usb_rounded,
-                      tone: Tone.neutral,
-                      title: 'USB storage',
-                      subtitle: provider.usbDisks.isEmpty
-                          ? 'Private storage and SMB shares'
-                          : '${provider.usbDisks.length} disk${provider.usbDisks.length == 1 ? '' : 's'} connected',
-                      onTap: () => _push(context, const UsbStorageScreen()),
-                    ),
-                    SettingsTile(
-                      icon: Icons.public_rounded,
-                      title: 'Internet (WAN & DNS)',
-                      subtitle: 'DHCP, static IP, PPPoE, DNS, VLAN',
-                      onTap: () => _push(context, const WanSettingsScreen()),
-                    ),
-                    SettingsTile(
-                      icon: Icons.lan_rounded,
-                      title: 'Local network (LAN & DHCP)',
-                      subtitle: 'Router address and DHCP range',
-                      onTap: () => _push(context, const LanSettingsScreen()),
-                    ),
-                  ]),
-                  const SectionLabel('Advanced'),
-                  group([
-                    SettingsTile(
-                      icon: Icons.shield_outlined,
-                      title: 'Security & NAT',
-                      subtitle: 'Firewall, UPnP, DMZ and Fast NAT',
-                      onTap: () =>
-                          _push(context, const SecuritySettingsScreen()),
-                    ),
-                    SettingsTile(
-                      icon: Icons.speed_rounded,
-                      title: 'QoS',
-                      subtitle: 'Bandwidth limits',
-                      onTap: () => _push(context, const QosSettingsScreen()),
-                    ),
-                    SettingsTile(
-                      icon: Icons.vpn_key_outlined,
-                      title: 'VPN client',
-                      subtitle: 'PPTP or L2TP/IPsec',
-                      onTap: () => _push(context, const VpnSettingsScreen()),
-                    ),
-                    SettingsTile(
-                      icon: Icons.call_split_rounded,
-                      title: 'Port forwarding',
-                      subtitle: 'Virtual servers',
-                      onTap: () => _push(context, const PortForwardingScreen()),
-                    ),
-                    SettingsTile(
-                      icon: Icons.dns_outlined,
-                      title: 'DNS servers',
-                      subtitle: 'Set in Internet (WAN & DNS)',
-                      onTap: () => _push(context, const WanSettingsScreen()),
-                    ),
-                    SettingsTile(
-                      icon: Icons.travel_explore_rounded,
-                      title: 'Dynamic DNS',
-                      subtitle: 'DDNS provider',
-                      onTap: () => _push(context, const DdnsSettingsScreen()),
-                    ),
-                  ]),
-                  const SectionLabel('System'),
-                  group([
-                    SettingsTile(
-                      icon: Icons.hub_outlined,
-                      title: 'Mesh nodes',
-                      subtitle: 'Status, clients and uptime',
-                      onTap: () => _push(context, const NodesScreen()),
-                    ),
-                    SettingsTile(
-                      icon: Icons.add_circle_outline_rounded,
-                      title: 'Set up a router',
-                      subtitle:
-                          'Provision a new or reset router over Bluetooth',
-                      onTap: () => _push(context, const SetupWizardScreen()),
-                    ),
-                    SettingsTile(
-                      icon: Icons.system_update_alt_rounded,
-                      title: 'Firmware',
-                      subtitle: 'Mesh node firmware status',
-                      onTap: () => _push(context, const FirmwareStatusScreen()),
-                    ),
-                    SettingsTile(
-                      icon: Icons.lightbulb_outline_rounded,
-                      title: 'Router LEDs',
-                      subtitle: 'LED on/off per mesh node',
-                      onTap: () =>
-                          _push(context, const NodeLedSettingsScreen()),
-                    ),
-                    SettingsTile(
-                      icon: Icons.schedule_rounded,
-                      title: 'Restart schedule',
-                      subtitle: 'Weekly restart and restart now',
-                      onTap: () =>
-                          _push(context, const RestartScheduleScreen()),
-                    ),
-                    SettingsTile(
-                      icon: Icons.restart_alt_rounded,
-                      tone: Tone.danger,
-                      title: 'Restart router',
-                      subtitle: 'Reboot all mesh nodes',
-                      onTap: () => _confirmReboot(context, provider),
-                    ),
-                    SettingsTile(
-                      icon: Icons.monitor_heart_outlined,
-                      tone: Tone.warning,
-                      title: 'Diagnostics',
-                      subtitle: 'Connection checks and exportable report',
-                      onTap: () => _push(
-                        context,
-                        DiagnosticsScreen(
-                          routerReachable: provider.isNetworkReachable,
-                          mqttPortOpen: provider.isMqttPortOpen,
+                  const SizedBox(height: Space.md),
+                  SettingsGroup(
+                    title: 'Wi-Fi & wireless',
+                    icon: Icons.wifi_rounded,
+                    summary: 'Networks and guest access',
+                    initiallyExpanded: true,
+                    tiles: [
+                      SettingsTile(
+                        icon: Icons.wifi_rounded,
+                        tone: Tone.info,
+                        title: 'Wi-Fi settings',
+                        subtitle: provider.isConnected
+                            ? provider.currentWifiName
+                            : 'Names, passwords, bands',
+                        onTap: () =>
+                            _push(context, const WifiSettingsDetailScreen()),
+                      ),
+                      SettingsTile(
+                        icon: Icons.wifi_tethering_rounded,
+                        tone: Tone.success,
+                        title: 'Guest Wi-Fi',
+                        subtitle: 'Visitor network access',
+                        onTap: () =>
+                            _push(context, const GuestWifiSettingsScreen()),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: Space.sm),
+                  SettingsGroup(
+                    title: 'Internet & local network',
+                    icon: Icons.public_rounded,
+                    summary: 'WAN, LAN, DNS and DDNS',
+                    tiles: [
+                      SettingsTile(
+                        icon: Icons.public_rounded,
+                        title: 'Internet (WAN & DNS)',
+                        subtitle: 'DHCP, static IP, PPPoE, DNS, VLAN',
+                        onTap: () => _push(context, const WanSettingsScreen()),
+                      ),
+                      SettingsTile(
+                        icon: Icons.lan_rounded,
+                        title: 'Local network (LAN & DHCP)',
+                        subtitle: 'Router address and DHCP range',
+                        onTap: () => _push(context, const LanSettingsScreen()),
+                      ),
+                      SettingsTile(
+                        icon: Icons.dns_outlined,
+                        title: 'DNS servers',
+                        subtitle: 'Set in Internet (WAN & DNS)',
+                        onTap: () => _push(context, const WanSettingsScreen()),
+                      ),
+                      SettingsTile(
+                        icon: Icons.travel_explore_rounded,
+                        title: 'Dynamic DNS',
+                        subtitle: 'DDNS provider',
+                        onTap: () => _push(context, const DdnsSettingsScreen()),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: Space.sm),
+                  SettingsGroup(
+                    title: 'Devices & mesh',
+                    icon: Icons.hub_outlined,
+                    summary: 'Mesh nodes, setup and USB storage',
+                    tiles: [
+                      SettingsTile(
+                        icon: Icons.hub_outlined,
+                        title: 'Mesh nodes',
+                        subtitle: 'Status, clients and uptime',
+                        onTap: () => _push(context, const NodesScreen()),
+                      ),
+                      SettingsTile(
+                        icon: Icons.add_circle_outline_rounded,
+                        title: 'Set up a router',
+                        subtitle:
+                            'Provision a new or reset router over Bluetooth',
+                        onTap: () => _push(context, const SetupWizardScreen()),
+                      ),
+                      SettingsTile(
+                        icon: Icons.usb_rounded,
+                        tone: Tone.neutral,
+                        title: 'USB storage',
+                        subtitle: provider.usbDisks.isEmpty
+                            ? 'Private storage and SMB shares'
+                            : '${provider.usbDisks.length} disk${provider.usbDisks.length == 1 ? '' : 's'} connected',
+                        onTap: () => _push(context, const UsbStorageScreen()),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: Space.sm),
+                  SettingsGroup(
+                    title: 'Router LEDs & system',
+                    icon: Icons.settings_suggest_outlined,
+                    summary: 'LEDs, firmware and restarts',
+                    tiles: [
+                      SettingsTile(
+                        icon: Icons.lightbulb_outline_rounded,
+                        title: 'Router LEDs',
+                        subtitle: 'LED on/off per mesh node',
+                        onTap: () =>
+                            _push(context, const NodeLedSettingsScreen()),
+                      ),
+                      SettingsTile(
+                        icon: Icons.system_update_alt_rounded,
+                        title: 'Firmware',
+                        subtitle: 'Mesh node firmware status',
+                        onTap: () =>
+                            _push(context, const FirmwareStatusScreen()),
+                      ),
+                      SettingsTile(
+                        icon: Icons.schedule_rounded,
+                        title: 'Restart schedule',
+                        subtitle: 'Weekly restart and restart now',
+                        onTap: () =>
+                            _push(context, const RestartScheduleScreen()),
+                      ),
+                      SettingsTile(
+                        icon: Icons.restart_alt_rounded,
+                        tone: Tone.danger,
+                        title: 'Restart router',
+                        subtitle: 'Reboot all mesh nodes',
+                        onTap: () => _confirmReboot(context, provider),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: Space.sm),
+                  SettingsGroup(
+                    title: 'Security & advanced',
+                    icon: Icons.shield_outlined,
+                    summary: 'Firewall, ports, QoS, VPN',
+                    tiles: [
+                      SettingsTile(
+                        icon: Icons.shield_outlined,
+                        title: 'Security & NAT',
+                        subtitle: 'Firewall, UPnP, DMZ and Fast NAT',
+                        onTap: () =>
+                            _push(context, const SecuritySettingsScreen()),
+                      ),
+                      SettingsTile(
+                        icon: Icons.call_split_rounded,
+                        title: 'Port forwarding',
+                        subtitle: 'Virtual servers',
+                        onTap: () =>
+                            _push(context, const PortForwardingScreen()),
+                      ),
+                      SettingsTile(
+                        icon: Icons.speed_rounded,
+                        title: 'QoS',
+                        subtitle: 'Bandwidth limits',
+                        onTap: () => _push(context, const QosSettingsScreen()),
+                      ),
+                      SettingsTile(
+                        icon: Icons.vpn_key_outlined,
+                        title: 'VPN client',
+                        subtitle: 'PPTP or L2TP/IPsec',
+                        onTap: () => _push(context, const VpnSettingsScreen()),
+                      ),
+                      SettingsTile(
+                        icon: Icons.backup_outlined,
+                        tone: Tone.neutral,
+                        title: 'Backup & restore',
+                        subtitle: 'No local backup command',
+                        trailing: const Icon(Icons.info_outline_rounded),
+                        onTap: () => _showUnavailable(
+                          context,
+                          'Backup & restore',
+                          'The local router command set reviewed so far has no '
+                              'safe configuration backup or restore command. '
+                              'Diagnostics export stays available for debugging state.',
                         ),
                       ),
-                    ),
-                  ]),
-                  const SectionLabel('Not available over local control'),
-                  group([
-                    SettingsTile(
-                      icon: Icons.backup_outlined,
-                      tone: Tone.neutral,
-                      title: 'Backup & restore',
-                      subtitle: 'No local backup command',
-                      trailing: const Icon(Icons.info_outline_rounded),
-                      onTap: () => _showUnavailable(
-                        context,
-                        'Backup & restore',
-                        'The local router command set reviewed so far has no '
-                            'safe configuration backup or restore command. '
-                            'Diagnostics export stays available for debugging state.',
+                      SettingsTile(
+                        icon: Icons.settings_backup_restore_rounded,
+                        tone: Tone.neutral,
+                        title: 'Factory reset',
+                        subtitle: 'Use the reset button on the router',
+                        trailing: const Icon(Icons.info_outline_rounded),
+                        onTap: () => _showUnavailable(
+                          context,
+                          'Factory reset',
+                          'Use the router reset button for a factory reset. A '
+                              'local reset command has not been confirmed from '
+                              'the original app, so this app will not send one.',
+                        ),
                       ),
-                    ),
-                    SettingsTile(
-                      icon: Icons.settings_backup_restore_rounded,
-                      tone: Tone.neutral,
-                      title: 'Factory reset',
-                      subtitle: 'Use the reset button on the router',
-                      trailing: const Icon(Icons.info_outline_rounded),
-                      onTap: () => _showUnavailable(
-                        context,
-                        'Factory reset',
-                        'Use the router reset button for a factory reset. A '
-                            'local reset command has not been confirmed from '
-                            'the original app, so this app will not send one.',
+                      SettingsTile(
+                        icon: Icons.family_restroom_rounded,
+                        tone: Tone.neutral,
+                        title: 'Parental controls',
+                        subtitle: 'Not supported by the local API',
+                        trailing: const Icon(Icons.info_outline_rounded),
+                        onTap: () => _showUnavailable(
+                          context,
+                          'Parental controls',
+                          'No local router command for schedules or content '
+                              'filtering has been verified, so this app does not '
+                              'offer parental controls.',
+                        ),
                       ),
-                    ),
-                    SettingsTile(
-                      icon: Icons.family_restroom_rounded,
-                      tone: Tone.neutral,
-                      title: 'Parental controls',
-                      subtitle: 'Not supported by the local API',
-                      trailing: const Icon(Icons.info_outline_rounded),
-                      onTap: () => _showUnavailable(
-                        context,
-                        'Parental controls',
-                        'No local router command for schedules or content '
-                            'filtering has been verified, so this app does not '
-                            'offer parental controls.',
-                      ),
-                    ),
-                  ]),
-                  const SectionLabel('About'),
-                  group([
-                    SettingsTile(
-                      icon: Icons.info_outline_rounded,
-                      title: 'About ${AppInfo.name}',
-                      subtitle: 'Version ${AppInfo.version}',
-                      onTap: () => showAboutDialog(
-                        context: context,
-                        applicationName: AppInfo.name,
-                        applicationVersion:
-                            '${AppInfo.version} (${AppInfo.build})',
-                        applicationIcon: const IconBadge(Icons.router_rounded),
-                        children: const [
-                          Text(
-                            'Local control for TaoTronics mesh routers. No cloud '
-                            'account required; the app talks to the router over '
-                            'your Wi-Fi with a verified TLS connection.',
+                    ],
+                  ),
+                  const SizedBox(height: Space.sm),
+                  SettingsGroup(
+                    title: 'Diagnostics & app',
+                    icon: Icons.monitor_heart_outlined,
+                    summary: 'Checks, report and version',
+                    tiles: [
+                      SettingsTile(
+                        icon: Icons.monitor_heart_outlined,
+                        tone: Tone.warning,
+                        title: 'Diagnostics',
+                        subtitle: 'Connection checks and exportable report',
+                        onTap: () => _push(
+                          context,
+                          DiagnosticsScreen(
+                            routerReachable: provider.isNetworkReachable,
+                            mqttPortOpen: provider.isMqttPortOpen,
                           ),
-                        ],
+                        ),
                       ),
-                    ),
-                  ]),
+                      SettingsTile(
+                        icon: Icons.info_outline_rounded,
+                        title: 'About ${AppInfo.name}',
+                        subtitle: 'Version ${AppInfo.version}',
+                        onTap: () => showAboutDialog(
+                          context: context,
+                          applicationName: AppInfo.name,
+                          applicationVersion:
+                              '${AppInfo.version} (${AppInfo.build})',
+                          applicationIcon: const IconBadge(
+                            Icons.router_rounded,
+                          ),
+                          children: const [
+                            Text(
+                              'Local control for TaoTronics mesh routers. No cloud '
+                              'account required; the app talks to the router over '
+                              'your Wi-Fi with a verified TLS connection.',
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: Space.sm),
                 ],
               ),
             ),
@@ -817,5 +834,56 @@ class _UsbStorageScreenState extends State<UsbStorageScreen> {
     final result = await provider.updateUsbStorageSettings(updated);
     if (!context.mounted) return;
     showSaveResult(context, result);
+  }
+}
+
+/// Collapsible settings section: a header row with a summary, expanding to
+/// its entries inside one card.
+class SettingsGroup extends StatelessWidget {
+  const SettingsGroup({
+    super.key,
+    required this.title,
+    required this.icon,
+    required this.summary,
+    required this.tiles,
+    this.initiallyExpanded = false,
+  });
+
+  final String title;
+  final IconData icon;
+  final String summary;
+  final List<SettingsTile> tiles;
+  final bool initiallyExpanded;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return PanelCard(
+      padding: EdgeInsets.zero,
+      child: ExpansionTile(
+        initiallyExpanded: initiallyExpanded,
+        shape: const Border(),
+        collapsedShape: const Border(),
+        tilePadding: const EdgeInsets.fromLTRB(
+          Space.lg,
+          Space.xs,
+          Space.md,
+          Space.xs,
+        ),
+        childrenPadding: const EdgeInsets.only(bottom: Space.sm),
+        leading: IconBadge(icon, tone: Tone.brand, size: 40, round: true),
+        title: Text(title, style: theme.textTheme.titleMedium),
+        subtitle: Text(
+          summary,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        children: [
+          const Divider(height: 1, indent: Space.lg, endIndent: Space.lg),
+          ...tiles,
+        ],
+      ),
+    );
   }
 }

@@ -13,7 +13,7 @@ BLE provisioning: native `tt_router/ble_provisioning` channel (`MainActivity.kt`
 
 | Before | After |
 | --- | --- |
-| Splash → Discovery → Home (bottom nav: Dashboard, Settings) | Splash → Discovery → Home shell (Home, Devices, Wi-Fi, Settings); navigation rail on wide/unfolded screens |
+| Splash → Discovery → Home (bottom nav: Dashboard, Settings) | Splash → (saved pairing: auto-connect) → Home shell (Home, Devices, Wi-Fi, Statistics, Settings); navigation rail on wide/unfolded screens |
 | Back on Home/Discovery asks "Leave app?" | Unchanged |
 
 ## Discovery screen (`discovery_screen.dart`)
@@ -164,3 +164,37 @@ Replaced: Parental "coming soon" tile → Settings → Not available entry;
 | USB storage | Home "USB storage" pill; Settings → Network |
 | Health and connection details (internet, quality, uptime, guest devices, storage, live statistics, address, certificate, saved password) | Home → Network health → Health details |
 | Advanced settings (WAN, LAN, security, QoS, VPN, port forwarding, DNS, DDNS, firmware, restart schedule, setup, not-available items, about) | Settings (each entry verified present on device) |
+
+## 1.3.0 premium pass (2026-10-17)
+
+Navigation: Home, Devices, Wi-Fi, **Statistics**, Settings (5-item floating
+bar on the cover screen; navigation rail when unfolded). Nothing was
+removed; the table records where each 1.2.x control now lives.
+
+| Control | Location in 1.3.0 |
+| --- | --- |
+| Router status, SSID, internet, device count | Home → router hero |
+| Wi-Fi password (masked; Show/Hide only when the router reports it) | Home → hero card; Wi-Fi tab → card details |
+| Main router LED | Home → tap the light on the router image, the bulb button, or the LED switch (pending → read-back); Settings → Router LED card (same provider state) |
+| Per-node LEDs | Settings → Router LED card (tap) / Router LEDs & system → Router LEDs |
+| Device search | Home header search icon (sheet); Devices tab search bar |
+| Notifications (real events only) | Home header bell |
+| Router preferences (Mesh ID, address, certificate, saved-password storage, paired routers, version) | Home header tune icon → sheet (local only, no cloud profile) |
+| Diagnostics / Restart router / Log out | Preferences sheet; Settings → Diagnostics & app / Router LEDs & system |
+| Live throughput, gauge, rolling charts (1 min / 5 min / session) | Statistics |
+| Estimated session transfer (labelled estimate, from samples) | Statistics |
+| Connected / active / known devices, most active | Statistics; Home "Network" tiles; Devices summary |
+| Wi-Fi availability (per network + guest) | Statistics |
+| Internet status, quality, WAN type, WAN IP, gateway, DNS, router response | Statistics → Internet |
+| Guest devices online, USB storage, rate source, samples, certificate, raw node rates | Statistics → Technical details |
+| Router uptime, mesh nodes, Wi-Fi on count | Home "Network" tiles |
+| Per-network on/off, name/password edit, Show/Copy, security | Wi-Fi tab → compact card (switch) → expand for details, Edit, Show |
+| Edit both bands together, Guest Wi-Fi | Wi-Fi tab; Settings → Wi-Fi & wireless |
+| Devices: summary, search, filters, sort, details sheet | Devices tab (sort is the icon in the search bar) |
+| WAN, LAN, DNS, DDNS | Settings → Internet & local network |
+| Mesh nodes, Set up a router, USB storage | Settings → Devices & mesh |
+| Firmware, Restart schedule, Restart router | Settings → Router LEDs & system |
+| Security & NAT, Port forwarding, QoS, VPN, Not-available items (backup, factory reset, parental) | Settings → Security & advanced |
+| About | Settings → Diagnostics & app |
+
+Protocol reference for other clients: `docs/ROUTER_PROTOCOL_HANDOFF.md`.

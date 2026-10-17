@@ -12,18 +12,20 @@ This app provides local network control for TaoTronics AC3000 mesh routers witho
 
 - **Router discovery**: finds TaoTronics mesh routers on the local network and reconnects automatically
 - **Verified local control**: MQTT over TLS; the router's certificate is cryptographically checked against the TaoTronics CA
-- **Network overview**: internet status, live throughput (router WAN rate or connected-device sum, always labelled), devices, mesh nodes, router uptime, USB storage
+- **Home**: router hero with the LED shown on the router itself (tap the light; the state is confirmed by reading the router back), SSID, masked password, internet status and device count; device search, notifications and local router preferences in the header
+- **Statistics**: live gauge, rolling download/upload charts (1 min / 5 min / session), estimated session transfer (labelled), active devices, Wi-Fi availability, internet source (WAN type, IP, gateway) and router response time
 - **Devices**: search, filters (online / active / offline), sorting and per-device details reported by the router
 - **Wi-Fi**: every network the router reports gets its own card with an on/off switch, name/password editor and masked password; saves keep all other router fields and are confirmed by reading the router back after it reconnects
 - **Router LEDs**: main-router LED switch on Home and Settings, per-node LED control
-- **Settings**: guest Wi-Fi, WAN/DNS, LAN/DHCP, firewall, UPnP/DMZ, Fast NAT, QoS, VPN client, port forwarding, DDNS, LEDs, restart schedule, USB storage
+- **Settings**: six expandable groups — guest Wi-Fi, WAN/DNS, LAN/DHCP, firewall, UPnP/DMZ, Fast NAT, QoS, VPN client, port forwarding, DDNS, LEDs, restart schedule, USB storage
 - **Setup**: Bluetooth provisioning of new or reset routers, and local pairing
 - **Diagnostics**: measured gateway latency and router response time, plain-language findings, exportable report (passwords excluded)
-- **Smart-home design**: charcoal and slate with indigo and amber accents, floating navigation, light and dark mode, folded and unfolded layouts (Galaxy Z Fold), large text
+- **Design**: near-black layered surfaces with an icy-blue accent (amber only for the LED), five-item floating navigation, light and dark mode, folded and unfolded layouts (Galaxy Z Fold), large text
+- **Protocol handoff**: [`docs/ROUTER_PROTOCOL_HANDOFF.md`](docs/ROUTER_PROTOCOL_HANDOFF.md) documents the local protocol for other clients (e.g. a Raspberry Pi)
 
-| Home | Wi-Fi | Devices | Settings |
-| --- | --- | --- | --- |
-| ![Home](docs/screenshots/1-home.png) | ![Wi-Fi](docs/screenshots/2-wifi.png) | ![Devices](docs/screenshots/3-devices.png) | ![Settings](docs/screenshots/4-settings.png) |
+| Home | Wi-Fi | Devices | Statistics | Settings |
+| --- | --- | --- | --- | --- |
+| ![Home](docs/screenshots/1-home.png) | ![Wi-Fi](docs/screenshots/2-wifi.png) | ![Devices](docs/screenshots/3-devices.png) | ![Statistics](docs/screenshots/4-statistics.png) | ![Settings](docs/screenshots/5-settings.png) |
 
 ## Legal Disclaimer
 

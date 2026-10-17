@@ -530,8 +530,20 @@ class SettingsTile extends StatelessWidget {
     return ListTile(
       enabled: enabled,
       leading: IconBadge(icon, tone: enabled ? tone : Tone.neutral, size: 40),
-      title: Text(title),
-      subtitle: subtitle == null ? null : Text(subtitle!),
+      title: Text(
+        title,
+        style: Theme.of(
+          context,
+        ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
+      ),
+      subtitle: subtitle == null
+          ? null
+          : Text(
+              subtitle!,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
       trailing:
           trailing ??
           (onTap == null ? null : const Icon(Icons.chevron_right_rounded)),
@@ -741,6 +753,114 @@ class ActionTile extends StatelessWidget {
                   (onTap == null
                       ? const SizedBox.shrink()
                       : Icon(Icons.chevron_right_rounded, color: muted)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Round icon button used in screen headers.
+class HeaderIconButton extends StatelessWidget {
+  const HeaderIconButton({
+    super.key,
+    required this.icon,
+    required this.tooltip,
+    this.onPressed,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Semantics(
+      button: true,
+      label: tooltip,
+      child: ExcludeSemantics(
+        child: Tooltip(
+          message: tooltip,
+          child: Material(
+            color: scheme.surface,
+            shape: CircleBorder(
+              side: BorderSide(
+                color: scheme.outlineVariant.withValues(alpha: 0.6),
+              ),
+            ),
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: onPressed,
+              child: SizedBox(
+                width: 44,
+                height: 44,
+                child: Icon(icon, size: 21, color: scheme.onSurface),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Compact number tile: icon, value (or "—" when not reported) and label.
+class StatTile extends StatelessWidget {
+  const StatTile({
+    super.key,
+    required this.icon,
+    required this.value,
+    required this.label,
+    this.tone = Tone.brand,
+    this.onTap,
+  });
+
+  final IconData icon;
+  final String? value;
+  final String label;
+  final Tone tone;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Semantics(
+      container: true,
+      button: onTap != null,
+      label: '$label: ${value ?? 'not available'}',
+      child: ExcludeSemantics(
+        child: PanelCard(
+          onTap: onTap,
+          padding: const EdgeInsets.all(Space.lg),
+          child: Row(
+            children: [
+              IconBadge(icon, tone: tone, size: 36, round: true),
+              const SizedBox(width: Space.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        value ?? '—',
+                        style: theme.textTheme.titleLarge,
+                      ),
+                    ),
+                    Text(
+                      label,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
         ),

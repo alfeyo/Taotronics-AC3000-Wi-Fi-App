@@ -95,10 +95,16 @@ void main() {
 
     expect(find.byType(WifiNetworkCard), findsNWidgets(3));
     expect(find.byType(Switch), findsNWidgets(3));
-    expect(find.text('3 networks reported'), findsOneWidget);
+    expect(find.text('3 networks'), findsOneWidget);
     expect(find.text('2 on'), findsOneWidget);
-    expect(find.text('2 names broadcasting'), findsOneWidget);
-    expect(find.text('Off · settings kept'), findsOneWidget);
+    expect(find.text('2 names live'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(WifiNetworkCard),
+        matching: find.text('Off'),
+      ),
+      findsOneWidget,
+    );
 
     // Cancelling the confirmation sends nothing.
     await tester.tap(find.byType(Switch).at(1));
