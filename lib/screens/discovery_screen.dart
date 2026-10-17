@@ -7,6 +7,8 @@ import 'package:network_info_plus/network_info_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../providers/router_provider.dart';
 import '../services/network_probe.dart';
+import '../theme/app_theme.dart';
+import '../widgets/app_widgets.dart';
 import 'home_screen.dart';
 import 'setup_wizard_screen.dart';
 import 'diagnostics_screen.dart';
@@ -32,6 +34,7 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
   bool _routerReachable = false;
   bool _mqttPortOpen = false;
   String? _errorMessage;
+  bool _permissionBlocked = false;
 
   static const String _defaultGateway = '192.168.10.1';
   static const int _mqttPort = 25678;
@@ -47,12 +50,8 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
             onPressed: () => Navigator.pop(context, false),
             child: const Text('Stay'),
           ),
-          ElevatedButton(
+          FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.deepOrange,
-              foregroundColor: Colors.white,
-            ),
             child: const Text('Leave'),
           ),
         ],
@@ -120,6 +119,7 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
 
   Future<void> _requestPermissions() async {
     final locationStatus = await Permission.locationWhenInUse.request();
+    _update(() => _permissionBlocked = locationStatus.isPermanentlyDenied);
     if (!locationStatus.isGranted) {
       _update(
         () => _errorMessage = locationStatus.isPermanentlyDenied
@@ -200,33 +200,56 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
         if (!didPop) _confirmExit();
       },
       child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Find your router'),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.monitor_heart_outlined),
+              tooltip: 'Diagnostics',
+              onPressed: _navigateToDiagnostics,
+            ),
+          ],
+        ),
         body: Consumer<RouterProvider>(
           builder: (context, provider, child) {
             return RefreshIndicator(
               onRefresh: _startDiscovery,
-              child: CustomScrollView(
+              child: ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
-                slivers: [
-                  _buildHeroHeader(),
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 18, 16, 28),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          _buildStatusCard(),
-                          const SizedBox(height: 14),
-                          _buildNetworkCard(),
-                          const SizedBox(height: 14),
-                          _buildConnectionCard(provider),
-                          if (_errorMessage != null) ...[
-                            const SizedBox(height: 14),
-                            _buildErrorCard(),
-                          ],
-                          const SizedBox(height: 18),
-                          _buildActionButtons(provider),
+                padding: const EdgeInsets.fromLTRB(
+                  Space.lg,
+                  Space.sm,
+                  Space.lg,
+                  Space.xxl,
+                ),
+                children: [
+                  ContentWidth(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _buildStatusCard(),
+                        const SizedBox(height: Space.md),
+                        _buildNetworkCard(),
+                        const SizedBox(height: Space.md),
+                        _buildConnectionCard(provider),
+                        if (_errorMessage != null) ...[
+                          const SizedBox(height: Space.md),
+                          InfoBanner(
+                            tone: Tone.warning,
+                            icon: Icons.location_off_outlined,
+                            title: 'Location permission',
+                            message: _errorMessage,
+                            action: _permissionBlocked
+                                ? TextButton(
+                                    onPressed: openAppSettings,
+                                    child: const Text('Open app settings'),
+                                  )
+                                : null,
+                          ),
                         ],
-                      ),
+                        const SizedBox(height: Space.xl),
+                        _buildActionButtons(provider),
+                      ],
                     ),
                   ),
                 ],
@@ -238,93 +261,78 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
     );
   }
 
-  Widget _buildHeroHeader() {
-    return SliverAppBar(
-      expandedHeight: 200,
-      pinned: true,
-      backgroundColor: const Color(0xffc14524),
-      foregroundColor: Colors.white,
-      elevation: 0,
-      systemOverlayStyle: SystemUiOverlayStyle.light,
-      title: const Text(
-        'Router Discovery',
-        style: TextStyle(fontWeight: FontWeight.w700),
-      ),
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.bug_report_outlined),
-          tooltip: 'Diagnostics',
-          onPressed: _navigateToDiagnostics,
-        ),
-      ],
-      flexibleSpace: FlexibleSpaceBar(
-        background: Stack(
-          fit: StackFit.expand,
+  (String, String, Tone, IconData) get _state {
+    if (_isScanning) {
+      return (
+        'Looking for your router…',
+        'Checking the gateway and the router control port.',
+        Tone.info,
+        Icons.radar_rounded,
+      );
+    }
+    if (_routerReachable && _mqttPortOpen) {
+      return (
+        'Router found',
+        'The router is reachable and accepting local control.',
+        Tone.success,
+        Icons.check_circle_rounded,
+      );
+    }
+    if (_routerReachable) {
+      return (
+        'Router found, control port closed',
+        'The router answered but is not accepting local control yet. Pair it '
+            'or wait for it to finish starting.',
+        Tone.warning,
+        Icons.lock_outline_rounded,
+      );
+    }
+    return (
+      'Router not reachable',
+      "Connect this phone to the router's Wi-Fi and try again.",
+      Tone.danger,
+      Icons.wifi_off_rounded,
+    );
+  }
+
+  Widget _buildStatusCard() {
+    final (title, body, tone, icon) = _state;
+    final theme = Theme.of(context);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(Space.lg),
+        child: Row(
           children: [
-            Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    Color(0xfff37a4d),
-                    Color(0xffe85d2f),
-                    Color(0xffc14524),
+            _isScanning
+                ? SizedBox(
+                    width: 52,
+                    height: 52,
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 3,
+                        color: context.tone(tone).foreground,
+                      ),
+                    ),
+                  )
+                : IconBadge(icon, tone: tone, size: 52),
+            const SizedBox(width: Space.lg),
+            Expanded(
+              child: Semantics(
+                liveRegion: true,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: theme.textTheme.titleMedium),
+                    const SizedBox(height: Space.xs),
+                    Text(
+                      body,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
                   ],
                 ),
-              ),
-            ),
-            Positioned(
-              right: -50,
-              top: -30,
-              child: Container(
-                width: 220,
-                height: 220,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white.withValues(alpha: 0.08),
-                ),
-              ),
-            ),
-            Positioned(
-              right: 80,
-              top: 70,
-              child: Container(
-                width: 90,
-                height: 90,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white.withValues(alpha: 0.07),
-                ),
-              ),
-            ),
-            Positioned(
-              left: 20,
-              bottom: 50,
-              right: 20,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    _heroTitle(),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 22,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -0.3,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _heroSubtitle(),
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.9),
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
               ),
             ),
           ],
@@ -333,166 +341,16 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
     );
   }
 
-  String _heroTitle() {
-    if (_isScanning) return 'Looking for your router…';
-    if (_routerReachable && _mqttPortOpen) return 'Router ready';
-    if (_routerReachable) return 'Pairing required';
-    return 'Router not reachable';
-  }
-
-  String _heroSubtitle() {
-    if (_isScanning) return 'Checking gateway and MQTT port';
-    if (_routerReachable && _mqttPortOpen) {
-      return 'Tap continue to open the dashboard';
-    }
-    if (_routerReachable) return 'Router found, but needs authentication';
-    return "Connect to the router's Wi-Fi and try again";
-  }
-
-  Widget _statusBadge() {
-    Color color;
-    String label;
-    IconData icon;
-    if (_isScanning) {
-      color = Colors.blueAccent;
-      label = 'Scanning';
-      icon = Icons.radar_rounded;
-    } else if (_routerReachable && _mqttPortOpen) {
-      color = const Color(0xff10b981);
-      label = 'Online';
-      icon = Icons.check_circle_rounded;
-    } else if (_routerReachable) {
-      color = const Color(0xfff59e0b);
-      label = 'Locked';
-      icon = Icons.lock_outline_rounded;
-    } else {
-      color = const Color(0xffef4444);
-      label = 'Offline';
-      icon = Icons.wifi_off_rounded;
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: color, size: 14),
-          const SizedBox(width: 5),
-          Text(
-            label,
-            style: TextStyle(
-              color: color,
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatusCard() {
-    Color color;
-    IconData icon;
-    String title;
-    String body;
-
-    if (_isScanning) {
-      color = Colors.blueAccent;
-      icon = Icons.radar_rounded;
-      title = 'Scanning network';
-      body = 'Checking gateway reachability and MQTT broker availability.';
-    } else if (_routerReachable && _mqttPortOpen) {
-      color = const Color(0xff10b981);
-      icon = Icons.check_circle_rounded;
-      title = 'Router found';
-      body =
-          'Gateway is reachable and the MQTT broker is accepting connections.';
-    } else if (_routerReachable) {
-      color = const Color(0xfff59e0b);
-      icon = Icons.warning_amber_rounded;
-      title = 'Authentication required';
-      body =
-          'Router responded, but the MQTT broker is locked. Pair the router to continue.';
-    } else {
-      color = const Color(0xffef4444);
-      icon = Icons.error_outline_rounded;
-      title = 'Router not reachable';
-      body =
-          "We can't reach the gateway. Make sure you're on the router's Wi-Fi.";
-    }
-
-    return _cleanCard(
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.14),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: _isScanning
-                ? Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.6,
-                      valueColor: AlwaysStoppedAnimation<Color>(color),
-                    ),
-                  )
-                : Icon(icon, color: color, size: 26),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        title,
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                    _statusBadge(),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  body,
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    color: Colors.grey.shade700,
-                    height: 1.35,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildNetworkCard() {
-    return _cleanCard(
+    return SectionCard(
+      title: 'Your network',
+      icon: Icons.wifi_rounded,
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _cardHeader(Icons.wifi_rounded, 'Your network'),
-          const SizedBox(height: 14),
           _kvRow(Icons.network_wifi_rounded, 'Wi-Fi', _cleanSsid(_wifiName)),
-          const Divider(height: 22),
-          _kvRow(Icons.smartphone_rounded, 'Device IP', _wifiIP ?? '—'),
-          const Divider(height: 22),
+          const Divider(height: Space.xl),
+          _kvRow(Icons.smartphone_rounded, 'Phone IP', _wifiIP ?? '—'),
+          const Divider(height: Space.xl),
           _kvRow(Icons.router_rounded, 'Gateway', _gatewayIP ?? '—'),
         ],
       ),
@@ -500,64 +358,51 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
   }
 
   String _cleanSsid(String? name) {
-    if (name == null || name.isEmpty) return '—';
+    if (name == null || name.isEmpty || name == '<unknown ssid>') return '—';
     return name.replaceAll('"', '');
   }
 
   Widget _buildConnectionCard(RouterProvider provider) {
-    return _cleanCard(
+    return SectionCard(
+      title: 'Connection checks',
+      icon: Icons.health_and_safety_outlined,
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _cardHeader(Icons.health_and_safety_rounded, 'Connection checks'),
-          const SizedBox(height: 14),
+          _checkRow('Router discovered', provider.isRouterFound),
+          const SizedBox(height: Space.sm),
           _checkRow('Gateway reachable', _routerReachable),
-          const SizedBox(height: 10),
-          _checkRow('MQTT port 25678', _mqttPortOpen),
-          const SizedBox(height: 10),
+          const SizedBox(height: Space.sm),
+          _checkRow('Control port $_mqttPort open', _mqttPortOpen),
+          const SizedBox(height: Space.sm),
           _checkRow(
-            'Authentication',
+            'Signed in',
             provider.isConnected,
-            pendingLabel: 'Required',
+            pendingLabel: provider.isReconnecting ? 'Connecting' : 'Required',
           ),
         ],
       ),
     );
   }
 
-  Widget _cardHeader(IconData icon, String title) {
-    return Row(
-      children: [
-        Icon(icon, size: 18, color: Colors.deepOrange),
-        const SizedBox(width: 8),
-        Text(
-          title,
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w700,
-            letterSpacing: -0.1,
-          ),
-        ),
-      ],
-    );
-  }
-
   Widget _kvRow(IconData icon, String label, String value) {
+    final theme = Theme.of(context);
     return Row(
       children: [
-        Icon(icon, size: 16, color: Colors.grey.shade500),
-        const SizedBox(width: 10),
+        Icon(icon, size: 18, color: theme.colorScheme.onSurfaceVariant),
+        const SizedBox(width: Space.md),
         Text(
           label,
-          style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
         ),
-        const Spacer(),
-        Flexible(
+        const SizedBox(width: Space.md),
+        Expanded(
           child: Text(
             value,
             textAlign: TextAlign.right,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
+            style: theme.textTheme.titleSmall,
           ),
         ),
       ],
@@ -565,174 +410,87 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
   }
 
   Widget _checkRow(String label, bool status, {String? pendingLabel}) {
-    final color = status ? const Color(0xff10b981) : const Color(0xffef4444);
+    final waiting = _isScanning && pendingLabel == null;
     return Row(
       children: [
-        Container(
-          width: 22,
-          height: 22,
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.14),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(
-            status ? Icons.check_rounded : Icons.close_rounded,
-            size: 14,
-            color: color,
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(child: Text(label, style: const TextStyle(fontSize: 13.5))),
-        Text(
-          status ? 'OK' : (pendingLabel ?? 'Failed'),
-          style: TextStyle(
-            color: color,
-            fontWeight: FontWeight.w700,
-            fontSize: 12.5,
-          ),
+        Expanded(child: Text(label)),
+        StatusPill(
+          label: waiting
+              ? 'Checking'
+              : status
+              ? 'OK'
+              : (pendingLabel ?? 'Failed'),
+          tone: waiting
+              ? Tone.neutral
+              : status
+              ? Tone.success
+              : pendingLabel != null
+              ? Tone.warning
+              : Tone.danger,
+          icon: waiting
+              ? Icons.more_horiz_rounded
+              : status
+              ? Icons.check_rounded
+              : Icons.close_rounded,
         ),
       ],
-    );
-  }
-
-  Widget _cleanCard({required Widget child, Color? bg, Color? border}) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: bg ?? Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: border ?? Colors.black.withValues(alpha: 0.05),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.025),
-            blurRadius: 14,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: child,
-    );
-  }
-
-  Widget _buildErrorCard() {
-    return _cleanCard(
-      bg: const Color(0xfffff1f0),
-      border: const Color(0xffffd6d3),
-      child: Row(
-        children: [
-          const Icon(
-            Icons.error_outline_rounded,
-            color: Color(0xffd32f2f),
-            size: 22,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              _errorMessage!,
-              style: const TextStyle(
-                color: Color(0xff8a1f1f),
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 
   Widget _buildActionButtons(RouterProvider provider) {
+    final children = <Widget>[];
     if (_isScanning) {
-      return _cleanCard(
-        child: Row(
-          children: [
-            const SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(strokeWidth: 2.4),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Text(
-                'Scanning…',
-                style: TextStyle(
-                  color: Colors.grey.shade700,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
+      children.add(
+        const FilledButton(onPressed: null, child: Text('Scanning…')),
+      );
+    } else if (_routerReachable && _mqttPortOpen || provider.isConnected) {
+      children.add(
+        FilledButton.icon(
+          onPressed: _navigateToDashboard,
+          icon: const Icon(Icons.arrow_forward_rounded),
+          label: const Text('Continue to dashboard'),
         ),
       );
+    } else if (_routerReachable) {
+      children.addAll([
+        FilledButton.icon(
+          onPressed: _navigateToPairing,
+          icon: const Icon(Icons.link_rounded),
+          label: const Text('Pair router'),
+        ),
+        const SizedBox(height: Space.sm),
+        OutlinedButton.icon(
+          onPressed: _navigateToDashboard,
+          icon: const Icon(Icons.visibility_outlined),
+          label: const Text('Continue in read-only mode'),
+        ),
+      ]);
+    } else {
+      children.addAll([
+        FilledButton.icon(
+          onPressed: _startDiscovery,
+          icon: const Icon(Icons.refresh_rounded),
+          label: const Text('Retry scan'),
+        ),
+        const SizedBox(height: Space.sm),
+        OutlinedButton.icon(
+          onPressed: _navigateToPairing,
+          icon: const Icon(Icons.add_circle_outline_rounded),
+          label: const Text('Set up a new router'),
+        ),
+      ]);
     }
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (_routerReachable && _mqttPortOpen) ...[
-          _primaryButton(
-            label: 'Continue to Dashboard',
-            icon: Icons.arrow_forward_rounded,
-            onTap: _navigateToDashboard,
-          ),
-        ] else if (_routerReachable) ...[
-          _primaryButton(
-            label: 'Pair Router',
-            icon: Icons.link_rounded,
-            onTap: _navigateToPairing,
-          ),
-          const SizedBox(height: 10),
-          _secondaryButton(
-            label: 'Continue in Read-Only Mode',
-            icon: Icons.visibility_outlined,
-            onTap: _navigateToDashboard,
-          ),
-        ] else ...[
-          _primaryButton(
-            label: 'Retry Scan',
-            icon: Icons.refresh_rounded,
-            onTap: _startDiscovery,
-          ),
-        ],
-        const SizedBox(height: 8),
+        ...children,
+        const SizedBox(height: Space.sm),
         TextButton.icon(
           onPressed: _navigateToDiagnostics,
-          icon: const Icon(Icons.bug_report_outlined, size: 18),
+          icon: const Icon(Icons.monitor_heart_outlined, size: 18),
           label: const Text('View diagnostics'),
         ),
       ],
-    );
-  }
-
-  Widget _primaryButton({
-    required String label,
-    required IconData icon,
-    required VoidCallback onTap,
-  }) {
-    return SizedBox(
-      height: 52,
-      child: ElevatedButton.icon(
-        onPressed: onTap,
-        icon: Icon(icon, size: 19),
-        label: Text(label, style: const TextStyle(fontSize: 15)),
-      ),
-    );
-  }
-
-  Widget _secondaryButton({
-    required String label,
-    required IconData icon,
-    required VoidCallback onTap,
-  }) {
-    return SizedBox(
-      height: 52,
-      child: OutlinedButton.icon(
-        onPressed: onTap,
-        icon: Icon(icon, size: 19),
-        label: Text(label, style: const TextStyle(fontSize: 15)),
-      ),
     );
   }
 }

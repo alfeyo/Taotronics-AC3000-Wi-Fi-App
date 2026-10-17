@@ -187,6 +187,25 @@ void main() {
     await tester.runAsync(() async => provider.dispose());
   });
 
+  for (final tab in HomeTab.values) {
+    testWidgets('${tab.label} tab survives 1.6x text on the cover screen', (
+      tester,
+    ) async {
+      await _setSize(tester, const Size(344, 780));
+      final provider = await _connectedProvider(tester);
+      tester.platformDispatcher.textScaleFactorTestValue = 1.6;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await tester.pumpWidget(_app(provider, HomeScreen(initialTab: tab)));
+      await tester.pump();
+      final scaler = MediaQuery.textScalerOf(
+        tester.element(find.byType(NavigationBar)),
+      );
+      expect(scaler.scale(10), closeTo(16, 0.01));
+      expect(tester.takeException(), isNull);
+      await tester.runAsync(() async => provider.dispose());
+    });
+  }
+
   testWidgets('dark theme renders the dashboard', (tester) async {
     await _setSize(tester, const Size(400, 900));
     final provider = await _connectedProvider(tester);

@@ -15,6 +15,7 @@ import '../widgets/feedback.dart';
 import 'diagnostics_screen.dart';
 import 'nodes_screen.dart';
 import 'router_settings_screens.dart';
+import 'setup_wizard_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -141,6 +142,12 @@ class SettingsScreen extends StatelessWidget {
                     title: 'Mesh nodes',
                     subtitle: 'Status, clients and uptime',
                     onTap: () => _push(context, const NodesScreen()),
+                  ),
+                  SettingsTile(
+                    icon: Icons.add_circle_outline_rounded,
+                    title: 'Set up a router',
+                    subtitle: 'Provision a new or reset router over Bluetooth',
+                    onTap: () => _push(context, const SetupWizardScreen()),
                   ),
                   SettingsTile(
                     icon: Icons.system_update_alt_rounded,

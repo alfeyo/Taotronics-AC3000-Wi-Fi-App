@@ -5,9 +5,13 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:network_info_plus/network_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../app_info.dart';
 import '../providers/router_provider.dart';
+import '../services/network_probe.dart';
 import '../services/router_certificate_verifier.dart';
-import '../widgets/ui_components.dart';
+import '../theme/app_theme.dart';
+import '../utils/format.dart';
+import '../widgets/app_widgets.dart';
 
 class DiagnosticsScreen extends StatefulWidget {
   final String? wifiName;
@@ -30,8 +34,12 @@ class DiagnosticsScreen extends StatefulWidget {
 }
 
 class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
+  static const _mqttPort = 25678;
+  static const _defaultGateway = '192.168.10.1';
+
   final List<DiagnosticEntry> _diagnosticLog = [];
   final NetworkInfo _networkInfo = NetworkInfo();
+  final NetworkProbe _probe = NetworkProbe();
   bool _isRunning = false;
   bool _isExporting = false;
 
@@ -42,6 +50,9 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
   bool _mqttPortOpen = false;
   bool _mqttAuthenticated = false;
   String? _lastError;
+  Duration? _gatewayLatency;
+  Duration? _routerResponse;
+  DateTime? _lastRun;
 
   @override
   void initState() {
@@ -98,9 +109,11 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
   }
 
   Future<void> _runFullDiagnostics() async {
-    setState(() => _isRunning = true);
-    _diagnosticLog.clear();
-    _lastError = null;
+    setState(() {
+      _isRunning = true;
+      _diagnosticLog.clear();
+      _lastError = null;
+    });
 
     _addEntry(DiagnosticType.info, 'Starting full diagnostics...');
 
@@ -109,18 +122,30 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
     await _checkGatewayConnectivity();
     await _checkMqttPort();
     await _checkDiscoveryPort();
+    await _measureRouterResponse();
     _checkRouterProvider();
 
     _addEntry(DiagnosticType.info, 'Diagnostics complete');
-    if (mounted) setState(() => _isRunning = false);
+    if (mounted) {
+      setState(() {
+        _isRunning = false;
+        _lastRun = DateTime.now();
+      });
+    }
   }
 
   Future<void> _getNetworkInfo() async {
     _addEntry(DiagnosticType.info, 'Getting network info...');
     try {
-      _wifiName = await _networkInfo.getWifiName();
-      _wifiIP = await _networkInfo.getWifiIP();
-      _gatewayIP = await _networkInfo.getWifiGatewayIP() ?? '192.168.10.1';
+      final name = await _networkInfo.getWifiName();
+      final ip = await _networkInfo.getWifiIP();
+      final gateway = await _networkInfo.getWifiGatewayIP();
+      if (!mounted) return;
+      setState(() {
+        _wifiName = name;
+        _wifiIP = ip;
+        _gatewayIP = gateway ?? _defaultGateway;
+      });
 
       _addEntry(DiagnosticType.network, 'WiFi SSID: ${_wifiName ?? "Unknown"}');
       _addEntry(DiagnosticType.network, 'Device IP: ${_wifiIP ?? "Unknown"}');
@@ -130,7 +155,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
       );
     } catch (e) {
       _addEntry(DiagnosticType.warning, 'Network info error: $e');
-      _gatewayIP = '192.168.10.1';
+      _gatewayIP = _defaultGateway;
     }
   }
 
@@ -155,55 +180,65 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
   }
 
   Future<void> _checkGatewayConnectivity() async {
-    final gateway = _gatewayIP ?? '192.168.10.1';
+    final gateway = _gatewayIP ?? _defaultGateway;
     _addEntry(
       DiagnosticType.info,
       'Testing gateway connectivity ($gateway)...',
     );
 
-    try {
-      final socket = await Socket.connect(
+    var reachable = false;
+    for (final port in const [80, 443]) {
+      final outcome = await _probe.probe(
         gateway,
-        80,
+        port,
         timeout: const Duration(seconds: 5),
       );
-      socket.destroy();
-      _addEntry(DiagnosticType.success, 'HTTP port (80): Open');
-      _routerReachable = true;
-    } catch (e) {
-      _addEntry(DiagnosticType.warning, 'HTTP port (80): Closed/Timeout');
+      final ok =
+          outcome == ProbeOutcome.open || outcome == ProbeOutcome.refused;
+      reachable |= ok;
+      _addEntry(
+        ok ? DiagnosticType.success : DiagnosticType.warning,
+        'TCP $port: ${switch (outcome) {
+          ProbeOutcome.open => 'open',
+          ProbeOutcome.refused => 'closed (host answered)',
+          ProbeOutcome.timeout => 'no answer (timeout)',
+          ProbeOutcome.error => 'unreachable',
+        }}',
+      );
     }
 
-    try {
-      final socket = await Socket.connect(
-        gateway,
-        443,
-        timeout: const Duration(seconds: 5),
-      );
-      socket.destroy();
-      _addEntry(DiagnosticType.success, 'HTTPS port (443): Open');
-      _routerReachable = true;
-    } catch (e) {
-      _addEntry(DiagnosticType.warning, 'HTTPS port (443): Closed/Timeout');
-    }
+    final latency = await _probe.handshakeTime(gateway, _mqttPort);
+    if (!mounted) return;
+    setState(() {
+      _routerReachable = reachable || latency != null;
+      _gatewayLatency = latency;
+    });
+    _addEntry(
+      latency == null ? DiagnosticType.warning : DiagnosticType.success,
+      latency == null
+          ? 'Gateway latency: no answer'
+          : 'Gateway latency (TCP handshake): ${latency.inMilliseconds} ms',
+    );
   }
 
   Future<void> _checkMqttPort() async {
-    final gateway = _gatewayIP ?? '192.168.10.1';
-    _addEntry(DiagnosticType.info, 'Testing MQTT port (25678)...');
+    final gateway = _gatewayIP ?? _defaultGateway;
+    _addEntry(DiagnosticType.info, 'Testing MQTT port ($_mqttPort)...');
 
-    try {
-      final socket = await Socket.connect(
-        gateway,
-        25678,
-        timeout: const Duration(seconds: 5),
+    final outcome = await _probe.probe(
+      gateway,
+      _mqttPort,
+      timeout: const Duration(seconds: 5),
+    );
+    final open = outcome == ProbeOutcome.open;
+    if (mounted) setState(() => _mqttPortOpen = open);
+    if (open) {
+      _addEntry(DiagnosticType.success, 'MQTT port ($_mqttPort): Open');
+    } else {
+      _addEntry(
+        DiagnosticType.error,
+        'MQTT port ($_mqttPort): ${outcome.name}',
       );
-      socket.destroy();
-      _addEntry(DiagnosticType.success, 'MQTT port (25678): Open');
-      _mqttPortOpen = true;
-    } catch (e) {
-      _addEntry(DiagnosticType.error, 'MQTT port (25678): $e');
-      _mqttPortOpen = false;
       _lastError = 'MQTT port closed or filtered';
     }
   }
@@ -220,7 +255,25 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
     }
   }
 
+  Future<void> _measureRouterResponse() async {
+    final provider = context.read<RouterProvider>();
+    if (!provider.isConnected) {
+      _addEntry(DiagnosticType.info, 'Router response time: not connected');
+      return;
+    }
+    final elapsed = await provider.measureRouterResponse();
+    if (!mounted) return;
+    setState(() => _routerResponse = elapsed);
+    _addEntry(
+      elapsed == null ? DiagnosticType.warning : DiagnosticType.success,
+      elapsed == null
+          ? 'Router response time: no answer within 4 s'
+          : 'Router response time (MQTT round trip): ${elapsed.inMilliseconds} ms',
+    );
+  }
+
   void _checkRouterProvider() {
+    if (!mounted) return;
     _addEntry(DiagnosticType.info, 'Checking router provider state...');
 
     final provider = context.read<RouterProvider>();
@@ -246,11 +299,10 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
       final meshId = provider.currentRouter!.meshId;
       _addEntry(DiagnosticType.info, 'Current router: $meshId');
       if (provider.authService.isPaired(meshId)) {
+        final secure = provider.authService.isPasswordStoredSecurely(meshId);
         _addEntry(
-          provider.authService.isPasswordStoredSecurely(meshId)
-              ? DiagnosticType.success
-              : DiagnosticType.warning,
-          provider.authService.isPasswordStoredSecurely(meshId)
+          secure ? DiagnosticType.success : DiagnosticType.warning,
+          secure
               ? 'Router password: Android Keystore storage'
               : 'Router password: secure storage unavailable, kept in app preferences',
         );
@@ -287,6 +339,97 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
     );
   }
 
+  /// Plain-language findings derived from the measured state.
+  List<_Finding> _findings(RouterProvider provider) {
+    final findings = <_Finding>[];
+    final gateway = _gatewayIP;
+    final verdict = provider.certificateVerdict;
+
+    if (verdict != null && !verdict.trusted) {
+      findings.add(
+        const _Finding(
+          Tone.danger,
+          'Router identity could not be verified',
+          'The device at the router address presented a certificate that is '
+              'not signed by TaoTronics. The app refuses to connect. Make sure '
+              'you are on your own router\'s Wi-Fi.',
+        ),
+      );
+    }
+    if (gateway != null && !gateway.startsWith('192.168.10.')) {
+      findings.add(
+        _Finding(
+          Tone.warning,
+          'Phone may not be on the router\'s Wi-Fi',
+          'The phone\'s gateway is $gateway; TaoTronics routers usually use '
+              '192.168.10.1. Join the router Wi-Fi and run diagnostics again.',
+        ),
+      );
+    }
+    if (!_routerReachable && _lastRun != null) {
+      findings.add(
+        const _Finding(
+          Tone.danger,
+          'Router does not answer',
+          'Check that the router is powered on and that the phone is '
+              'connected to its Wi-Fi (not mobile data).',
+        ),
+      );
+    } else if (_routerReachable && !_mqttPortOpen && _lastRun != null) {
+      findings.add(
+        const _Finding(
+          Tone.warning,
+          'Control port is closed',
+          'The router answers but does not accept local control on port '
+              '25678. It may still be starting up; wait a minute and retry.',
+        ),
+      );
+    }
+    if (provider.isConnected &&
+        provider.hasInternetStatus &&
+        !provider.internetConnected) {
+      findings.add(
+        const _Finding(
+          Tone.danger,
+          'Router reports no internet',
+          'Check the cable between the modem and the router\'s WAN port, '
+              'restart the modem, then review Internet (WAN & DNS) settings.',
+        ),
+      );
+    }
+    if (provider.isConnected && !provider.liveTelemetrySupported) {
+      findings.add(
+        const _Finding(
+          Tone.info,
+          'Live statistics are slow to answer',
+          'The router missed several telemetry requests in a row, so live '
+              'rates use connected-device totals until it answers again.',
+        ),
+      );
+    }
+    final slow = _routerResponse;
+    if (slow != null && slow > const Duration(seconds: 2)) {
+      findings.add(
+        _Finding(
+          Tone.info,
+          'Router is responding slowly',
+          'A status request took ${slow.inMilliseconds} ms. Heavy traffic '
+              'or a busy router can cause this; settings may take longer to apply.',
+        ),
+      );
+    }
+    if (findings.isEmpty && _lastRun != null) {
+      findings.add(
+        const _Finding(
+          Tone.success,
+          'No problems found',
+          'The router is reachable, verified and answering.',
+        ),
+      );
+    }
+    return findings;
+  }
+
   Future<void> _exportDiagnostics() async {
     setState(() => _isExporting = true);
 
@@ -296,14 +439,16 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
 
       final exportData = {
         'exportedAt': DateTime.now().toIso8601String(),
-        'appVersion': '1.0.0',
+        'appVersion': AppInfo.version,
         'network': {
           'wifiName': _wifiName,
           'wifiIP': _wifiIP,
           'gatewayIP': _gatewayIP,
           'gatewayReachable': _routerReachable,
-          'mqttPort': 25678,
+          'mqttPort': _mqttPort,
           'mqttPortOpen': _mqttPortOpen,
+          'gatewayLatencyMs': _gatewayLatency?.inMilliseconds,
+          'routerResponseMs': _routerResponse?.inMilliseconds,
         },
         'routerProvider': {
           'discoveryState': provider.discoveryState.name,
@@ -318,6 +463,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
           'nodeCount': provider.nodes.length,
           'lastError': provider.errorMessage,
           'tlsCertificate': provider.certificateVerdict?.name,
+          'liveTelemetrySupported': provider.liveTelemetrySupported,
           'pendingChanges': provider.pendingChanges
               .map((c) => {'label': c.label, 'status': c.status.name})
               .toList(),
@@ -356,19 +502,11 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Row(
-              children: [
-                Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
-                SizedBox(width: 10),
-                Text('Diagnostics copied to clipboard'),
-              ],
+            content: const Text(
+              'Diagnostics copied to clipboard (passwords excluded)',
             ),
-            backgroundColor: AppColors.success,
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 3),
             action: SnackBarAction(
               label: 'View',
-              textColor: Colors.white,
               onPressed: () => _showExportPreview(jsonString),
             ),
           ),
@@ -376,12 +514,9 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Export failed: $e'),
-            backgroundColor: AppColors.error,
-          ),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Export failed: $e')));
       }
     }
 
@@ -389,84 +524,38 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
   }
 
   void _showExportPreview(String json) {
-    showModalBottomSheet(
+    showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: DraggableScrollableSheet(
-          initialChildSize: 0.7,
-          minChildSize: 0.3,
-          maxChildSize: 0.95,
-          expand: false,
-          builder: (context, scrollController) => Column(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  border: Border(
-                    bottom: BorderSide(color: Colors.grey.shade200),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: AppColors.brand.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Icon(
-                        Icons.code_rounded,
-                        color: AppColors.brand,
-                        size: 20,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    const Expanded(
-                      child: Text(
-                        'Exported JSON',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close_rounded),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: SingleChildScrollView(
-                  controller: scrollController,
-                  padding: const EdgeInsets.all(16),
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xfff8f9fa),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: SelectableText(
-                      json,
-                      style: const TextStyle(
-                        fontFamily: 'monospace',
-                        fontSize: 12,
-                        height: 1.5,
-                      ),
-                    ),
+      useSafeArea: true,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        minChildSize: 0.3,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (context, scrollController) => ListView(
+          controller: scrollController,
+          padding: const EdgeInsets.fromLTRB(Space.lg, 0, Space.lg, Space.xl),
+          children: [
+            Text(
+              'Exported JSON',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: Space.md),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(Space.md),
+                child: SelectableText(
+                  json,
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 12,
+                    height: 1.5,
                   ),
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -474,405 +563,249 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final successCount = _diagnosticLog
-        .where((e) => e.type == DiagnosticType.success)
-        .length;
-    final warningCount = _diagnosticLog
-        .where((e) => e.type == DiagnosticType.warning)
-        .length;
-    final errorCount = _diagnosticLog
-        .where((e) => e.type == DiagnosticType.error)
-        .length;
+    final provider = context.watch<RouterProvider>();
+    final findings = _findings(provider);
+    int count(DiagnosticType type) =>
+        _diagnosticLog.where((e) => e.type == type).length;
 
     return Scaffold(
-      backgroundColor: const Color(0xfff7f7fa),
       appBar: AppBar(
         title: const Text('Diagnostics'),
-        backgroundColor: const Color(0xffc14524),
-        foregroundColor: Colors.white,
         actions: [
           IconButton(
             icon: const Icon(Icons.copy_rounded),
-            tooltip: 'Copy to clipboard',
+            tooltip: 'Copy report to clipboard',
             onPressed: _isExporting ? null : _exportDiagnostics,
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: 'Run diagnostics',
-            onPressed: _isRunning ? null : _runFullDiagnostics,
           ),
         ],
       ),
-      body: Column(
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(Space.lg, Space.sm, Space.lg, 96),
         children: [
-          _buildStatusOverview(),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: Row(
+          ContentWidth(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _buildCountChip(
-                  Icons.check_circle_rounded,
-                  successCount,
-                  AppColors.success,
+                _buildStatusOverview(provider),
+                if (findings.isNotEmpty) ...[
+                  const SectionLabel('What we found'),
+                  for (final f in findings)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: Space.sm),
+                      child: InfoBanner(
+                        tone: f.tone,
+                        icon: switch (f.tone) {
+                          Tone.success => Icons.check_circle_rounded,
+                          Tone.danger => Icons.error_rounded,
+                          Tone.warning => Icons.warning_amber_rounded,
+                          _ => Icons.info_outline_rounded,
+                        },
+                        title: f.title,
+                        message: f.advice,
+                      ),
+                    ),
+                ] else if (_lastRun == null)
+                  const Padding(
+                    padding: EdgeInsets.only(top: Space.md),
+                    child: InfoBanner(
+                      tone: Tone.info,
+                      title: 'Run diagnostics for a full check',
+                      message:
+                          'Measures gateway latency and router response time '
+                          'and checks every connection step.',
+                    ),
+                  ),
+                if (_lastError != null) ...[
+                  const SizedBox(height: Space.sm),
+                  InfoBanner(
+                    tone: Tone.danger,
+                    icon: Icons.error_outline_rounded,
+                    title: 'Last error',
+                    message: _lastError,
+                    onDismiss: () => setState(() => _lastError = null),
+                  ),
+                ],
+                SectionLabel(
+                  'Log',
+                  trailing: Wrap(
+                    spacing: Space.xs,
+                    children: [
+                      StatusPill(
+                        label: '${count(DiagnosticType.success)}',
+                        tone: Tone.success,
+                        icon: Icons.check_circle_rounded,
+                      ),
+                      StatusPill(
+                        label: '${count(DiagnosticType.warning)}',
+                        tone: Tone.warning,
+                        icon: Icons.warning_rounded,
+                      ),
+                      StatusPill(
+                        label: '${count(DiagnosticType.error)}',
+                        tone: Tone.danger,
+                        icon: Icons.error_rounded,
+                      ),
+                    ],
+                  ),
                 ),
-                const SizedBox(width: 8),
-                _buildCountChip(
-                  Icons.warning_rounded,
-                  warningCount,
-                  AppColors.warning,
-                ),
-                const SizedBox(width: 8),
-                _buildCountChip(
-                  Icons.error_rounded,
-                  errorCount,
-                  AppColors.error,
-                ),
-                const Spacer(),
-                Text(
-                  '${_diagnosticLog.length} entries',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey.shade600,
-                    fontWeight: FontWeight.w500,
+                Card(
+                  child: Column(
+                    children: [
+                      for (final entry in _diagnosticLog) _buildLogEntry(entry),
+                    ],
                   ),
                 ),
               ],
-            ),
-          ),
-          if (_lastError != null)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: ErrorCard(
-                title: 'Last Error',
-                message: _lastError,
-                onDismiss: () => setState(() => _lastError = null),
-              ),
-            ),
-          Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: _diagnosticLog.length,
-              itemBuilder: (context, index) {
-                final entry = _diagnosticLog[index];
-                return _buildLogEntry(entry);
-              },
             ),
           ),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _isRunning ? null : _runFullDiagnostics,
-        backgroundColor: AppColors.brand,
-        foregroundColor: Colors.white,
         icon: _isRunning
             ? const SizedBox(
                 width: 20,
                 height: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.2,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                ),
+                child: CircularProgressIndicator(strokeWidth: 2.2),
               )
             : const Icon(Icons.play_arrow_rounded),
-        label: Text(_isRunning ? 'Running...' : 'Run Diagnostics'),
+        label: Text(_isRunning ? 'Running...' : 'Run diagnostics'),
       ),
     );
   }
 
-  Widget _buildStatusOverview() {
-    return Container(
-      margin: const EdgeInsets.all(16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.black.withValues(alpha: 0.05)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.025),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
+  Widget _buildStatusOverview(RouterProvider provider) {
+    final verdict = provider.certificateVerdict;
+    final tiles = <(IconData, String, String, Tone)>[
+      (
+        Icons.wifi_rounded,
+        'Phone Wi-Fi',
+        (_wifiName ?? 'Unknown').replaceAll('"', ''),
+        Tone.neutral,
       ),
+      (
+        Icons.phone_android_rounded,
+        'Phone IP',
+        _wifiIP ?? 'Unknown',
+        Tone.neutral,
+      ),
+      (
+        Icons.router_rounded,
+        'Gateway',
+        _gatewayIP ?? 'Unknown',
+        _routerReachable ? Tone.success : Tone.warning,
+      ),
+      (
+        Icons.timer_outlined,
+        'Gateway latency',
+        _gatewayLatency == null
+            ? 'Not measured'
+            : '${_gatewayLatency!.inMilliseconds} ms',
+        Tone.info,
+      ),
+      (
+        Icons.swap_horiz_rounded,
+        'Control port',
+        _mqttPortOpen ? 'Open' : 'Closed / unknown',
+        _mqttPortOpen ? Tone.success : Tone.warning,
+      ),
+      (
+        Icons.verified_user_outlined,
+        'Signed in',
+        _mqttAuthenticated || provider.isConnected ? 'Yes' : 'No',
+        provider.isConnected ? Tone.success : Tone.warning,
+      ),
+      (
+        Icons.shield_outlined,
+        'Certificate',
+        verdict == null
+            ? 'Not checked'
+            : verdict.trusted
+            ? 'Verified'
+            : 'Rejected',
+        verdict == null
+            ? Tone.neutral
+            : verdict.trusted
+            ? Tone.success
+            : Tone.danger,
+      ),
+      (
+        Icons.speed_rounded,
+        'Router response',
+        _routerResponse == null
+            ? 'Not measured'
+            : '${_routerResponse!.inMilliseconds} ms',
+        Tone.info,
+      ),
+    ];
+
+    final master = provider.nodes.where((n) => n.isMaster).firstOrNull;
+    return SectionCard(
+      title: 'Connection status',
+      subtitle: _lastRun == null
+          ? 'Quick view; run diagnostics to measure'
+          : 'Measured ${formatAge(_lastRun)}',
+      icon: Icons.network_check_rounded,
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
+          ResponsiveGrid(
+            minTileWidth: 124,
+            spacing: Space.sm,
             children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: AppColors.brand.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(
-                  Icons.network_check_rounded,
-                  color: AppColors.brand,
-                  size: 22,
-                ),
-              ),
-              const SizedBox(width: 12),
-              const Expanded(
-                child: Text(
-                  'Network Status',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-                ),
-              ),
+              for (final (icon, label, value, tone) in tiles)
+                _statusTile(icon, label, value, tone),
             ],
           ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: _buildStatusTile(
-                  'Wi-Fi',
-                  _wifiName ?? 'Unknown',
-                  Icons.wifi_rounded,
-                ),
+          if (provider.isConnected) ...[
+            const SizedBox(height: Space.md),
+            Text(
+              [
+                'Router Wi-Fi: ${provider.allSsids.isEmpty ? 'unknown' : provider.allSsids.toSet().join(', ')}',
+                if (master != null && master.uptimeSeconds > 0)
+                  'Main node up ${formatUptime(master.uptimeSeconds)}',
+                'Live data ${formatAge(provider.liveDataUpdatedAt)}',
+              ].join(' · '),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _buildStatusTile(
-                  'Device IP',
-                  _wifiIP ?? 'Unknown',
-                  Icons.phone_android_rounded,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: _buildStatusTile(
-                  'Gateway',
-                  _gatewayIP ?? 'Unknown',
-                  Icons.router_rounded,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _buildStatusIndicator(
-                  'Gateway Reachable',
-                  _routerReachable,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: _buildStatusIndicator('MQTT Port', _mqttPortOpen),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _buildStatusIndicator('MQTT Auth', _mqttAuthenticated),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _buildRouterWifiSection(),
+            ),
+          ],
         ],
       ),
     );
   }
 
-  Widget _buildRouterWifiSection() {
-    final provider = context.read<RouterProvider>();
-    final routerSsid = provider.currentWifiName;
-    final allSsids = provider.allSsids;
-
+  Widget _statusTile(IconData icon, String label, String value, Tone tone) {
+    final theme = Theme.of(context);
+    final colors = context.tone(tone);
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(Space.md),
       decoration: BoxDecoration(
-        color: const Color(0xfff0f7ff),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xffdbeafe)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(
-                Icons.router_rounded,
-                size: 16,
-                color: Color(0xff3b82f6),
-              ),
-              const SizedBox(width: 8),
-              const Text(
-                'Router Wi-Fi',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xff3b82f6),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Primary SSID',
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                    Text(
-                      routerSsid,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-              if (allSsids.length > 1) ...[
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'All SSIDs',
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: Colors.grey.shade600,
-                        ),
-                      ),
-                      Text(
-                        allSsids.join(', '),
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatusTile(String label, String value, IconData icon) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xfff7f7fa),
-        borderRadius: BorderRadius.circular(10),
+        color: colors.container.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(Radii.md),
       ),
       child: Row(
         children: [
-          Icon(icon, size: 16, color: Colors.grey.shade600),
-          const SizedBox(width: 8),
+          Icon(icon, size: 18, color: colors.foreground),
+          const SizedBox(width: Space.sm),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   label,
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: Colors.grey.shade600,
-                    fontWeight: FontWeight.w500,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
                 Text(
                   value,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: theme.textTheme.labelLarge,
                 ),
               ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatusIndicator(String label, bool ok) {
-    final color = ok ? AppColors.success : AppColors.error;
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            ok ? Icons.check_circle_rounded : Icons.cancel_rounded,
-            size: 18,
-            color: color,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: Colors.grey.shade700,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                Text(
-                  ok ? 'OK' : 'Failed',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: color,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCountChip(IconData icon, int count, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: color),
-          const SizedBox(width: 4),
-          Text(
-            '$count',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: color,
             ),
           ),
         ],
@@ -881,48 +814,12 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
   }
 
   Widget _buildLogEntry(DiagnosticEntry entry) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 6),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.black.withValues(alpha: 0.04)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: entry.type.color.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Icon(entry.type.icon, color: entry.type.color, size: 14),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  entry.message,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                    height: 1.3,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  _formatTime(entry.timestamp),
-                  style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+    final theme = Theme.of(context);
+    return ListTile(
+      dense: true,
+      leading: Icon(entry.type.icon, color: entry.type.color, size: 20),
+      title: Text(entry.message, style: theme.textTheme.bodyMedium),
+      subtitle: Text(_formatTime(entry.timestamp)),
     );
   }
 
@@ -931,6 +828,14 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
         '${time.minute.toString().padLeft(2, '0')}:'
         '${time.second.toString().padLeft(2, '0')}';
   }
+}
+
+class _Finding {
+  const _Finding(this.tone, this.title, this.advice);
+
+  final Tone tone;
+  final String title;
+  final String advice;
 }
 
 class DiagnosticEntry {

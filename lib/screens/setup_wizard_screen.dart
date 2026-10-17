@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:network_info_plus/network_info_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../services/ble_provisioning_service.dart';
+import '../utils/validators.dart';
+import '../theme/app_theme.dart';
 import 'discovery_screen.dart';
 import 'pairing_screen.dart';
 
@@ -42,6 +44,7 @@ class _SetupWizardScreenState extends State<SetupWizardScreen>
   BleProvisioningResult? _foundRouter;
   String _room = _rooms.first;
   String? _error;
+  String? _errorCode;
   bool _busy = false;
   bool _showWifiPassword = false;
   bool _checkingWifi = false;
@@ -82,8 +85,22 @@ class _SetupWizardScreenState extends State<SetupWizardScreen>
     setState(() {
       _step = step;
       _error = null;
+      _errorCode = null;
     });
   }
+
+  /// Turns native Bluetooth error codes into guidance.
+  String _bleMessage(PlatformException e, String fallback) => switch (e.code) {
+    'permission_required' =>
+      'TT Router needs the Nearby devices (Bluetooth) permission. Allow it '
+          'in app settings, then search again.',
+    'bluetooth_off' => 'Turn on Bluetooth, then search again.',
+    'not_found' =>
+      e.message ??
+          'No router in setup mode was found. Check that its LED flashes '
+              'green and keep the phone within 1 m.',
+    _ => e.message ?? fallback,
+  };
 
   void _back() {
     if (_quickSetup &&
@@ -140,10 +157,12 @@ class _SetupWizardScreenState extends State<SetupWizardScreen>
         _step = skipGuide ? SetupStep.wifi : SetupStep.found;
       });
     } on PlatformException catch (e) {
-      if (!mounted) return;
+      // A newer search replaced this one; its own result will arrive.
+      if (!mounted || e.code == 'cancelled') return;
       setState(() {
         _busy = false;
-        _error = e.message ?? 'Could not find a nearby TT Router.';
+        _errorCode = e.code;
+        _error = _bleMessage(e, 'Could not find a nearby TT Router.');
       });
     }
   }
@@ -160,11 +179,9 @@ class _SetupWizardScreenState extends State<SetupWizardScreen>
   Future<void> _createWifi() async {
     final ssid = _ssidController.text.trim();
     final password = _passwordController.text;
-    if (ssid.isEmpty || password.length < 8) {
-      setState(() {
-        _error =
-            'Enter a Wi-Fi name and a password with at least 8 characters.';
-      });
+    final problem = Validators.ssid(ssid) ?? Validators.wifiPassword(password);
+    if (problem != null) {
+      setState(() => _error = problem);
       return;
     }
 
@@ -186,11 +203,12 @@ class _SetupWizardScreenState extends State<SetupWizardScreen>
       });
       await _checkWifiConnection();
     } on PlatformException catch (e) {
-      if (!mounted) return;
+      if (!mounted || e.code == 'cancelled') return;
       setState(() {
         _busy = false;
         _step = SetupStep.wifi;
-        _error = e.message ?? 'Router setup failed over Bluetooth.';
+        _errorCode = e.code;
+        _error = _bleMessage(e, 'Router setup failed over Bluetooth.');
       });
     }
   }
@@ -311,7 +329,7 @@ class _SetupWizardScreenState extends State<SetupWizardScreen>
             decoration: BoxDecoration(
               color: color,
               shape: BoxShape.circle,
-              border: Border.all(color: Colors.black12),
+              border: Border.all(color: Theme.of(context).colorScheme.outline),
             ),
           ),
           const SizedBox(width: 12),
@@ -329,7 +347,6 @@ class _SetupWizardScreenState extends State<SetupWizardScreen>
         if (!didPop) _back();
       },
       child: Scaffold(
-        backgroundColor: const Color(0xfffbfcfd),
         body: SafeArea(
           child: Column(
             children: [
@@ -473,7 +490,7 @@ class _SetupWizardScreenState extends State<SetupWizardScreen>
               width: 76,
               height: 76,
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: Theme.of(context).colorScheme.surfaceContainerHigh,
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
@@ -492,10 +509,30 @@ class _SetupWizardScreenState extends State<SetupWizardScreen>
           ),
         ],
       ),
-      primaryLabel: _busy ? null : 'Search again',
-      onPrimary: _busy ? null : () => _searchRouter(),
-      secondaryLabel: _quickSetup && !_busy ? 'Setup guide' : null,
-      onSecondary: _quickSetup && !_busy ? _startGuide : null,
+      primaryLabel: _busy
+          ? null
+          : _errorCode == 'permission_required'
+          ? 'Open app settings'
+          : 'Search again',
+      onPrimary: _busy
+          ? null
+          : _errorCode == 'permission_required'
+          ? openAppSettings
+          : () => _searchRouter(),
+      secondaryLabel: _busy
+          ? null
+          : _errorCode == 'permission_required'
+          ? 'Search again'
+          : _quickSetup
+          ? 'Setup guide'
+          : null,
+      onSecondary: _busy
+          ? null
+          : _errorCode == 'permission_required'
+          ? () => _searchRouter()
+          : _quickSetup
+          ? _startGuide
+          : null,
       stepLabel: _quickSetup ? null : '7/10',
     );
   }
@@ -794,22 +831,27 @@ class _GuidePage extends StatelessWidget {
             Text(
               subtitle,
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey.shade700, fontSize: 15),
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
             const SizedBox(height: 34),
             art,
             const SizedBox(height: 32),
             if (stepLabel != null)
-              Text(stepLabel!, style: TextStyle(color: Colors.grey.shade700)),
+              Text(
+                'Step ${stepLabel!}',
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
             const SizedBox(height: 18),
             if (primaryLabel != null)
               SizedBox(
                 width: double.infinity,
-                child: ElevatedButton(
+                child: FilledButton(
                   onPressed: onPrimary,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.deepOrange,
-                    foregroundColor: Colors.white,
+                  style: FilledButton.styleFrom(
                     minimumSize: const Size.fromHeight(54),
                   ),
                   child: Text(primaryLabel!),
@@ -845,31 +887,36 @@ class _NetworkDetails extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: Colors.black12),
+        color: Theme.of(context).colorScheme.surfaceContainerLowest,
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
         children: [
-          _detail('Wi-Fi Name', ssid),
+          _detail(context, 'Wi-Fi Name', ssid),
           const SizedBox(height: 10),
-          _detail('Wi-Fi Password', password),
+          _detail(context, 'Wi-Fi Password', password),
           const SizedBox(height: 10),
-          _detail('Location', room),
+          _detail(context, 'Location', room),
           if (meshId != null && meshId!.isNotEmpty) ...[
             const SizedBox(height: 10),
-            _detail('Mesh ID', meshId!),
+            _detail(context, 'Mesh ID', meshId!),
           ],
         ],
       ),
     );
   }
 
-  Widget _detail(String label, String value) {
+  Widget _detail(BuildContext context, String label, String value) {
     return Row(
       children: [
         Expanded(
-          child: Text(label, style: const TextStyle(color: Colors.grey)),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
         ),
         Expanded(
           child: Text(
@@ -901,7 +948,9 @@ class _WifiConnectionStatus extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = verified ? Colors.green : Colors.deepOrange;
+    final color = context
+        .tone(verified ? Tone.success : Tone.warning)
+        .foreground;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
@@ -941,7 +990,9 @@ class _WifiConnectionStatus extends StatelessWidget {
                   const SizedBox(height: 6),
                   Text(
                     'Current Wi-Fi: $connectedSsid',
-                    style: TextStyle(color: Colors.grey.shade700),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ],
               ],

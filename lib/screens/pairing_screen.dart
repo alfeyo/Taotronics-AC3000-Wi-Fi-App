@@ -4,6 +4,9 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import '../providers/router_provider.dart';
 import '../services/ble_provisioning_service.dart';
+import '../theme/app_theme.dart';
+import '../utils/validators.dart';
+import '../widgets/app_widgets.dart';
 import 'home_screen.dart';
 
 class PairingScreen extends StatefulWidget {
@@ -57,10 +60,10 @@ class _PairingScreenState extends State<PairingScreen> {
   Future<void> _provisionOverBluetooth() async {
     final ssid = _wifiSsidController.text.trim();
     final password = _wifiPasswordController.text;
-    if (ssid.isEmpty || password.isEmpty) {
+    final problem = Validators.ssid(ssid) ?? Validators.wifiPassword(password);
+    if (problem != null) {
       setState(() {
-        _errorMessage =
-            'Enter the WiFi name and password to set up the router.';
+        _errorMessage = problem;
         _successMessage = null;
       });
       return;
@@ -93,9 +96,11 @@ class _PairingScreenState extends State<PairingScreen> {
             'local router connection below.';
       });
     } on PlatformException catch (e) {
-      if (!mounted) return;
+      if (!mounted || e.code == 'cancelled') return;
       setState(() {
-        _errorMessage = e.message ?? 'Bluetooth setup failed.';
+        _errorMessage = e.code == 'permission_required'
+            ? 'Allow the Nearby devices (Bluetooth) permission in app settings, then try again.'
+            : e.message ?? 'Bluetooth setup failed.';
       });
     } finally {
       if (mounted) {
@@ -202,11 +207,9 @@ class _PairingScreenState extends State<PairingScreen> {
                   _buildSuccessCard(),
                 ],
                 const SizedBox(height: 32),
-                ElevatedButton(
+                FilledButton(
                   onPressed: _isPairing ? null : _testConnection,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.deepOrange,
-                    foregroundColor: Colors.white,
+                  style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 16),
                   ),
                   child: _isPairing
@@ -216,12 +219,7 @@ class _PairingScreenState extends State<PairingScreen> {
                             SizedBox(
                               width: 24,
                               height: 24,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  Colors.white,
-                                ),
-                              ),
+                              child: CircularProgressIndicator(strokeWidth: 2),
                             ),
                             SizedBox(width: 12),
                             Text('Connecting...'),
@@ -293,54 +291,36 @@ class _PairingScreenState extends State<PairingScreen> {
           Icon(
             status ? Icons.check_circle : Icons.cancel,
             size: 18,
-            color: status ? Colors.green : Colors.red,
+            color: context.tone(status ? Tone.success : Tone.danger).foreground,
           ),
           const SizedBox(width: 8),
-          Text(label),
-          const Spacer(),
-          if (detail != null)
-            Text(
-              detail,
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+          Expanded(child: Text(label)),
+          if (detail != null) ...[
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                detail,
+                textAlign: TextAlign.right,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
             ),
+          ],
         ],
       ),
     );
   }
 
   Widget _buildInstructions() {
-    return Card(
-      color: Colors.blue.shade50,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.info, color: Colors.blue.shade700),
-                const SizedBox(width: 8),
-                Text(
-                  'Pairing Instructions',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.blue.shade900,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Text(
-              '1. Ensure the router is powered on\n'
-              '2. Connect your phone to the router\'s WiFi\n'
-              '3. If previously configured, you may need to factory reset\n'
-              '4. Some routers require WPS button for pairing\n'
-              '5. Tap "Test Connection & Pair" below',
-              style: TextStyle(color: Colors.blue.shade800, height: 1.5),
-            ),
-          ],
-        ),
-      ),
+    return const InfoBanner(
+      tone: Tone.info,
+      title: 'Pairing instructions',
+      message:
+          '1. Ensure the router is powered on\n'
+          '2. Connect your phone to the router\'s Wi-Fi\n'
+          '3. If previously configured, you may need to factory reset\n'
+          '4. Some routers require the WPS button for pairing\n'
+          '5. Tap "Test Connection & Pair" below',
     );
   }
 
@@ -353,11 +333,13 @@ class _PairingScreenState extends State<PairingScreen> {
           children: [
             const Row(
               children: [
-                Icon(Icons.bluetooth_searching, color: Colors.deepOrange),
+                Icon(Icons.bluetooth_searching),
                 SizedBox(width: 8),
-                Text(
-                  'Bluetooth Setup',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                Expanded(
+                  child: Text(
+                    'Bluetooth Setup',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
                 ),
               ],
             ),
@@ -366,7 +348,7 @@ class _PairingScreenState extends State<PairingScreen> {
               'Use this for a new or reset TT Router in setup mode. '
               'The app searches nearby TTBT routers and sends the WiFi '
               'network the router should create.',
-              style: TextStyle(color: Colors.grey.shade700),
+              style: Theme.of(context).textTheme.bodyMedium,
             ),
             const SizedBox(height: 16),
             TextField(
@@ -394,10 +376,7 @@ class _PairingScreenState extends State<PairingScreen> {
                   ? const SizedBox(
                       width: 18,
                       height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                      ),
+                      child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.bluetooth_connected),
               label: Text(
@@ -406,8 +385,6 @@ class _PairingScreenState extends State<PairingScreen> {
                     : 'Set Up Router over Bluetooth',
               ),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.deepOrange,
-                foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 14),
               ),
             ),
@@ -442,7 +419,6 @@ class _PairingScreenState extends State<PairingScreen> {
                     contentPadding: EdgeInsets.zero,
                     leading: const Radio<PairingMethod>(
                       value: PairingMethod.automatic,
-                      activeColor: Colors.deepOrange,
                     ),
                     title: const Text('Automatic'),
                     subtitle: const Text(
@@ -456,7 +432,6 @@ class _PairingScreenState extends State<PairingScreen> {
                     contentPadding: EdgeInsets.zero,
                     leading: const Radio<PairingMethod>(
                       value: PairingMethod.manual,
-                      activeColor: Colors.deepOrange,
                     ),
                     title: const Text('Manual'),
                     subtitle: const Text('Enter router credentials manually'),
@@ -526,7 +501,7 @@ class _PairingScreenState extends State<PairingScreen> {
             Text(
               'The Mesh ID is usually printed on the router label. '
               'If you leave the password blank, the app will use the default TaoTronics credentials.',
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              style: Theme.of(context).textTheme.bodySmall,
             ),
           ],
         ),
@@ -535,45 +510,20 @@ class _PairingScreenState extends State<PairingScreen> {
   }
 
   Widget _buildErrorCard() {
-    return Card(
-      color: Colors.red.shade50,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(Icons.error, color: Colors.red.shade700),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                _errorMessage!,
-                style: TextStyle(color: Colors.red.shade700),
-              ),
-            ),
-          ],
-        ),
-      ),
+    return InfoBanner(
+      tone: Tone.danger,
+      icon: Icons.error_outline_rounded,
+      title: 'Could not pair',
+      message: _errorMessage,
     );
   }
 
   Widget _buildSuccessCard() {
-    return Card(
-      color: Colors.green.shade50,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            Icon(Icons.check_circle, color: Colors.green.shade700),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                _successMessage!,
-                style: TextStyle(color: Colors.green.shade700),
-              ),
-            ),
-          ],
-        ),
-      ),
+    return InfoBanner(
+      tone: Tone.success,
+      icon: Icons.check_circle_rounded,
+      title: 'Success',
+      message: _successMessage,
     );
   }
 }

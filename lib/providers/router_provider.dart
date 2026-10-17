@@ -675,6 +675,16 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
+  /// Times one lightweight router command (GetSysConnectInfo). Returns null
+  /// when not connected or the router does not answer.
+  Future<Duration?> measureRouterResponse() async {
+    if (!isConnected) return null;
+    final watch = Stopwatch()..start();
+    final response = await _mqtt.getSystemConnectionInfo();
+    watch.stop();
+    return response == null ? null : watch.elapsed;
+  }
+
   /// Retries the saved router immediately, e.g. after the phone rejoins Wi-Fi.
   void reconnectNow() {
     if (isConnected || !_shouldReconnectCurrentRouter || _reconnectInProgress) {

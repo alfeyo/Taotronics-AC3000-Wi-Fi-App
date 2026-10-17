@@ -54,6 +54,21 @@ class NetworkProbe {
     }
   }
 
+  /// Time to complete (or be refused) a TCP handshake: a real round-trip
+  /// measurement to the host. Null when the host does not answer.
+  Future<Duration?> handshakeTime(
+    String host,
+    int port, {
+    Duration timeout = const Duration(seconds: 3),
+  }) async {
+    final watch = Stopwatch()..start();
+    final outcome = await probe(host, port, timeout: timeout);
+    watch.stop();
+    return outcome == ProbeOutcome.open || outcome == ProbeOutcome.refused
+        ? watch.elapsed
+        : null;
+  }
+
   /// The host is reachable when any probed port completes a handshake or
   /// actively refuses it. Unlike a DNS lookup of an IP literal (which always
   /// "succeeds"), this needs a real answer from the host.
