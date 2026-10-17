@@ -3,7 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../app_info.dart';
 import '../theme/app_theme.dart';
+import 'package:provider/provider.dart';
+
+import '../providers/router_provider.dart';
 import 'discovery_screen.dart';
+import 'home_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -45,13 +49,36 @@ class _SplashScreenState extends State<SplashScreen>
     _navigationTimer = Timer(const Duration(milliseconds: 1700), _goNext);
   }
 
-  void _goNext() {
+  bool _connecting = false;
+
+  /// With a saved pairing, waits for the normal authenticated reconnect and
+  /// opens Home directly; otherwise (or on timeout) shows discovery.
+  Future<void> _goNext() async {
+    if (!mounted) return;
+    final provider = context.read<RouterProvider>();
+    await provider.ready;
+    if (!mounted) return;
+    var connected = provider.isConnected;
+    if (!connected && provider.hasSavedPairing) {
+      setState(() => _connecting = true);
+      final done = Completer<void>();
+      void check() {
+        if (provider.isConnected && !done.isCompleted) done.complete();
+      }
+
+      provider.addListener(check);
+      await done.future
+          .timeout(const Duration(seconds: 12), onTimeout: () {})
+          .whenComplete(() => provider.removeListener(check));
+      connected = provider.isConnected;
+    }
     if (!mounted) return;
     Navigator.pushReplacement(
       context,
       PageRouteBuilder(
         transitionDuration: const Duration(milliseconds: 350),
-        pageBuilder: (_, _, _) => const DiscoveryScreen(),
+        pageBuilder: (_, _, _) =>
+            connected ? const HomeScreen() : const DiscoveryScreen(),
         transitionsBuilder: (_, animation, _, child) =>
             FadeTransition(opacity: animation, child: child),
       ),
@@ -206,7 +233,9 @@ class _SplashScreenState extends State<SplashScreen>
                   ),
                   const SizedBox(height: 14),
                   Text(
-                    'v${AppInfo.version}',
+                    _connecting
+                        ? 'Connecting to your router…'
+                        : 'v${AppInfo.version}',
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.7),
                       fontSize: 12,

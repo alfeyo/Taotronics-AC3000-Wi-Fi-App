@@ -53,11 +53,11 @@ This project is provided to help owners of TaoTronics AC3000 routers maintain co
 
 ## Download
 
-**[Download APK](https://github.com/alfeyo/Taotronics-AC3000-Wi-Fi-App/raw/main/releases/TaoTronics-Router-App.apk)** - TT Router 1.2.0 (build 3), package `com.ttrouter.tt_router_flutter`
+**[Download APK](https://github.com/alfeyo/Taotronics-AC3000-Wi-Fi-App/raw/main/releases/TaoTronics-Router-App.apk)** - TT Router 1.2.1 (build 4), package `com.ttrouter.tt_router_flutter`
 
-SHA-256: `031c59eabc7de05028f24820982fdda3ca40ae9919b731905a972e538f23eb43`
+SHA-256: `417ee3b98bb05716f6c487c5451cf0f7cc48dced4294ac95cf87b132edae49b8`
 
-The previous release (1.1.0) is available from the `v1.1.0` git tag.
+Previous releases are available from the `v1.2.0` and `v1.1.0` git tags.
 
 This is a sideload build signed with a development (debug) key, not a store
 release. Installing it over an earlier sideloaded TT Router build keeps your

@@ -11,6 +11,7 @@ import 'package:tt_router_flutter/services/auth_pairing_service.dart';
 import 'package:tt_router_flutter/services/credential_store.dart';
 import 'package:tt_router_flutter/services/mqtt_service.dart';
 import 'package:tt_router_flutter/theme/app_theme.dart';
+import 'package:tt_router_flutter/widgets/home_widgets.dart';
 
 import 'support/fake_mqtt_transport.dart';
 
@@ -139,7 +140,11 @@ void main() {
       await tester.pumpWidget(_app(provider, const HomeScreen()));
       await tester.pump();
 
-      expect(find.text('Internet online'), findsWidgets);
+      expect(find.text('My Router'), findsOneWidget);
+      expect(find.text('Connected · internet online'), findsOneWidget);
+      expect(find.byType(RouterCard), findsOneWidget);
+      // Password is masked until revealed.
+      expect(find.text('x' * 8), findsNothing);
       expect(find.text('Game labs'), findsWidgets);
       expect(find.text('Router lights'), findsOneWidget);
       expect(

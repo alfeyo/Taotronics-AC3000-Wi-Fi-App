@@ -1,6 +1,6 @@
 /// Keep in sync with `version:` in pubspec.yaml.
 abstract final class AppInfo {
   static const name = 'TT Router';
-  static const version = '1.2.0';
-  static const build = 3;
+  static const version = '1.2.1';
+  static const build = 4;
 }

@@ -40,6 +40,21 @@ class LivePauseToken {
   }
 }
 
+/// In-app notification shown under the Home bell (no push, no background).
+class AppEvent {
+  AppEvent(this.title, this.message, this.tone) : time = DateTime.now();
+
+  final String title;
+  final String message;
+
+  /// 'info', 'success', 'warning' or 'error'.
+  final String tone;
+  final DateTime time;
+}
+
+/// One live throughput sample collected by the app this session.
+typedef RateSample = ({DateTime time, int down, int up});
+
 class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
   RouterProvider({
     RouterDiscoveryService? discovery,
@@ -56,7 +71,11 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
     _connectionSubscription = _mqtt.connectionStream.listen(
       _onConnectionChanged,
     );
-    if (autoStart) _initialize();
+    if (autoStart) {
+      _initialize();
+    } else {
+      _ready.complete();
+    }
   }
 
   final RouterDiscoveryService _discovery;
@@ -383,8 +402,66 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
     return parts.join(' | ');
   }
 
+  final _ready = Completer<void>();
+
+  /// Completes once saved pairings have been loaded at start-up.
+  Future<void> get ready => _ready.future;
+  bool get hasSavedPairing => _authService.pairedRouters.isNotEmpty;
+
+  final List<AppEvent> _events = [];
+  int _unreadEvents = 0;
+  List<AppEvent> get events => List.unmodifiable(_events.reversed);
+  int get unreadEvents => _unreadEvents;
+
+  void _addEvent(String title, String message, String tone) {
+    _events.add(AppEvent(title, message, tone));
+    if (_events.length > 30) _events.removeAt(0);
+    _unreadEvents++;
+  }
+
+  void markEventsRead() {
+    if (_unreadEvents == 0) return;
+    _unreadEvents = 0;
+    notifyListeners();
+  }
+
+  final List<RateSample> _rateSamples = [];
+
+  /// Live throughput samples from this session (newest last, max 40).
+  List<RateSample> get rateSamples => List.unmodifiable(_rateSamples);
+
+  void _recordRates() {
+    if (!isConnected) return;
+    final now = DateTime.now();
+    if (_rateSamples.isNotEmpty &&
+        now.difference(_rateSamples.last.time) < const Duration(seconds: 2)) {
+      return;
+    }
+    _rateSamples.add((time: now, down: liveDownRate, up: liveUpRate));
+    if (_rateSamples.length > 40) _rateSamples.removeAt(0);
+  }
+
+  Map<String, dynamic>? _wanInfo;
+
+  /// First GetMWanInfo entry (WanProto, WanIp, WanGateway…), if read.
+  Map<String, dynamic>? get wanInfo => _wanInfo;
+
+  Future<void> _refreshWanInfo() async {
+    final response = await _mqtt.getWanSettings();
+    final data = response?['Data'];
+    if (response?['ErrorCode'] == 0 && data is List && data.isNotEmpty) {
+      if (data.first is Map) {
+        _wanInfo = Map<String, dynamic>.from(data.first as Map);
+        notifyListeners();
+      }
+    }
+  }
+
+  bool _hadDrop = false;
+
   Future<void> _initialize() async {
     await _authService.loadSavedPairings();
+    if (!_ready.isCompleted) _ready.complete();
     _discoveryState = RouterDiscoveryState.scanning;
     notifyListeners();
     await _discovery.startDiscovery();
@@ -469,6 +546,10 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
       _reconnectTimer = null;
       _reconnectAttempt = 0;
       _discoveryRetryUsed = false;
+      if (_hadDrop) {
+        _hadDrop = false;
+        _addEvent('Reconnected', 'The router connection is back.', 'success');
+      }
       _authState = AuthenticationState.authenticated;
       _errorMessage = null;
       _startAutoRefresh();
@@ -476,6 +557,12 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
     } else {
       // Only unexpected drops of an established session arrive here.
       _stopAutoRefresh();
+      _hadDrop = true;
+      _addEvent(
+        'Router disconnected',
+        'The connection dropped. The app is trying to reconnect.',
+        'warning',
+      );
       if (_shouldReconnectCurrentRouter) {
         _authState = AuthenticationState.authenticating;
         _errorMessage = null;
@@ -674,6 +761,14 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
       _errorMessage = null;
     } else if (_shouldReconnectCurrentRouter) {
       _authState = AuthenticationState.authenticating;
+      if (_reconnectAttempt == 3) {
+        _addEvent(
+          'Reconnection failing',
+          'Several attempts to reach the router failed. Check that this '
+              'phone is on the router Wi-Fi.',
+          'error',
+        );
+      }
       _scheduleReconnect();
     }
     notifyListeners();
@@ -751,6 +846,11 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
     if (!ledsLoaded) {
       try {
         await refreshLeds().timeout(const Duration(seconds: 8));
+      } catch (_) {}
+    }
+    if (_wanInfo == null) {
+      try {
+        await _refreshWanInfo().timeout(const Duration(seconds: 8));
       } catch (_) {}
     }
     // Skip traffic-flow refresh: /GetSumOfNetworkFlow* endpoints are cloud-only
@@ -845,6 +945,7 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
     }
 
     if (_telemetryMisses == 0) _telemetryUpdatedAt = DateTime.now();
+    _recordRates();
     notifyListeners();
   }
 
@@ -873,6 +974,7 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
         ).map(DeviceEntity.fromJson).toList();
       }
       _devicesUpdatedAt = DateTime.now();
+      if (!hasLiveWanRates) _recordRates();
       notifyListeners();
     }
   }
@@ -1397,7 +1499,10 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
       );
     }
 
-    if (result.isFailed) _errorMessage = result.message;
+    if (result.isFailed) {
+      _errorMessage = result.message;
+      _addEvent('$label failed', result.message, 'error');
+    }
     notifyListeners();
     return result;
   }
@@ -1438,6 +1543,11 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
       false => ChangeStatus.mismatch,
       null => ChangeStatus.unverified,
     };
+    _addEvent(
+      change.label,
+      change.message,
+      matches == true ? 'success' : (matches == false ? 'error' : 'warning'),
+    );
     notifyListeners();
   }
 
@@ -1635,6 +1745,8 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
     _usbDisks = [];
     _usbVisitAddress = null;
     _guestWifi = null;
+    _wanInfo = null;
+    _rateSamples.clear();
     _ledNodes = [];
     _ledUpdatedAt = null;
     _usbStorageLoading = false;

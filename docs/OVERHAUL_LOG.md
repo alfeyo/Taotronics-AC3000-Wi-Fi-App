@@ -222,3 +222,23 @@ Observation: between 16:30 and 16:40 the router began reporting the 5 GHz
 network (index 1, "TT-35A0") as off (`Create` 0). The app sent no Wi-Fi
 command (every path requires the confirmation dialog, which was never
 accepted). The app now shows that state; it was not changed back.
+
+## 1.2.1 — final Home refinement (2026-10-17, tag `v1.2.1`)
+
+- App start opens Home automatically once the saved pairing reconnects
+  (splash waits up to 12 s, then falls back to discovery/setup).
+- Home: compact "My Router" header with notifications; router card with the
+  TaoTronics router illustration from the original app, model, primary
+  SSID, status, device count, password masked with Show/Hide only when the
+  router reports it, and an LED badge that toggles the real LED.
+- Live download/upload sparklines from samples collected this session
+  (max 40); "Usage & insights" shows WAN type (GetMWanInfo), WAN IP,
+  gateway, internet state and session peaks. No daily/weekly totals: the
+  router does not report them.
+- In-app notifications for disconnections, failing reconnects and settings
+  results (no push, no background service).
+- Verified on the Fold4: cold start → Home without taps; LED badge
+  on → off → on with read-back (left as found: on); wide layout checked.
+- Observed: the router's LED changed from off (16:50) to on (17:06) without
+  any app command, like the 5 GHz band earlier — external changes.
+- Future placeholder branch: `feature/nokia-wifi-extension`.
