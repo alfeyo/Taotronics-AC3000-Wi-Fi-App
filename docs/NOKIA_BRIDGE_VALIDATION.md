@@ -2,6 +2,18 @@
 
 Verified 18 October 2026, Africa/Lusaka. This supersedes the earlier powered-off / official-app-only preparation notes.
 
+## Follow-up: first-phone connection verified
+
+The second Beacon is not powered on near the root for enrollment; its printed model/serial have not been provided. Enrollment, extender coverage and roaming remain untested. The immediate verification therefore covers the Fold4 and existing root only.
+
+- Android reports Fold4 associated to `NOKIA-E6C0`, root 5 GHz BSSID `b4:63:6f:db:e6:cd`, WPA2-PSK, 5560 MHz, RSSI **−39 dBm**, negotiated link rate **1200 Mbps**. This is one nearby signal observation, not an internet speed or whole-home coverage measurement.
+- Phone address `192.168.10.217/24`; Wi-Fi default gateway `192.168.10.1`. TT Router 1.9.1 saved-root reconnect succeeded, AP bridge read-back passed, and **Verify this client path** confirmed TaoTronics DHCP plus HTTPS internet over a stable Nokia Wi-Fi Network. Cellular service was present, but this test bound its connection to Wi-Fi.
+- Root management remains `192.168.10.97`, with the existing TaoTronics Ethernet uplink retained. Root mesh read-back still lists zero extenders.
+- Vendor WebGUI and authenticated radio reads confirm primary 2.4/5 GHz profiles are still `NOKIA-E6C0`, WPA2/AES. No broadcast-changing save, naming write, enrollment or root mode change was performed. The planned common `Nokia Wifi` SSID requires an impact review and owner approval before applying it.
+- Argon `/api/v1/gateway` reports healthy online `eth0`, gateway `192.168.88.1`, VPN mode/state off. Routing, VPN and DHCP were untouched.
+
+Telemetry preparation: the source-documented local socket on port 8099 accepted the authorized owner login (`200 OK`), but no MeshNetwork/MeshLinks events arrived during the bounded observation. The documented mobile session-start CGI did not accept the WebGUI session. Socket authentication alone is not backhaul or signal evidence; do not expose guessed metrics or mark the second node connected. The existing WebGUI inventory remains the verified enrollment/read-back path.
+
 ## Wireless-root determination: requires wired root uplink
 
 **Root-to-TaoTronics wireless uplink is unsupported in the verified setup.** Retain TaoTronics LAN → Ethernet → root Beacon WAN, with Nokia-to-Nokia wireless backhaul preferred for the second unit. No cable-disconnection test or root mode change is warranted: no supported reversible third-party station/uplink procedure was established for Beacon 2 hardware `3FE49294BAAA`, firmware `3FE49334IJJJ09`, CGI 5.5. This is a finding about this firmware and router combination, not a claim that every Nokia/EasyMesh implementation lacks wireless agent operation.
