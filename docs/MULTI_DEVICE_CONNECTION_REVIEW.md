@@ -47,14 +47,34 @@ Regression tests: V2 is recorded even when V1 also times out; the verdict surviv
 - **OnePlus .dev** (`2b1e…`): also 0 devices. It had received 19–20 devices from the same router at 11:17–11:41.
 - **Fold4 at the same moment:** served normally. Argon received its phone snapshot (companion `707531d0…`) 4 s old with 20 clients.
 
-MQTT login succeeds for every phone. The refusal is at the command level, and it is not tied to a client ID, because two different OnePlus IDs were both refused while the Fold4 was served. Proven so far: **the router serves management reads to one phone at a time**. Not yet proven: the selection rule (most recent connection, most recent write, source IP, or first client after boot). `ErrorCode 5` does not appear in the original app or our protocol notes.
+MQTT login succeeds for every phone, and the refusal is at the command level.
 
-Required controlled test (needs the Fold4 on USB as well):
-1. Both apps running, then stop the Fold4 app. Does the OnePlus receive data within one refresh?
-2. Start the Fold4 again. Does the OnePlus go back to `ErrorCode 5`, or keep its access?
-3. Repeat in the opposite order, and once after a Wi-Fi write from each phone.
+### Controlled test (both phones on USB, 12:05–12:10)
 
-Handling (planned once the rule is known): treat `ErrorCode 5` as "another phone is managing this router". Show that state instead of "0 devices", stop polling, and retry slowly, rather than competing in a way that knocks the other phone off. Not implemented yet, because the rule decides whether retrying can take the session over.
+| Step | Action | Result |
+|---|---|---|
+| T0 | Both apps in the foreground | Fold4 served (Argon snapshot 13 s old, 20 devices). OnePlus refused (32 × `ErrorCode 5`, "0 devices") |
+| T1 | Force-stop the Fold4 app (data kept) | OnePlus refused until **12:06:26**, about 55–60 s later, then served ("Online", 20 devices) |
+| T2 | Restart the Fold4 app | **Fold4 refused** (0 devices, Argon sync stopped). OnePlus keeps access with 0 code-5 replies, so a newcomer **cannot take over** |
+| T3 | OnePlus app to the background (MQTT still connected, polling paused) | Fold4 served again 45–85 s later |
+| T4 | OnePlus back to the foreground | OnePlus refused (38 × `ErrorCode 5`) while the Fold4 keeps access |
+
+**Router rule (proven):** the TaoTronics serves management requests, reads and writes alike, to **one active phone at a time**. Every request from other phones gets `ErrorCode 5`. Access moves to a waiting phone about **60–80 s after the holder stops sending requests** (app closed or backgrounded). It follows activity, not the MQTT connection, and a refused phone cannot take it by retrying.
+
+### Handling in 1.6.2+11
+
+- `MqttService.managedElsewhere`: set by any `ErrorCode 5` reply, cleared by the next `ErrorCode 0` reply or on disconnect. The log records state changes only.
+- `RouterProvider`: while refused, full refreshes are skipped and live polling sends **one light `GetDevListInfo` every 7 ticks (~21 s)**. When access returns it runs a full refresh at once. MQTT stays connected and pairing is untouched.
+- All router screens show the banner **"Another phone is managing the router"**, explaining that access arrives about a minute after the other phone closes or backgrounds TT Router. Last-known values remain on screen, marked as possibly out of date.
+- Tests: `ErrorCode 5 marks the router as managed by another phone` and `another phone managing the router: back off, then recover` (≤ 4 probes per minute, no other commands, full refresh on recovery).
+
+### Physical validation with 1.6.2+11 on both phones (12:15–12:19)
+
+- Fold4 started first: served, with V2 probed **once** and recorded. OnePlus started next: refusal detected within 4 s and the banner shown.
+- Fold4 backgrounded at 12:16:16. OnePlus logged "management available" at **12:17:32** (76 s): banner cleared, "Online, 20 devices".
+- Fold4 foregrounded again: banner shown, **pairing intact**, last values (20 devices, Nokia Wifi, LED on) kept.
+- OnePlus (holder): router LED switched off and back on, each confirmed by the app's read-back.
+- Argon: eth0 uplink, VPN (GB egress), Tailscale, `/devices` and `/network` unaffected.
 
 ## 4. Related observation
 
