@@ -1,8 +1,12 @@
 # TT Router + Argon — project overview
 
-> Current update, 18 October 2026: TT Router provisions the root **Nokia WiFi Beacon 2** directly through its owner-authorized local WebGUI API. Firmware `3FE49334IJJJ09`, root `ALCLB4392160`, MAC `b4:63:6f:db:e6:c0`. The root now reports **AP_Bridge** at `192.168.10.97`; Fold4 received a TaoTronics DHCP lease/gateway and reached HTTPS internet through its Nokia radio. Factory SSID `NOKIA-E6C0` is retained. The second Beacon awaits owner activation/serial; no mesh-backhaul success is claimed. See [current bridge evidence](NOKIA_BRIDGE_VALIDATION.md). Earlier snapshots below are historical and are superseded where they conflict with this update.
+> Current update, 18 October 2026: TT Router provisions the root **Nokia WiFi Beacon 2** directly through its owner-authorized local WebGUI API. Firmware `3FE49334IJJJ09`, root `ALCLB4392160`, MAC `b4:63:6f:db:e6:c0`. The root now reports **AP_Bridge** at `192.168.10.97`; Fold4 received a TaoTronics DHCP lease/gateway and reached HTTPS internet through its Nokia radio. Both primary bands use the approved `Nokia Wifi` SSID and WPA2/AES. The second Beacon remains unenrolled; its physical test is deferred by the owner. See [current bridge evidence](NOKIA_BRIDGE_VALIDATION.md). Earlier snapshots below are historical and are superseded where they conflict with this update.
 
-## Current Nokia scope: Beacon 1
+## Current Nokia enrollment development
+
+The owner requested deeper protocol reconstruction and supported Flutter enrollment improvements. [NOKIA_ENROLLMENT_PROTOCOL.md](NOKIA_ENROLLMENT_PROTOCOL.md) contains the call graph, sequence diagram, operation/authentication table, Pi feasibility assessment and deferred hardware plan. The implementation adds root/serial-bound read-only enrollment observation, raw status history, bounded polling and lifecycle cancellation, with explicit unknown parent/RSSI/extender-internet fields. Installed Fold4 baseline remains 1.9.2+19 (read back from Android); candidate source is 1.9.3+20. Full validation passes 227 Flutter tests and analyzer checks. No new enrollment or production configuration was performed.
+
+## Verified Beacon 1 configuration
 
 Owner-approved Wi-Fi migration is complete on Beacon 1: both primary bands broadcast `Nokia Wifi` with the existing household password and WPA2/AES. Fold4 passed Wi-Fi-bound HTTPS on both Nokia BSSIDs, using `192.168.10.69` and TaoTronics DHCP/gateway `192.168.10.1`. Root remains AP bridge at `192.168.10.97` with Ethernet required. Second-Beacon work is set aside. See [current verified configuration](NOKIA_BRIDGE_VALIDATION.md).
 

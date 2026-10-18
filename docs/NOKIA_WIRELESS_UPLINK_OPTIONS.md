@@ -102,3 +102,7 @@ The owner has set the second unit aside and directed work to Beacon 1 only. No s
 ## Audit validation
 
 Documentation-only change: evidence JSON parses, source fingerprints/search counts were generated from the existing corpus, relative documentation links resolve and `git diff --check` passes. Flutter tests/build were not rerun because application code is unchanged. Physical results above are the recorded prior tests, not a new live health measurement. No enrollment, reset, broadcast change, bridge purchase or Argon configuration change occurred in this audit.
+
+## Enrollment-level follow-up
+
+See [Nokia enrollment protocol and Pi feasibility](NOKIA_ENROLLMENT_PROTOCOL.md) for the traced Add Beacon calls, version gates, firmware handshake boundary, spare-Pi requirements and deferred reference test. The app delegates enrollment to the Nokia root; the exact over-air authorization/key exchange remains unknown. No compatible TaoTronics controller or fully wireless Pi-to-Nokia path has been demonstrated. TT Router now observes the verified local mesh endpoint with bounded reads; no production network changes were made.

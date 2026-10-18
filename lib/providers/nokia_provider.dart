@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -11,11 +12,130 @@ class NokiaProvider extends ChangeNotifier {
     NokiaService? service,
     FlutterSecureStorage? storage,
     this.scanner = const PlatformWifiScanner(),
+    this.enrollmentPollInterval = const Duration(seconds: 5),
+    this.enrollmentWatchDuration = const Duration(minutes: 3),
   }) : service = service ?? NokiaService(),
        storage = storage ?? const FlutterSecureStorage();
   final NokiaService service;
   final FlutterSecureStorage storage;
   final WifiScanner scanner;
+  final Duration enrollmentPollInterval, enrollmentWatchDuration;
+  Timer? _enrollmentPoll, _enrollmentDeadline;
+  int _enrollmentEpoch = 0;
+  Completer<void>? _enrollmentRead;
+  bool get enrollmentReading => _enrollmentRead != null;
+  bool watchingEnrollment = false;
+  String? enrollmentSerial;
+  String enrollmentStatus = 'No enrollment requested';
+  DateTime? meshObservedAt;
+  final List<String> enrollmentEvents = [];
+  bool get meshCurrent =>
+      meshObservedAt != null &&
+      DateTime.now().difference(meshObservedAt!) < const Duration(seconds: 90);
+
+  // Only the fields rendered by this firmware's own mesh page are retained in
+  // the observation log. No credentials, full responses or guessed radio fields.
+  static String reportedValue(Object? value) {
+    if (value is! String && value is! num) return 'Not reported';
+    final text = '$value'.replaceAll(RegExp(r'[\x00-\x1f\x7f]'), ' ').trim();
+    if (text.isEmpty) return 'Not reported';
+    return text.length > 120 ? '${text.substring(0, 120)}…' : text;
+  }
+
+  void _recordEnrollment(String text) {
+    if (enrollmentStatus == text && enrollmentEvents.isNotEmpty) return;
+    enrollmentStatus = text;
+    enrollmentEvents.add(text);
+    if (enrollmentEvents.length > 12) enrollmentEvents.removeAt(0);
+  }
+
+  void stopEnrollmentObservation({String? reason}) {
+    _enrollmentEpoch++;
+    _enrollmentPoll?.cancel();
+    _enrollmentDeadline?.cancel();
+    watchingEnrollment = false;
+    if (reason != null && enrollmentSerial != null) _recordEnrollment(reason);
+    _emit();
+  }
+
+  /// Read-only, bounded observation. Stopping never cancels device enrollment.
+  void observeExtender(String serial) {
+    if (_disposed ||
+        busy ||
+        enrollmentReading ||
+        !service.authenticated ||
+        !service.usesWeb ||
+        !RegExp(r'^ALCL[A-Z0-9]{8}$', caseSensitive: false).hasMatch(serial)) {
+      return;
+    }
+    stopEnrollmentObservation();
+    if (enrollmentSerial != serial.toUpperCase()) enrollmentEvents.clear();
+    enrollmentSerial = serial.toUpperCase();
+    final root = identity!;
+    final epoch = _enrollmentEpoch;
+    watchingEnrollment = true;
+    _recordEnrollment(
+      'Reading root reports; client internet remains unverified.',
+    );
+    _enrollmentDeadline = Timer(enrollmentWatchDuration, () {
+      stopEnrollmentObservation(
+        reason:
+            'Observation window ended. Refresh to continue; this is not an enrollment failure or success.',
+      );
+    });
+    Future<void> poll() async {
+      if (_disposed || !watchingEnrollment || epoch != _enrollmentEpoch) return;
+      if (!busy && !enrollmentReading) {
+        final pendingRead = Completer<void>();
+        _enrollmentRead = pendingRead;
+        try {
+          await service.checkIdentity();
+          if (_disposed || epoch != _enrollmentEpoch) return;
+          if (identity == null || !root.sameDevice(identity!)) {
+            throw const NokiaException('The selected root changed.');
+          }
+          final report = await service.read('/mesh_status_web_app.cgi');
+          if (_disposed || epoch != _enrollmentEpoch) return;
+          if (report['beacon_detail'] is! List) {
+            throw const NokiaException('Mesh inventory is unavailable.');
+          }
+          extenders = report;
+          meshObservedAt = DateTime.now();
+          final rows = meshNodes
+              .where(
+                (e) => '${e['SerialNumber']}'.toUpperCase() == enrollmentSerial,
+              )
+              .toList();
+          _recordEnrollment(
+            rows.length == 1
+                ? 'Listed · onboarding: ${reportedValue(rows.single['OnboardStatus'])} · backhaul: ${reportedValue(rows.single['BackhaulStatus'])}'
+                : rows.isEmpty
+                ? 'Not listed by this root yet. Keep the extender near the root and refresh.'
+                : 'Conflicting serial records. Connectivity is unverified.',
+          );
+        } catch (_) {
+          if (!_disposed && epoch == _enrollmentEpoch) {
+            meshObservedAt = null;
+            stopEnrollmentObservation(
+              reason:
+                  'Root read-back unavailable. Reconnect to the trusted root, refresh, and observe again. Do not resend enrollment blindly.',
+            );
+          }
+        } finally {
+          _enrollmentRead = null;
+          pendingRead.complete();
+          _emit();
+        }
+      }
+      if (!_disposed && watchingEnrollment && epoch == _enrollmentEpoch) {
+        _enrollmentPoll = Timer(enrollmentPollInterval, poll);
+      }
+    }
+
+    _emit();
+    unawaited(poll());
+  }
+
   bool busy = false, _disposed = false;
   String? error, message, mode;
   String? savedAddress, savedMac, savedSerial;
@@ -144,7 +264,11 @@ class NokiaProvider extends ChangeNotifier {
     message = null;
     _emit();
     try {
-      await operation();
+      // Foreground operations wait for an existing observation read instead of
+      // overlapping authentication/state changes or silently dropping a tap.
+      final pendingRead = _enrollmentRead;
+      if (pendingRead != null) await pendingRead.future;
+      if (!_disposed) await operation();
     } catch (e) {
       error = e is NokiaException
           ? e.message
@@ -206,6 +330,10 @@ class NokiaProvider extends ChangeNotifier {
     String? address,
     List<String> candidates = const [],
   }) => run(() async {
+    stopEnrollmentObservation();
+    enrollmentSerial = null;
+    enrollmentEvents.clear();
+    meshObservedAt = null;
     observedAt = null;
     clientVerifiedAt = null;
     mode = null;
@@ -353,6 +481,9 @@ class NokiaProvider extends ChangeNotifier {
         : null;
     clients = await optional('/device_name_status_app.cgi?gmode=all');
     extenders = await optional('/whw_zerotouchonb_status_app.cgi?gmode=get');
+    meshObservedAt = extenders?['beacon_detail'] is List
+        ? DateTime.now()
+        : null;
     wan = await optional('/wan_internet_status_app.cgi');
     phone = await service.transport.context();
     observedAt = DateTime.now();
@@ -436,12 +567,32 @@ class NokiaProvider extends ChangeNotifier {
     String serial, {
     String? removeMac,
   }) => run(() async {
+    stopEnrollmentObservation();
     if (removeMac == null && !clientVerified) {
       throw const NokiaException(
         'Verify the root’s client internet and DHCP path before adding an extender.',
       );
     }
-    await service.changeExtender(serial, removeMac: removeMac);
+    enrollmentSerial = serial.toUpperCase();
+    enrollmentEvents.clear();
+    meshObservedAt = null;
+    _recordEnrollment(
+      removeMac == null
+          ? 'Submitting enrollment once.'
+          : 'Submitting removal once.',
+    );
+    try {
+      await service.changeExtender(serial, removeMac: removeMac);
+    } catch (_) {
+      _recordEnrollment(
+        'Request not confirmed. Refresh the root before retrying; it may have received the request.',
+      );
+      rethrow;
+    }
+    if (_disposed) return;
+    _recordEnrollment(
+      'Request acknowledged. Reading the root; connectivity is unverified.',
+    );
     await _refresh();
     final present = meshNodes.any(
       (e) => '${e['SerialNumber']}'.toLowerCase() == serial.toLowerCase(),
@@ -456,6 +607,10 @@ class NokiaProvider extends ChangeNotifier {
   });
 
   Future<void> forget() => run(() async {
+    stopEnrollmentObservation();
+    enrollmentSerial = null;
+    enrollmentEvents.clear();
+    meshObservedAt = null;
     await storage.delete(key: storageKey);
     service.clearSession();
     service.identity = null;
@@ -469,6 +624,7 @@ class NokiaProvider extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    stopEnrollmentObservation();
     service.clearSession();
     super.dispose();
   }

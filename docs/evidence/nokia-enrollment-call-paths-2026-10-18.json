@@ -1,0 +1,87 @@
+{
+  "date": "2026-10-18",
+  "apk_version": "3.260311.00",
+  "installed_cgi": 5.5,
+  "source_anchors": [
+    {
+      "file": "main.js",
+      "sha256": "9e45b62bfba22a02c4dd069488d53b4ae79089c14e7df30fdc9bb05c80bf2041",
+      "character_offsets": {
+        "path:\"extender-scan\"": 8489,
+        "path:\"plugin-extender\"": 9185
+      }
+    },
+    {
+      "file": "chunk-ZLHSKOKF.js",
+      "sha256": "d8d77363b48f140f51e59eda25b10e9ba54342e97314d6bca0d48a0c4ebed4fa",
+      "character_offsets": {
+        "goToAddDeviceFlow(){": 45999
+      }
+    },
+    {
+      "file": "chunk-XRW5DKG6.js",
+      "sha256": "bfdfee57c78328387093498dae7394b7304701e97207c4f2e1fe845e2c09435e",
+      "character_offsets": {
+        "saveSerialNumber(){": 3269,
+        "onSuccess(e){": 6773
+      }
+    },
+    {
+      "file": "chunk-V6S6RRMA.js",
+      "sha256": "34c5c3dba47ada4352aaf3c2b7956e02ac10d337bcd41204e5b6889d403afe9d",
+      "character_offsets": {
+        "saveSerialNumber(){": 8322
+      }
+    },
+    {
+      "file": "chunk-KCTERXP4.js",
+      "sha256": "8a84915fa51d099512ce5b68a4e779bae3fcf04a3960770b67380ba5ba3903e1",
+      "character_offsets": {
+        "skipTestNewLocation(){": 3656
+      }
+    },
+    {
+      "file": "chunk-ZTLFBESH.js",
+      "sha256": "19dd64a2fca75f28f69c610c4ae5752d4f9b0b522df9f1b171c6ed48c605bb31",
+      "character_offsets": {
+        "goToNextPage(){": 2775,
+        "navigateToNextpage(){": 4722
+      }
+    },
+    {
+      "file": "chunk-VZCV73KJ.js",
+      "sha256": "c0e7333e3b34497d38758553e6db3b754e987f2909d0d0f08332b641d142c247",
+      "character_offsets": {
+        "startSearchExtenderProcess(){": 4841,
+        "processResponse(e){": 5223
+      }
+    },
+    {
+      "file": "chunk-N6TIFTLF.js",
+      "sha256": "2a3f296c088944148059debfad7cc450ad33cd2a2bb6d867326eaceb7283dded",
+      "character_offsets": {
+        "goToNextPage(){": 6642
+      }
+    },
+    {
+      "file": "chunk-C4KD4T5M.js",
+      "sha256": "c32f7190a47d88bc4cbb700ffb8d6cdc4d90e8f4d34e3d596d3a4097cc3b164c",
+      "character_offsets": {
+        "BBDR2301_CGI_VERSION=": 8613767,
+        "BBDR2402_CGI_VERSION=": 8613841,
+        "BBDR2602_CGI_VERSION=": 8614061
+      }
+    },
+    {
+      "file": "chunk-ZTUP5JXS.js",
+      "sha256": "b0e27f89a73e2a8ef563aec54923ed6102a94421ef53d3e7c35b3fc776b3d639",
+      "character_offsets": {
+        "setSerialNumberExtender(i){": 18826,
+        "zeroTouchOnboardingStart(){": 21022,
+        "zeroTouchOnboardPoll(i){": 21185
+      }
+    }
+  ],
+  "physical_test": "Deferred by owner; no second unit enrolled",
+  "offset_units": "Unicode string character offsets in existing JADX assets; not byte offsets"
+}

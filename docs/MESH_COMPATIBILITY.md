@@ -118,3 +118,7 @@ The shared SSID gives the same network name and password everywhere. It **does n
 - **Fix (approved):** `20-netflix-nftset.conf` was moved to `/etc/argon/disabled/` (timestamped backup kept) and `eth1-share` was re-activated (0.49 s). dnsmasq restarted with no nftset entries.
 - **Verified:** 40/40 mixed and 60/60 Netflix lookups succeeded with no dnsmasq exit. Netflix classification continues via the daily prefix sets.
 - **Rollback:** move the file back, then `nmcli connection up eth1-share`. `argon-netflix-refresh` would regenerate the file if run again.
+
+## Enrollment-level follow-up
+
+See [Nokia enrollment protocol and Pi feasibility](NOKIA_ENROLLMENT_PROTOCOL.md) for the traced Add Beacon calls, version gates, firmware handshake boundary, spare-Pi requirements and deferred reference test. The app delegates enrollment to the Nokia root; the exact over-air authorization/key exchange remains unknown. No compatible TaoTronics controller or fully wireless Pi-to-Nokia path has been demonstrated. TT Router now observes the verified local mesh endpoint with bounded reads; no production network changes were made.

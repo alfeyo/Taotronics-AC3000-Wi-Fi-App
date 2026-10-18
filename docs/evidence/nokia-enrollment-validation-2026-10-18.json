@@ -1,0 +1,22 @@
+{
+  "candidate_version": "1.9.3+20",
+  "candidate_apk": "artifacts/releases/tt-router-1.9.3-20.apk",
+  "sha256": "63033829580fd96fc882025d1100beeee0947d0c28433e480f193e7210478469",
+  "installed_fold4_version": "1.9.2+19",
+  "installed_candidate": false,
+  "flutter_tests_passed": 227,
+  "targeted_nokia_tests_passed": 25,
+  "analyzer": "No issues found",
+  "release_build": "Passed",
+  "code_review": {
+    "provider": "CodeRabbit",
+    "issues": 1,
+    "severity": "minor",
+    "issue": "Observation erased foreground feedback",
+    "resolution": "Separate read-in-flight guard; preserve feedback; serialize foreground operations; regression and full tests passed",
+    "second_remote_review": false
+  },
+  "hardware_reference_test": "Deferred by owner",
+  "wireless_interoperability_poc": "Not run: Nokia bootstrap contract unverified, spare hardware not provided",
+  "production_changes": false
+}

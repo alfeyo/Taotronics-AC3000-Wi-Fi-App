@@ -211,7 +211,7 @@ mode they come from REST polling instead.
   look like what a prplMesh/EasyMesh-style stack would report. That is INFERRED only. The app treats the mesh as a
   Nokia-proprietary data model.
 
-### 3.6 Adding extenders and onboarding (CONFIRMED)
+### 3.6 Adding extenders and onboarding (static builders; see active-path correction)
 
 - **Gateway first setup:**
   - `whw_onboarding_app.cgi` with `act=ConfigWhwPswd&wl_ssid=…&wpaKey=…`;
@@ -219,15 +219,14 @@ mode they come from REST polling instead.
   - `whw_gatewayrdy_status_app.cgi`.
 - **Adding an extender by serial.** The serial is typed in or scanned from the label QR with ML Kit.
   1. `POST whw_zerotouchonb_app.cgi` with `act=AddBeacon&BeaconSrn=<serial>`.
-  2. `GET whw_zerotouchonb_status_app.cgi?gmode=start|poll|get`. With `checkMesh` set, the same poll checks mesh
-     quality.
+  2. Status builders exist for `GET whw_zerotouchonb_status_app.cgi?gmode=start|poll|get`. The deeper call-graph pass found no external callers of the start/poll builders in this APK; they are not verified required steps. Active newer/Ethernet flows use `get` and topology updates. See [version-gated sequence](NOKIA_ENROLLMENT_PROTOCOL.md).
 - **Ethernet onboarding.** A separate flow (`IS_ETHERNET_ONBOARDING_FLOW`); Ethernet-to-Wi-Fi moves are also
   supported.
 - **Removing an extender:** locally via `whw_zerotouchonb_app.cgi`; in the cloud via
   `subscribers/{uuid}/devices/{id}?force=true`.
 - **Not used:**
-  - **WPS:** no WPS calls.
-  - **QR:** used only to read serials and to *generate* `WIFI:T:WPA;S:…;P:…;;` share codes.
+  - **WPS:** no app-side WPS calls found. This does not exclude a WPS handshake implemented inside Beacon firmware.
+  - **QR:** reads device label/setup information (including extender serial), and generates Wi-Fi share codes. It is not evidence of DPP.
 - **BLE.** BLE is used for **FastMile 5G Receivers (outdoor units), not Beacons**:
   - scan for name prefix `Nokia`;
   - service `30839AC4-7D7E-415C-9A42-167340CF233C`, TX `2734594A-…`, RX `6604C4B2-…`;
@@ -334,3 +333,7 @@ Verified writes:
 - Extender enrollment/removal: `mesh_web_app.cgi?add` with SerialNumber; `?del` additionally beaconMac. Verified in the firmware UI source and implemented with identity/mode/capacity/serial checks and post-write inventory read. **Not yet exercised against a second unit.** Inventory membership does not prove backhaul connectivity. Firmware reports OnboardStatus and BackhaulStatus separately.
 
 `device_name_status_web_app.cgi` is alias/device configuration, not the connected-client list; the implementation uses `lan_status_web_app.cgi?wlan` instead. Radio setters require many firmware-specific fields (including nested encrypted PSKs); they remain unavailable until preservation/read-back is fully verified. No speculative WLAN or guest mutation was performed.
+
+## Enrollment implementation follow-up
+
+The [enrollment protocol](NOKIA_ENROLLMENT_PROTOCOL.md) traces the active Add Beacon route and separates CGI 5.5 from newer 5.7/5.9/6.6 branches. Backhaul key exchange and radio association remain firmware boundaries awaiting the owner-deferred second-Beacon test. TT Router adds bounded WebGUI observation without invoking legacy polling builders or cloud services.

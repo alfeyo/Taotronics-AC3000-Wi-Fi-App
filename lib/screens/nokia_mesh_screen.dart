@@ -41,6 +41,14 @@ class _NokiaMeshScreenState extends State<NokiaMeshScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    n.stopEnrollmentObservation(
+      reason: n.watchingEnrollment
+          ? 'Observation paused because the app changed state. Reconnect and observe again.'
+          : null,
+    );
+    n.meshObservedAt = null;
+    n.observedAt = null;
+    n.clientVerifiedAt = null;
     // A temporary setup-network switch must not retain a stale owner session.
     if (state == AppLifecycleState.resumed) {
       n.service.clearSession();
@@ -53,6 +61,7 @@ class _NokiaMeshScreenState extends State<NokiaMeshScreen>
     WidgetsBinding.instance.removeObserver(this);
     _freshness?.cancel();
     n.removeListener(_changed);
+    n.stopEnrollmentObservation();
     if (widget.controller == null) n.dispose();
     address.dispose();
     user.dispose();
@@ -125,7 +134,10 @@ class _NokiaMeshScreenState extends State<NokiaMeshScreen>
     // Let the dialog finish its reverse transition before disposing its field.
     await Future<void>.delayed(const Duration(milliseconds: 250));
     serial.dispose();
-    if (mounted && value != null) await n.changeExtender(value);
+    if (mounted && value != null) {
+      await n.changeExtender(value);
+      if (mounted && n.error == null) n.observeExtender(value);
+    }
   }
 
   @override
@@ -621,6 +633,49 @@ class _NokiaMeshScreenState extends State<NokiaMeshScreen>
                         'Root/extender relationship and backhaul must be reported by Nokia. TaoTronics is a separate mesh.',
                     done: false,
                   ),
+                  if (n.enrollmentSerial != null) ...[
+                    const SizedBox(height: Space.md),
+                    PanelCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Enrollment observation',
+                            style: theme.textTheme.titleMedium,
+                          ),
+                          Text(n.enrollmentSerial!),
+                          Text(n.enrollmentStatus),
+                          const Text(
+                            'Read-back only. No percentage or completion is inferred. Stopping observation leaves device enrollment running.',
+                          ),
+                          if (n.watchingEnrollment)
+                            TextButton(
+                              onPressed: () => n.stopEnrollmentObservation(
+                                reason:
+                                    'Observation stopped. Refresh to continue; no cancellation was sent to Nokia.',
+                              ),
+                              child: const Text('Stop observation'),
+                            )
+                          else if (logged)
+                            TextButton(
+                              onPressed: n.busy || n.enrollmentReading
+                                  ? null
+                                  : () =>
+                                        n.observeExtender(n.enrollmentSerial!),
+                              child: const Text('Observe for 3 minutes'),
+                            ),
+                          if (n.enrollmentEvents.length > 1)
+                            ExpansionTile(
+                              title: const Text('Recent state changes'),
+                              children: [
+                                for (final event in n.enrollmentEvents)
+                                  ListTile(dense: true, title: Text(event)),
+                              ],
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
                   if (logged && n.clients?['device_cfg'] is List) ...[
                     const SizedBox(height: Space.lg),
                     Text(
@@ -656,13 +711,31 @@ class _NokiaMeshScreenState extends State<NokiaMeshScreen>
                   if (logged && n.extenders != null) ...[
                     const SizedBox(height: Space.lg),
                     Text(
-                      'Nokia mesh inventory',
+                      'Nokia topology and inventory',
                       style: theme.textTheme.titleLarge,
                     ),
                     Text(
-                      n.current
+                      n.meshCurrent
                           ? 'Current root report'
                           : 'Stale inventory · refresh Nokia before assessing backhaul',
+                    ),
+                    PanelCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Root · ${id?.serial ?? 'Not identified'}',
+                            style: theme.textTheme.titleMedium,
+                          ),
+                          Text(id?.address.host ?? 'Address not reported'),
+                          const Text(
+                            'TaoTronics → wired Nokia root → enrolled Nokia units',
+                          ),
+                          const Text(
+                            'Diagram describes the intended uplink. Actual parent, radio medium and signal must be reported separately.',
+                          ),
+                        ],
+                      ),
                     ),
                     if (n.extenders?['beacon_detail'] is List &&
                         n.meshNodes.isEmpty)
@@ -686,13 +759,40 @@ class _NokiaMeshScreenState extends State<NokiaMeshScreen>
                             ),
                             KvRow(
                               'Backhaul',
-                              '${node['BackhaulStatus'] ?? 'Not reported'}',
+                              NokiaProvider.reportedValue(
+                                node['BackhaulStatus'],
+                              ),
+                            ),
+                            KvRow(
+                              'Management IP',
+                              NokiaProvider.reportedValue(node['IPAddress']),
+                            ),
+                            const KvRow(
+                              'Parent / radio / RSSI',
+                              'Not supplied by this WebGUI schema',
+                            ),
+                            const KvRow(
+                              'Extender client internet',
+                              'Not verified by root inventory',
                             ),
                             KvRow(
                               'MAC',
                               '${node['MACAddress'] ?? 'Not reported'}',
                               last: true,
                             ),
+                            if (node['SerialNumber'] is String &&
+                                n.service.usesWeb)
+                              TextButton(
+                                onPressed:
+                                    n.busy ||
+                                        n.enrollmentReading ||
+                                        n.watchingEnrollment
+                                    ? null
+                                    : () => n.observeExtender(
+                                        node['SerialNumber'] as String,
+                                      ),
+                                child: const Text('Observe this extender'),
+                              ),
                             if (n.current &&
                                 n.service.usesWeb &&
                                 node['SerialNumber'] is String &&
