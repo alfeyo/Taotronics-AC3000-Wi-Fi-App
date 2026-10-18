@@ -77,6 +77,14 @@ Target: ISP → Nokia (radios off, still powered) → **cable** → Argon eth0 �
 3. Go checks (all must pass): `/run/argon-wan/active` = eth0; default route via eth0; `tun0` up and table 153 default via tun0; household clients have internet through VPN; `tailscale ping` from phone/Mac; dashboard `/devices` + `/network` 200; TT Router MQTT controls and Gateway screen live; kill-switch reject counter unchanged.
 4. Rollback: unplug the cable. The state machine fails back to Wi-Fi; Wi-Fi WAN operation is proven by the current state. If routing does not recover within 60 s, restart nothing: use the dashboard WAN view and the runbook (`argon-dashboard/docs/RUNBOOK.md`).
 
+### Stage 1 result (executed 2026-10-18 ~10:01–10:08, user-approved)
+- A cable was connected to Argon eth0. **Its upstream is not the Nokia**: eth0 DHCP gave 192.168.88.250/24, gateway 192.168.88.1, MAC `d4:ca:6d:05:f5:89` (MikroTik OUI), DNS 192.168.88.1. The relationship between this MikroTik and the Nokia/ISP is **unknown**.
+- Argon **rebooted unexpectedly** at 10:02:56 during the change. The previous boot's journal is not persistent, so the cause is unknown. After the reboot `throttled=0x0`.
+- The USB Wi-Fi adapter (former `wlan1`, `00:13:ef:f3:13:97`) is **absent from the USB bus**. Only onboard `wlan0` remains as Wi-Fi fallback, released while Ethernet is active.
+- Passed: ACTIVE_WAN=eth0 (stable from 10:05:51), default and VPN peer route via eth0, `tun0` up with table 153 via tun0, household egress country GB, kill-switch rejects 0, Tailscale reachable, `/devices`, `/network`, `/api/status` 200, router MQTT port reachable from LAN.
+- Not passed: TT Router app MQTT reads timed out after the reboot (GetSysConnectInfo/GetNodeRateInfo/GetWanRateInfo), and phone telemetry was >7 min stale. Re-check after restarting the app.
+- No rollback was performed: internet, VPN, kill switch, Tailscale and dashboard all stayed working on the wired uplink.
+
 ### Stage 2 — soak (24 h on wired WAN, Nokia Wi-Fi still on)
 Monitor throttling, VPN reconnects, dashboard history continuity and phone telemetry.
 
