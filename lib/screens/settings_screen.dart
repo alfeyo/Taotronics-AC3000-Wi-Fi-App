@@ -348,7 +348,7 @@ class SettingsScreen extends StatelessWidget {
   }
 }
 
-/// Edits the 2.4 GHz and 5 GHz networks together.
+/// Edits router profiles 0 and 1 independently; indices are not bands.
 class WifiSettingsDetailScreen extends StatefulWidget {
   const WifiSettingsDetailScreen({super.key});
 

@@ -44,10 +44,8 @@ void main() {
         );
         expect(tester.takeException(), isNull);
         expect(find.text('Nokia Mesh'), findsOneWidget);
-        expect(
-          find.textContaining('verified', skipOffstage: false),
-          findsWidgets,
-        );
+        expect(find.text('Find your root Beacon'), findsOneWidget);
+        expect(find.text('AP bridge read-back verified'), findsNothing);
         await tester.pumpWidget(const SizedBox());
         pi.dispose();
         router.dispose();

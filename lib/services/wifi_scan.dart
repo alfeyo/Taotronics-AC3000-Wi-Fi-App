@@ -26,6 +26,7 @@ class WifiScanResult {
     required this.frequency,
     required this.level,
     required this.capabilities,
+    this.ageSeconds,
   });
 
   /// Empty for hidden networks.
@@ -38,6 +39,7 @@ class WifiScanResult {
   /// dBm.
   final int level;
   final String capabilities;
+  final int? ageSeconds;
 
   bool get hidden => ssid.trim().isEmpty;
 
@@ -64,6 +66,9 @@ class WifiScanResult {
       bssid: bssid.toLowerCase(),
       frequency: n(raw['frequency']),
       level: n(raw['level']),
+      ageSeconds: raw['ageSeconds'] is num
+          ? (raw['ageSeconds'] as num).toInt()
+          : null,
       capabilities: raw['capabilities'] is String
           ? raw['capabilities'] as String
           : '',
@@ -156,6 +161,13 @@ class PlatformWifiScanner implements WifiScanner {
           .timeout(const Duration(seconds: 15));
       return WifiScanSnapshot.fromChannel(raw ?? const {}, DateTime.now());
     } on PlatformException catch (e) {
+      if (e.code == 'precise_location') {
+        return const WifiScanSnapshot(
+          status: WifiScanStatus.permissionBlocked,
+          message:
+              'Enable Precise location for TT Router in Android settings to read nearby networks.',
+        );
+      }
       if (e.code == 'permission') {
         return const WifiScanSnapshot(status: WifiScanStatus.permissionDenied);
       }

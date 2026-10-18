@@ -72,19 +72,19 @@ WifiScanResult _ap(String ssid, String bssid, int mhz, {int level = -50}) =>
           : '[WPA-PSK-CCMP][RSN-PSK-CCMP][ESS]',
     );
 
-/// What this phone heard next to the router (block 7c:10:c9:aa:bb).
+/// What this phone heard next to the router (block 80:c5:48:aa:bb).
 WifiScanSnapshot _scan() => WifiScanSnapshot(
   status: WifiScanStatus.ok,
   at: DateTime.now(),
-  connectedBssid: '7c:10:c9:aa:bb:03',
+  connectedBssid: '80:c5:48:aa:bb:03',
   connectedSsid: 'Nokia Wifi',
   results: [
-    _ap('Nokia Wifi', '7c:10:c9:aa:bb:03', 2417),
-    _ap('Nokia Wifi', '7c:10:c9:aa:bb:05', 5220),
-    _ap('Nokia Wifi', '7c:10:c9:aa:bb:07', 2417),
-    _ap('Game Labs-2.4G', '7c:10:c9:aa:bb:0a', 2417, level: -41),
-    _ap('', '7c:10:c9:aa:bb:0e', 5745),
-    _ap('Visitors', '7c:10:c9:aa:bb:0d', 2417),
+    _ap('Nokia Wifi', '80:c5:48:aa:bb:03', 2417),
+    _ap('Nokia Wifi', '80:c5:48:aa:bb:05', 5220),
+    _ap('Nokia Wifi', '80:c5:48:aa:bb:07', 2417),
+    _ap('Game Labs-2.4G', '80:c5:48:aa:bb:0a', 2417, level: -41),
+    _ap('', '80:c5:48:aa:bb:0e', 5745),
+    _ap('Visitors', '80:c5:48:aa:bb:0d', 2417),
     _ap('Neighbour', '11:22:33:44:55:66', 2462),
   ],
 );
@@ -352,11 +352,11 @@ void main() {
               .data,
           'Nokia Wifi',
         );
-        expect(find.text('Primary household network'), findsOneWidget);
+        expect(find.text('Main Household Network'), findsOneWidget);
         expect(find.text('WPA2-PSK'), findsOneWidget);
         expect(
           find.text(
-            '2.4 GHz · 5 GHz · heard here on 2.4 GHz, 5 GHz (3 radios)',
+            '2.4 GHz · 5 GHz · heard here on 2.4 GHz, 5 GHz (3 BSSIDs; profiles may share a radio)',
           ),
           findsOneWidget,
         );

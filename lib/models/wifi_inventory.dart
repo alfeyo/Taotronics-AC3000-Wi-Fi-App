@@ -115,10 +115,10 @@ abstract final class WifiInventory {
 
   /// Groups of ≥2 enabled entries sharing SSID and security.
   static List<DuplicateGroup> duplicates(List<WirelessNetwork> networks) {
-    final groups = <(String, int), List<WirelessNetwork>>{};
+    final groups = <(String, int, String), List<WirelessNetwork>>{};
     for (final n in networks) {
-      if (!n.isEnabled || n.ssid.trim().isEmpty) continue;
-      (groups[(n.ssid, n.encrypt)] ??= []).add(n);
+      if (!n.isEnabled || n.ssid.trim().isEmpty || !n.passwordKnown) continue;
+      (groups[(n.ssid, n.encrypt, n.password)] ??= []).add(n);
     }
     return [
       for (final g in groups.values)
@@ -157,7 +157,10 @@ abstract final class WifiInventory {
       ?guestSsid,
     };
     final connected = scan.connectedSsid;
-    if (connected != null && !names.contains(connected)) return null;
+    if (connected == null || !names.contains(connected)) return null;
+    // Same SSID alone cannot identify a TaoTronics AP: bridged Nokia uses it
+    // too. This is a vendor hint for radio observations, never device identity.
+    if (!block.startsWith('80:c5:48:')) return null;
     return block;
   }
 
@@ -177,6 +180,7 @@ abstract final class WifiInventory {
     final heard = <String, List<WifiScanResult>>{};
     if (block != null) {
       for (final r in scan!.results) {
+        if (r.ageSeconds != null && r.ageSeconds! > 120) continue;
         if (bssidBlock(r.bssid) != block) continue;
         (heard[r.ssid.trim()] ??= []).add(r);
       }

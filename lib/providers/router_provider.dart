@@ -1226,6 +1226,10 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
       'Password',
       // A security change is confirmed only when the router stores it.
       'Encrypt',
+      'SsidIsolate',
+      'StaIsolate',
+      'Vlanid',
+      'VlanEnable',
       'Create',
       if (payload.any((n) => n.containsKey('Disable'))) 'Disable',
     ];
@@ -1234,6 +1238,7 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
     // session before replying, so a missing reply is verified afterwards.
     final result = await _writeRouterSetting(
       label: 'Wi-Fi change',
+      requireReadBack: true,
       failureMessage: 'Failed to update Wi-Fi settings',
       request: () => _mqtt.setWirelessSettings(payload),
       verify: () async {
@@ -1241,11 +1246,8 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
         return _matchesByIndex(_wirelessNetworksRaw, payload, keys);
       },
     );
-    if (result.isConfirmed) {
-      _wirelessNetworksRaw = payload;
-      _wirelessNetworksParsed = payload.map(WirelessNetwork.fromJson).toList();
-      notifyListeners();
-    }
+    // refreshWirelessSettings retained the actual read-back, including any
+    // firmware-normalized fields. Never replace it with our submitted payload.
     return result;
   }
 
@@ -1343,16 +1345,31 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
   /// Last guest network entry reported by GetGuestInfo, if loaded.
   Map<String, dynamic>? get guestWifi => _guestWifi;
 
-  Future<SaveResult> updateGuestWifiSettings(Map<String, dynamic> settings) {
+  Future<SaveResult> updateGuestWifiSettings(
+    Map<String, dynamic> settings,
+  ) async {
+    // Read immediately before mutation so unrelated firmware fields survive.
+    final response = await loadGuestWifiSettings();
+    final data = response?['Data'];
+    final fresh = data is List && data.isNotEmpty && data.first is Map
+        ? Map<String, dynamic>.from(data.first as Map)
+        : data is Map
+        ? Map<String, dynamic>.from(data)
+        : null;
+    if (response?['ErrorCode'] != 0 || fresh == null) {
+      return const SaveResult.failed(
+        'Read guest Wi-Fi before saving. No change was sent.',
+      );
+    }
+    final payload = {...fresh, ...settings};
     return _writeRouterSetting(
       label: 'Guest Wi-Fi change',
+      requireReadBack: true,
       failureMessage: 'Failed to update guest Wi-Fi',
-      request: () => _mqtt.setGuestWifi(settings),
-      verify: () => _verifyListSubset(
-        _mqtt.getGuestWifi,
-        [settings],
-        const ['Enable', 'Ssid', 'EncryptionWay'],
-      ),
+      request: () => _mqtt.setGuestWifi(payload),
+      verify: () => _verifyListSubset(_mqtt.getGuestWifi, [
+        payload,
+      ], payload.keys.toList()),
     );
   }
 
@@ -1646,6 +1663,7 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
     required Future<Map<String, dynamic>?> Function() request,
     String label = 'Change',
     Future<bool?> Function()? verify,
+    bool requireReadBack = false,
   }) async {
     if (!isConnected) {
       _errorMessage = 'Authentication required for router settings';
@@ -1669,9 +1687,26 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
     final SaveResult result;
     if (response != null) {
       final code = response['ErrorCode'];
-      result = code == 0
-          ? SaveResult.confirmed('$label saved.')
-          : SaveResult.failed('$failureMessage (router error $code).');
+      if (code == 0 && requireReadBack && verify != null) {
+        bool? matches;
+        try {
+          matches = await verify();
+        } catch (_) {
+          matches = null;
+        }
+        if (matches == true) {
+          result = SaveResult.confirmed('$label verified on the router.');
+        } else {
+          _startVerification(label, verify);
+          result = SaveResult.pending(
+            '$label acknowledged; waiting for matching router read-back.',
+          );
+        }
+      } else {
+        result = code == 0
+            ? SaveResult.confirmed('$label saved.')
+            : SaveResult.failed('$failureMessage (router error $code).');
+      }
     } else if (verify != null) {
       _startVerification(label, verify);
       result = SaveResult.pending(
@@ -1728,6 +1763,9 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
       } catch (e) {
         debugPrint('RouterProvider: verification failed - $e');
       }
+    }
+    if (session != _sessionGeneration || !_pendingChanges.contains(change)) {
+      return;
     }
     change.status = switch (matches) {
       true => ChangeStatus.confirmed,
@@ -1984,6 +2022,8 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    _sessionGeneration++;
+    _pendingChanges.clear();
     WidgetsBinding.instance.removeObserver(this);
     _discoverySubscription?.cancel();
     _connectionSubscription?.cancel();

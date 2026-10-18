@@ -1,12 +1,6 @@
 # Nokia WiFi app: protocol investigation (static analysis)
 
-> Update, 18 October 2026: both Nokia Beacons are factory-reset and powered off.
-> Older Nokia addresses, identity and configuration below are historical, not
-> current. TaoTronics broadcasts `Nokia Wifi`. The supported target is a separate
-> **two-Beacon Nokia mesh in AP bridge mode behind TaoTronics**; cross-vendor
-> enrollment remains unsupported. Exact models/firmware and bridge behavior are
-> unverified. Follow [Nokia bridge validation](NOKIA_BRIDGE_VALIDATION.md), including
-> temporary-SSID testing and approval before household-SSID activation.
+> Current update, 18 October 2026: TT Router provisions the root **Nokia WiFi Beacon 2** directly through its owner-authorized local WebGUI API. Firmware `3FE49334IJJJ09`, root `ALCLB4392160`, MAC `b4:63:6f:db:e6:c0`. The root now reports **AP_Bridge** at `192.168.10.97`; Fold4 received a TaoTronics DHCP lease/gateway and reached HTTPS internet through its Nokia radio. Factory SSID `NOKIA-E6C0` is retained. The second Beacon awaits owner activation/serial; no mesh-backhaul success is claimed. See [current bridge evidence](NOKIA_BRIDGE_VALIDATION.md). Earlier snapshots below are historical and are superseded where they conflict with this update.
 
 
 Date: 2026-10-18. Method: static inspection only (unzip, shasum, apksigner, aapt2, jadx).
@@ -310,3 +304,33 @@ were found. OTA is triggered on the device via `whw_ota_agent_app.cgi`.
    The app gives no evidence either way.
 8. **Signer provenance.** Compare the certificate SHA-256 with one from a Play-installed copy (for example via
    `adb shell pm` on a phone that has the official install).
+
+## 1.9.0 direct local implementation — verified Beacon 2 / CGI 5.5
+
+The current root's own WebGUI sources (`web_whw/main.c2e6eb720d33b3e7702c.js`, `assets/js/crypto_page.js`, network module `5.0cef732063d8394e86ac.js`) supplement the static Android-app reference. No vendor cloud secret or official-app identity is used.
+
+1. Identify via `get_devmap_cap_status_app.cgi` and matching `login_app.cgi?chk` serial/model/version. MAC prefixes/SSIDs generate candidates only. Normalize the actual `AP_Bridge` mode spelling.
+2. POST owner `userName` to `login_web_app.cgi?nonce`. The response contains nonce, randomKey and public RSA key.
+3. Build the device's nohash=1 owner form with fresh response AES key/IV. Wrap it in random AES-128-CBC/PKCS7, wrap that key/IV with the advertised RSA key (PKCS#1 v1.5), and send the verified encrypted form. Successful login returns **HTTP 299**, result 0, sid and CSRF token. No password/session material is logged.
+4. Read authenticated `device_status_web_app.cgi` and match SerialNumber before saving trust. Secure storage contains owner credentials and a pin of this device's public encryption key. Reconnect compares the fresh challenge key before encrypting/replaying the password. Changed/missing pins and capability downgrades require explicit owner login; legacy HTTP login passwords are not saved for automatic reuse. First use is trust established on the owner's selected local network, not certificate-backed device attestation. The key was stable across the observed bridge reboot.
+5. Session reads use sid, and encrypted responses use the fresh response AES key/IV. Writes include the session CSRF token inside the encrypted form. Android uses its Wi-Fi Network for these requests without binding the entire process. HTTPS keeps normal certificate validation. DNS resolution has its own bounded executor so failed setup-network DNS cannot starve API calls.
+
+Verified read endpoints:
+
+| Purpose | Local WebGUI path | Observed data |
+|---|---|---|
+| Model/firmware/uptime | `device_status_web_app.cgi` | ModelName, SerialNumber, HardwareVersion, SoftwareVersion, UpTime |
+| Mode | `whw_beacon_mode_app_status_web_app.cgi?getWorkMode` | RGW then AP_Bridge |
+| 2.4 GHz profiles | `wlan_config_status_web_app.cgi` | `wlan_config_glb` |
+| 5 GHz profiles | `wlan_config_status_web_app.cgi?v=11ac` | `wlan_config_glb11ac` (different key) |
+| Devices | `lan_status_web_app.cgi?wlan` | `device_cfg`: HostName, IPAddress, MACAddress, Active, InterfaceType, SSIDInterface |
+| Mesh | `mesh_status_web_app.cgi` | beacon_detail, root_info, beaconEntries |
+| LAN settings | `lan_ipv4_status_web_app.cgi` | Management address; stored DHCP settings are not proof of active bridge-mode DHCP service |
+| Uplink | `wan_internet_status_web_app.cgi` | gwwanup/ExternalIPAddress; separate from an actual client internet test |
+
+Verified writes:
+
+- Root mode: `whw_beacon_mode_app_web_app.cgi`, act=setWorkMode, brEnable=1 plus CSRF, encrypted. Executed from TT Router; root rebooted onto 192.168.10.97 and reported AP_Bridge. Client DHCP/internet independently confirmed.
+- Extender enrollment/removal: `mesh_web_app.cgi?add` with SerialNumber; `?del` additionally beaconMac. Verified in the firmware UI source and implemented with identity/mode/capacity/serial checks and post-write inventory read. **Not yet exercised against a second unit.** Inventory membership does not prove backhaul connectivity. Firmware reports OnboardStatus and BackhaulStatus separately.
+
+`device_name_status_web_app.cgi` is alias/device configuration, not the connected-client list; the implementation uses `lan_status_web_app.cgi?wlan` instead. Radio setters require many firmware-specific fields (including nested encrypted PSKs); they remain unavailable until preservation/read-back is fully verified. No speculative WLAN or guest mutation was performed.

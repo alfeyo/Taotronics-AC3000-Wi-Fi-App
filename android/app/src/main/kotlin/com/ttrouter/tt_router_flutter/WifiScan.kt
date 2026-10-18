@@ -22,7 +22,7 @@ class WifiScan(private val context: Context) {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) !=
             PackageManager.PERMISSION_GRANTED
         ) {
-            result.error("permission", "Location permission is needed to read Wi-Fi scan results.", null)
+            result.error("precise_location", "Enable Precise location for TT Router in Android settings.", null)
             return
         }
         val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
@@ -50,6 +50,7 @@ class WifiScan(private val context: Context) {
                     "frequency" to r.frequency,
                     "level" to r.level,
                     "capabilities" to (r.capabilities ?: ""),
+                    "ageSeconds" to ((android.os.SystemClock.elapsedRealtime() * 1000 - r.timestamp).coerceAtLeast(0) / 1000000),
                 )
             }
             @Suppress("DEPRECATION")

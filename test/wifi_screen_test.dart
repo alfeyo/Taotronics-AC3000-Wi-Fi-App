@@ -55,16 +55,18 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
 
+    var table = jsonDecode(jsonEncode(_table));
     final writes = <List<dynamic>>[];
     final factory = FakeTransportFactory()
       ..responder = (path, data) => switch (path) {
         '/GetWirelessInfoListV2' => {'ErrorCode': 1},
         '/GetWirelessInfoList' => {
           'ErrorCode': 0,
-          'Data': jsonDecode(jsonEncode(_table)),
+          'Data': jsonDecode(jsonEncode(table)),
         },
         '/SetWirelessInfoList' => () {
           writes.add(data as List);
+          table = jsonDecode(jsonEncode(data));
           return {'ErrorCode': 0};
         }(),
         '/GetGuestInfo' => {
@@ -193,6 +195,7 @@ void main() {
       expect(find.text('None'), findsNothing);
       await tester.tap(find.text('WPA2 (AES)').last);
       await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Continue'));
       await tester.tap(find.text('Continue'));
       await tester.pumpAndSettle();
       final payload = result!.toRouterPayload();

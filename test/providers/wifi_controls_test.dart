@@ -57,12 +57,36 @@ class _FakeRouter {
     : table = table ?? _routerTable();
 
   final bool dropOnWrite;
+  bool ignoreWrite = false;
+  bool normalize = false;
+  bool ignoreGuestPassword = false;
+  Map<String, dynamic> guest = {
+    'Enable': 1,
+    'Ssid': 'Visitors',
+    'EncryptionWay': 3,
+    'Password': 'OldPassword',
+    'Vlanid': 17,
+    'VlanEnable': 1,
+    'FirmwareField': 'keep',
+  };
+  Map<String, dynamic>? guestWritten;
   List<Map<String, dynamic>> table;
   final writes = <List<Map<String, dynamic>>>[];
   late FakeTransportFactory factory;
 
   Map<String, dynamic>? respond(String path, dynamic data) {
     switch (path) {
+      case '/GetGuestInfo':
+        return {
+          'ErrorCode': 0,
+          'Data': [Map<String, dynamic>.from(guest)],
+        };
+      case '/SetGuestInfo':
+        guestWritten = Map<String, dynamic>.from((data as List).first as Map);
+        final oldPassword = guest['Password'];
+        guest = {...guestWritten!};
+        if (ignoreGuestPassword) guest['Password'] = oldPassword;
+        return {'ErrorCode': 0};
       case '/GetWirelessInfoListV2':
         return null; // this router never answers V2
       case '/GetWirelessInfoList':
@@ -72,7 +96,12 @@ class _FakeRouter {
             .map((e) => Map<String, dynamic>.from(e as Map))
             .toList();
         writes.add(payload);
-        table = payload;
+        if (!ignoreWrite) {
+          table = payload;
+        }
+        if (normalize) {
+          table[0] = {...table[0], 'FirmwareNormalized': 1};
+        }
         if (dropOnWrite) {
           Future<void>.delayed(const Duration(milliseconds: 50), () {
             factory.last.drop();
@@ -124,6 +153,58 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
+  test('guest save preserves fields and verifies password read-back', () {
+    fakeAsync((async) {
+      final router = _FakeRouter();
+      final h = _Harness(router)..connectAndLoad(async);
+      SaveResult? result;
+      h.provider
+          .updateGuestWifiSettings({'Password': 'NewPassword'})
+          .then((v) => result = v);
+      async.elapse(const Duration(seconds: 2));
+      expect(router.guestWritten?['Vlanid'], 17);
+      expect(router.guestWritten?['FirmwareField'], 'keep');
+      expect(result?.status, SaveStatus.confirmed);
+      router.ignoreGuestPassword = true;
+      h.provider
+          .updateGuestWifiSettings({'Password': 'AnotherPassword'})
+          .then((v) => result = v);
+      async.elapse(const Duration(seconds: 2));
+      expect(result?.status, SaveStatus.pendingVerification);
+      h.provider.dispose();
+      async.elapse(const Duration(seconds: 120));
+    });
+  });
+  test('acknowledgment without matching Wi-Fi read-back stays pending', () {
+    fakeAsync((async) {
+      final router = _FakeRouter()..ignoreWrite = true;
+      final h = _Harness(router)..connectAndLoad(async);
+      SaveResult? result;
+      h.provider.setWirelessNetworkEnabled(1, false).then((v) => result = v);
+      async.elapse(const Duration(seconds: 2));
+      expect(result?.status, SaveStatus.pendingVerification);
+      expect(h.provider.wirelessNetworksParsed[1].isEnabled, isTrue);
+      async.elapse(const Duration(seconds: 4));
+      expect(h.provider.pendingChanges.single.status, ChangeStatus.mismatch);
+      h.provider.dispose();
+    });
+  });
+  test(
+    'Wi-Fi read-back retains firmware fields instead of submitted payload',
+    () {
+      fakeAsync((async) {
+        final router = _FakeRouter()..normalize = true;
+        final h = _Harness(router)..connectAndLoad(async);
+        h.provider.setWirelessNetworkEnabled(1, false);
+        async.elapse(const Duration(seconds: 2));
+        expect(
+          h.provider.wirelessNetworksParsed[0].rawData['FirmwareNormalized'],
+          1,
+        );
+        h.provider.dispose();
+      });
+    },
+  );
   test('loads all three V1 networks including the disabled one', () {
     fakeAsync((async) {
       final h = _Harness(_FakeRouter())..connectAndLoad(async);

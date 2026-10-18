@@ -506,9 +506,9 @@ class _WifiSettingsScreenState extends State<WifiSettingsScreen> {
                       ActionTile(
                         icon: Icons.edit_note_rounded,
                         tone: Tone.info,
-                        title: 'Edit both bands together',
+                        title: 'Edit primary profiles together',
                         subtitle:
-                            '2.4 GHz and 5 GHz names, passwords and on/off',
+                            'Separate router entries, names, passwords and on/off',
                         enabled: connected,
                         onTap: () => Navigator.push(
                           context,
@@ -611,7 +611,7 @@ class _AdvancedHeader extends StatelessWidget {
 }
 
 /// The household network as one logical network.
-class PrimaryNetworkCard extends StatelessWidget {
+class PrimaryNetworkCard extends StatefulWidget {
   const PrimaryNetworkCard({
     super.key,
     required this.primary,
@@ -627,6 +627,17 @@ class PrimaryNetworkCard extends StatelessWidget {
   /// Router radios this phone heard broadcasting the primary SSID.
   final List<WifiScanResult> radios;
 
+  @override
+  State<PrimaryNetworkCard> createState() => _PrimaryNetworkCardState();
+}
+
+class _PrimaryNetworkCardState extends State<PrimaryNetworkCard> {
+  bool _reveal = false;
+  PrimaryNetwork get primary => widget.primary;
+  RouterProvider get provider => widget.provider;
+  List<DuplicateGroup> get duplicates => widget.duplicates;
+  List<WifiScanResult> get radios => widget.radios;
+
   (String, Tone) get _health {
     if (!provider.isConnected) return ('Router not connected', Tone.warning);
     if (primary.anyUnsecured) return ('Unsecured — set WPA2', Tone.danger);
@@ -639,7 +650,7 @@ class PrimaryNetworkCard extends StatelessWidget {
     if (provider.liveDataStale) {
       return ('Router data is not live', Tone.warning);
     }
-    return ('Good', Tone.success);
+    return ('No reported fault', Tone.success);
   }
 
   @override
@@ -670,7 +681,7 @@ class PrimaryNetworkCard extends StatelessWidget {
         bandsHeard.isEmpty
             ? '2.4 GHz · 5 GHz'
             : '2.4 GHz · 5 GHz · heard here on ${bandsHeard.join(', ')} '
-                  '(${radios.length} radio${radios.length == 1 ? '' : 's'})',
+                  '(${radios.length} BSSIDs; profiles may share a radio)',
         null,
       ),
       (
@@ -680,13 +691,13 @@ class PrimaryNetworkCard extends StatelessWidget {
             : [
                 '$devices',
                 if (guests > 0) '$guests on guest',
-                'router-reported',
+                'all router clients; per-SSID count unavailable',
                 if (devicesAt != null) formatAge(devicesAt),
               ].join(' · '),
         null,
       ),
       (
-        'Mesh nodes',
+        'TaoTronics access points',
         !nodesKnown
             ? 'Not reported yet'
             : [
@@ -725,7 +736,7 @@ class PrimaryNetworkCard extends StatelessWidget {
                       style: theme.textTheme.titleLarge,
                     ),
                     Text(
-                      'Primary household network',
+                      'Main Household Network',
                       style: theme.textTheme.bodySmall?.copyWith(color: muted),
                     ),
                   ],
@@ -740,6 +751,32 @@ class PrimaryNetworkCard extends StatelessWidget {
           const SizedBox(height: Space.md),
           for (final (i, (label, value, tone)) in rows.indexed)
             KvRow(label, value, tone: tone, last: i == rows.length - 1),
+          const SizedBox(height: Space.sm),
+          if (!primary.anyUnsecured &&
+              primary.entries.every((e) => e.passwordKnown) &&
+              primary.entries.map((e) => e.password).toSet().length == 1)
+            Row(
+              children: [
+                const Icon(Icons.key_outlined, size: 18),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    _reveal ? primary.entries.first.password : '••••••••••••',
+                    style: const TextStyle(fontFamily: 'monospace'),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => setState(() => _reveal = !_reveal),
+                  child: Text(_reveal ? 'Hide' : 'Show'),
+                ),
+              ],
+            )
+          else
+            Text(
+              primary.anyUnsecured
+                  ? 'Unsecured network — no password protection.'
+                  : 'Passwords differ or are not reported. Inspect each profile in Advanced.',
+            ),
           const SizedBox(height: Space.sm),
           Text(
             'Built from what the router reports; nothing is changed to show '
@@ -793,10 +830,11 @@ class _ScanStatus extends StatelessWidget {
             icon: Icons.location_off_rounded,
             title: 'Location permission needed for nearby networks',
             message: blocked
-                ? 'Android shares Wi-Fi scan results only with location '
-                      'access. Allow it for TT Router in system settings to '
-                      'list networks the router API does not expose. '
-                      'Router-configured networks below are unaffected.'
+                ? s.message ??
+                      'Android shares Wi-Fi scan results only with location '
+                          'access. Allow it for TT Router in system settings to '
+                          'list networks the router API does not expose. '
+                          'Router-configured networks below are unaffected.'
                 : 'Android shares Wi-Fi scan results only with location '
                       'access. Without it, networks the router API does not '
                       'expose are not listed. Router-configured networks '
@@ -1387,6 +1425,8 @@ class _WifiEditSheetState extends State<WifiEditSheet> {
     text: widget.network.passwordKnown ? widget.network.password : '',
   );
   bool _showPassword = false;
+  late bool _clientIsolation = widget.network.staIsolate == 1;
+  late bool _networkIsolation = widget.network.ssidIsolate == 1;
 
   /// Router `Encrypt` modes offered for a secured network. Weaker modes
   /// (none, WEP, WPA-only) are never offered. The router's `Encrypt=5`
@@ -1419,6 +1459,12 @@ class _WifiEditSheetState extends State<WifiEditSheet> {
       ssid: _ssid.text.trim(),
       password: _password.text,
       encrypt: securityModes.containsKey(_encrypt) ? _encrypt : null,
+      staIsolate: n.rawData.containsKey('StaIsolate')
+          ? (_clientIsolation ? 1 : 0)
+          : null,
+      ssidIsolate: n.rawData.containsKey('SsidIsolate')
+          ? (_networkIsolation ? 1 : 0)
+          : null,
     );
     Navigator.pop(context, updated.hasEdits ? updated : null);
   }
@@ -1547,6 +1593,30 @@ class _WifiEditSheetState extends State<WifiEditSheet> {
                     ),
                   ),
               ],
+              const SizedBox(height: Space.lg),
+              if (n.rawData.containsKey('StaIsolate'))
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Client isolation'),
+                  subtitle: const Text(
+                    'Router-reported StaIsolate; restrict communication between wireless clients.',
+                  ),
+                  value: _clientIsolation,
+                  onChanged: (v) => setState(() => _clientIsolation = v),
+                ),
+              if (n.rawData.containsKey('SsidIsolate'))
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Network isolation'),
+                  subtitle: const Text(
+                    'Router-reported SsidIsolate; kept independent for each profile.',
+                  ),
+                  value: _networkIsolation,
+                  onChanged: (v) => setState(() => _networkIsolation = v),
+                ),
+              const Text(
+                'Channels, channel width and SSID hiding are not exposed by the verified local API. No speculative writes are offered.',
+              ),
               const SizedBox(height: Space.lg),
               InfoBanner(
                 tone: Tone.warning,

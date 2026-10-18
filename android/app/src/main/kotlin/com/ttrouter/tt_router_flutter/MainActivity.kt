@@ -32,6 +32,7 @@ import java.util.ArrayDeque
 import java.util.UUID
 
 class MainActivity : FlutterActivity() {
+    private var nokiaLocal: NokiaLocal? = null
     private var provisioner: TtRouterProvisioner? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -54,6 +55,9 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler(ArgonDeviceKeys(applicationContext)::handle)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "tt_router/wifi_scan")
             .setMethodCallHandler(WifiScan(applicationContext)::handle)
+        nokiaLocal = NokiaLocal(applicationContext)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "tt_router/nokia_local")
+            .setMethodCallHandler(nokiaLocal!!::handle)
         val argonBluetooth = ArgonBluetooth(applicationContext)
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
@@ -105,6 +109,7 @@ class MainActivity : FlutterActivity() {
     override fun onDestroy() {
         // The Dart side is being torn down with the engine; just release
         // Bluetooth resources without replying.
+        nokiaLocal?.close()
         provisioner?.cancel(null)
         super.onDestroy()
     }

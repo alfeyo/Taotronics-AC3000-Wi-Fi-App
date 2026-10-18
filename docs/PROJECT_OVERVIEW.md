@@ -1,12 +1,15 @@
 # TT Router + Argon — project overview
 
-> Update, 18 October 2026: both Nokia Beacons are factory-reset and powered off.
-> Older Nokia addresses, identity and configuration below are historical, not
-> current. TaoTronics broadcasts `Nokia Wifi`. The supported target is a separate
-> **two-Beacon Nokia mesh in AP bridge mode behind TaoTronics**; cross-vendor
-> enrollment remains unsupported. Exact models/firmware and bridge behavior are
-> unverified. Follow [Nokia bridge validation](NOKIA_BRIDGE_VALIDATION.md), including
-> temporary-SSID testing and approval before household-SSID activation.
+> Current update, 18 October 2026: TT Router provisions the root **Nokia WiFi Beacon 2** directly through its owner-authorized local WebGUI API. Firmware `3FE49334IJJJ09`, root `ALCLB4392160`, MAC `b4:63:6f:db:e6:c0`. The root now reports **AP_Bridge** at `192.168.10.97`; Fold4 received a TaoTronics DHCP lease/gateway and reached HTTPS internet through its Nokia radio. Factory SSID `NOKIA-E6C0` is retained. The second Beacon awaits owner activation/serial; no mesh-backhaul success is claimed. See [current bridge evidence](NOKIA_BRIDGE_VALIDATION.md). Earlier snapshots below are historical and are superseded where they conflict with this update.
+
+## Current mobile release: 1.9.0+17
+
+Direct owner-authorized Nokia provisioning, root bridge read-back, phone-bound DHCP/internet checks, secure saved identity with RSA-key pinning, client/radio/mesh inventory, guarded local extender enrollment/removal, and the advanced TaoTronics Wi-Fi interface are implemented. The root and Fold4 client path are verified; extender activation/serial and OnePlus hardware testing remain pending. Nokia radio/guest/channel writes are intentionally unavailable until the complete payload and read-back are validated.
+
+TaoTronics main/duplicate SSIDs and disabled index 2 were preserved. Wi-Fi and guest writes now require state read-back after acknowledgment and retain unrelated firmware fields. Argon production configuration and Next.js pages were untouched; an existing VPN hostname/DNS bootstrap issue is recorded in [the review](FINAL_CODE_REVIEW.md).
+
+See [release validation](NOKIA_BRIDGE_VALIDATION.md), [wireless settings](WIFI_CONFIGURATION.md) and [protocol evidence](NOKIA_PROTOCOL_INVESTIGATION.md). The old snapshots that follow are retained as history.
+
 
 
 Last verified: 2026-10-18 (Africa/Lusaka). Every statement below is labelled
@@ -14,6 +17,8 @@ Last verified: 2026-10-18 (Africa/Lusaka). Every statement below is labelled
 **unknown**. The requested source file `TT_Router_Argon_Project_Overview.md` was
 not found on the development Mac, so this overview was written from the live
 systems and both repositories.
+
+## Historical baseline (09:52 audit; superseded by current update)
 
 ## 1. Components
 
@@ -168,7 +173,7 @@ See [PROJECT_CLOSEOUT_CHECKLIST.md](PROJECT_CLOSEOUT_CHECKLIST.md) for per-requi
 
 ## 7. Releases, branches and rollback
 
-- APKs in `artifacts/releases/` (git-ignored): `tt-router-1.3.1-*.apk`, `tt-router-1.4.0-argon.apk`, `tt-router-1.5.0-8.apk` (SHA-1 `60d81c27a1db4f9e48bab4efd828ecde32a82154`), `tt-router-1.6.0-9.apk` (SHA-1 `aa6dd9ab64912ce59a8dbe09db51160bbc45b177`), `tt-router-1.6.2-11.apk` (SHA-1 `40260de606e72960ffbca06aae48b7dc6aff6a93`), `tt-router-1.6.3-12.apk` (SHA-1 `369edf2da0d9f4485a74da0777175968ea4c2832`), `tt-router-1.8.0-16.apk` (SHA-1 `efd321fb51bbbde07cf5675cb80194a08d709717`, Fold4; installed on the Fold4 and the OnePlus; both signer SHA-256 `c5f7a819…00ab89`). Downgrade needs uninstall (loses pairing); prefer forward fixes.
+- APKs in `artifacts/releases/` (git-ignored): `tt-router-1.3.1-*.apk`, `tt-router-1.4.0-argon.apk`, `tt-router-1.5.0-8.apk` (SHA-1 `60d81c27a1db4f9e48bab4efd828ecde32a82154`), `tt-router-1.6.0-9.apk` (SHA-1 `aa6dd9ab64912ce59a8dbe09db51160bbc45b177`), `tt-router-1.6.2-11.apk` (SHA-1 `40260de606e72960ffbca06aae48b7dc6aff6a93`), `tt-router-1.6.3-12.apk` (SHA-1 `369edf2da0d9f4485a74da0777175968ea4c2832`), `tt-router-1.8.0-16.apk` (SHA-1 `efd321fb51bbbde07cf5675cb80194a08d709717`, Fold4; installation verified on the Fold4 only, OnePlus pending; signer SHA-256 `c5f7a819…00ab89`). Downgrade needs uninstall (loses pairing); prefer forward fixes.
 - Flutter remote: `origin` (GitHub `alfeyo/Taotronics-AC3000-Wi-Fi-App`); branch not merged to `main`.
 - Dashboard: no git remote; commits are local only. Pi rollbacks: `~/argon-backups/release-20261018-110003/rollback.sh` (Network Hub API, build `RMfC8snyfaHkDDD5P93Z1`), `~/argon-backups/release-20261018-091546/rollback.sh` (earlier dashboard), `~/argon-backups/btbridge-20261018-084451/rollback.sh` (Bluetooth bridge), `~/argon-backups/router-20261017-204546/rollback.sh` (router integration).
 

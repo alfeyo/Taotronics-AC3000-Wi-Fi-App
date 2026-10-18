@@ -1,12 +1,6 @@
 # Nokia ↔ TaoTronics mesh compatibility
 
-> Update, 18 October 2026: both Nokia Beacons are factory-reset and powered off.
-> Older Nokia addresses, identity and configuration below are historical, not
-> current. TaoTronics broadcasts `Nokia Wifi`. The supported target is a separate
-> **two-Beacon Nokia mesh in AP bridge mode behind TaoTronics**; cross-vendor
-> enrollment remains unsupported. Exact models/firmware and bridge behavior are
-> unverified. Follow [Nokia bridge validation](NOKIA_BRIDGE_VALIDATION.md), including
-> temporary-SSID testing and approval before household-SSID activation.
+> Current update, 18 October 2026: TT Router provisions the root **Nokia WiFi Beacon 2** directly through its owner-authorized local WebGUI API. Firmware `3FE49334IJJJ09`, root `ALCLB4392160`, MAC `b4:63:6f:db:e6:c0`. The root now reports **AP_Bridge** at `192.168.10.97`; Fold4 received a TaoTronics DHCP lease/gateway and reached HTTPS internet through its Nokia radio. Factory SSID `NOKIA-E6C0` is retained. The second Beacon awaits owner activation/serial; no mesh-backhaul success is claimed. See [current bridge evidence](NOKIA_BRIDGE_VALIDATION.md). Earlier snapshots below are historical and are superseded where they conflict with this update.
 
 
 Determination date: 2026-10-18. Inputs: TaoTronics protocol handoff and live router data, beacon-element radio scans from Argon and the OnePlus, and static analysis of the official Nokia WiFi app 3.260311.00 ([NOKIA_PROTOCOL_INVESTIGATION.md](NOKIA_PROTOCOL_INVESTIGATION.md); signer `CN=Nokia, O=Nokia`, Play source stamp).
@@ -15,7 +9,7 @@ Determination date: 2026-10-18. Inputs: TaoTronics protocol handoff and live rou
 
 **There is no genuine shared mesh, and none can be built with supported mechanisms.** TaoTronics stays the primary standalone mesh. If coverage is needed, the Nokia Beacon can be added as an **independently managed bridged access point** on the TaoTronics LAN. That is not a unified cross-vendor mesh.
 
-| Capability | TaoTronics TT-ND001 | Nokia Beacon (probably 1.1) | Shared? |
+| Capability | TaoTronics TT-ND001 | Nokia Beacon 2 (identified from the device) | Shared? |
 |---|---|---|---|
 | EasyMesh controller | No evidence. Local MQTT protocol has no controller/agent, onboarding or 1905.1 commands; no vendor claim found | Nokia documents EasyMesh for Beacon 1.1. The Nokia app contains **no** EasyMesh/1905.1/Multi-AP strings, so it manages mesh through Nokia's own APIs | **No** (TaoTronics side unsupported) |
 | EasyMesh agent | No evidence | Documented by Nokia (role details not verified) | No |
@@ -27,7 +21,7 @@ Determination date: 2026-10-18. Inputs: TaoTronics protocol handoff and live rou
 
 An app that can talk to both products would not make them one mesh. No identity spoofing, enrollment protection bypass or firmware modification is proposed.
 
-## Fallback: Nokia Beacon as a bridged access point (prepared, not executed)
+## Historical bridge preparation (superseded by the validation record)
 
 Prerequisites:
 - **Device facts:** the Beacon's model and firmware from the device itself (Nokia app "About", or `get_devmap_cap_status_app.cgi` once it is reachable). The current evidence is the `NokiaWifi.com` web UI, MAC `b4:63:6f:db:e6:c0`, and the phone's saved setup SSID `Nokia Beacon 1.1`.

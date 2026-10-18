@@ -184,22 +184,8 @@ class WirelessNetwork {
   /// network, so the index is not a band.
   String get entryLabel => 'Router entry ${index + 1}';
 
-  /// Band label used by this app for each router index. The router does not
-  /// report the band, so the mapping is the one the app has always used.
-  String get bandLabel {
-    switch (index) {
-      case 0:
-        return '2.4 GHz';
-      case 1:
-        return '5 GHz';
-      case 2:
-        return '5 GHz (DFS)';
-      case 3:
-        return 'Guest';
-      default:
-        return 'Network ${index + 1}';
-    }
-  }
+  /// A profile index is not a physical radio or frequency band.
+  String get bandLabel => entryLabel;
 
   String get encryptionLabel {
     switch (encrypt) {
