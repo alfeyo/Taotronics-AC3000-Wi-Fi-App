@@ -83,8 +83,8 @@
   },
   "phoneAutomaticSelection": {
     "configuredBssid": null,
-    "finalObservedBssid": "b4:63:6f:db:e6:cd",
-    "note": "Temporary BSSID pin removed; Android selected the Nokia 5 GHz radio."
+    "finalObservedBssid": "80:c5:48:50:35:ae",
+    "note": "Temporary BSSID pin removed. Phone initially selected Nokia 5 GHz, then switched to TaoTronics under the shared SSID. Diagnostics invalidated the check during that transition; this is not evidence of seamless roaming."
   },
   "temporarySecretsRemoved": true
 }
