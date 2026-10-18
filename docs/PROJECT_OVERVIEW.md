@@ -113,11 +113,34 @@ Stages 3 and 4 were carried out with the user. Final state and evidence are in
 - **Dashboard** (proven): `/devices` shows 6 real TaoTronics clients from the phone, labelled "Phone-supplied · 60 s expiry"; offline clients show `--`; router WAN traffic is shown separately as "combined traffic"; per-client daily usage is "Not measured". 111/111 tests, production build passes. The Pi gateway card now says "Loading…" until status arrives (committed, **not deployed**).
 - **Telemetry limitation:** client inventory only arrives while TT Router is open on a paired phone. Permanent visibility needs a LAN-side observer on the TaoTronics network (not installed).
 
+### 1.6.0+9 — Network Hub (2026-10-18, installed on the Fold4)
+- **Navigation:** "Gateway" is now **Network Hub**, with the hero "Argon · Raspberry Pi 4 Model B". Automatic LAN/Tailscale/Bluetooth connection is kept; pairing moved to a sheet.
+- **Traffic:** live rates (Mbps from 1 Mbit/s, KiB/s below), a 10-minute chart, today/last 7 days/this month, a 14-day chart, previous-period comparison only when both periods are ≥95 % measured, and VPN share shown as part of the total (never added to it).
+- **VPN card:** mode, state, exit, tunnel, last change, kill switch and health. The toggle requires the **operator** token, which is kept in separate secure storage and used as a signed `ArgonOperator` HMAC request so the token never crosses the LAN. It has a confirmation, single-flight pending state, re-read before success, and 401/403/409/502 messages with recovery text. The Bluetooth bridge can't relay writes, so the app says so.
+- **Home:** live rates, today/week/month, router device count labelled with source and age, Network Hub, internet and VPN status, recent notifications.
+- **States:** Loading / Live / Stale / Unreachable / Not reported / Not measured, never 0 for unmeasured. Devices show live rates, mesh node and an explicit "historical per-device usage not measured".
+- **Checks:** analyzer clean, 135 tests. Verified on the device: MQTT connected, 19 devices, sync shared 21 devices, VPN on/connected/London, kill switch enforced (0 packets), cover and emulated unfolded layouts.
+- **Not done:** no live VPN toggle (not approved; mocked in tests). The operator token wasn't entered on the phone, so the signed write path was proven only against the staged server with invalid bodies.
+
+### Pipeline audit (2026-10-18)
+- **Path:** eth1 nftables counters (forward chain, 2 s) → `argon-device-monitor` → SQLite `usage_daily` → `/api/network/usage`, `/api/devices/live` → `/api/v1/gateway` → `PiProvider` → Home and Network Hub.
+- **Units:** rates are bits/s, totals are bytes, and eth1 TX = household download. A 10 s kernel sample (2.3 Mbit/s down) agreed in magnitude with the 1-minute average; the 2 s instantaneous samples are bursty.
+- **Totals:** gateway usage equals `/api/network/usage` byte for byte.
+- **Scope:** kernel eth1 counters also include Pi-local traffic (dashboard and app polling), which the forward-chain accounting rightly excludes.
+
+### Pi reboot and power review (existing logs only)
+- **Reboot timing:** the unexpected reboot happened between 10:01:34 and about 10:02:35 on 2026-10-18, while the eth0 cable was connected and the USB Wi-Fi adapter disappeared.
+- **No record:** the journal is volatile (`Storage=auto`, no `/var/log/journal`), so the previous boot left nothing. The hardware watchdog (1 min) is armed.
+- **Power:** gateway events show active throttling from 2026-10-17 20:45 to 2026-10-18 09:15. Undervoltage flags are clear now (`0x0`, `uv=0`).
+- **Clock:** the backwards timestamps after boot come from the restored clock before NTP.
+- **Likely cause:** a supply dip from USB hot-plug (unproven).
+- **Suggestions (not applied):** a persistent journal and an official 5.1 V/3 A supply. No system changes were made.
+
 ## 7. Releases, branches and rollback
 
-- APKs in `artifacts/releases/` (git-ignored): `tt-router-1.3.1-*.apk`, `tt-router-1.4.0-argon.apk`, `tt-router-1.5.0-8.apk` (SHA-1 `60d81c27a1db4f9e48bab4efd828ecde32a82154`, signer SHA-256 `c5f7a819…00ab89`). Downgrade needs uninstall (loses pairing); prefer forward fixes.
+- APKs in `artifacts/releases/` (git-ignored): `tt-router-1.3.1-*.apk`, `tt-router-1.4.0-argon.apk`, `tt-router-1.5.0-8.apk` (SHA-1 `60d81c27a1db4f9e48bab4efd828ecde32a82154`), `tt-router-1.6.0-9.apk` (SHA-1 `aa6dd9ab64912ce59a8dbe09db51160bbc45b177`; both signer SHA-256 `c5f7a819…00ab89`). Downgrade needs uninstall (loses pairing); prefer forward fixes.
 - Flutter remote: `origin` (GitHub `alfeyo/Taotronics-AC3000-Wi-Fi-App`); branch not merged to `main`.
-- Dashboard: no git remote; commits are local only. Pi rollbacks: `~/argon-backups/release-20261018-091546/rollback.sh` (dashboard), `~/argon-backups/btbridge-20261018-084451/rollback.sh` (Bluetooth bridge), `~/argon-backups/router-20261017-204546/rollback.sh` (router integration).
+- Dashboard: no git remote; commits are local only. Pi rollbacks: `~/argon-backups/release-20261018-110003/rollback.sh` (Network Hub API, build `RMfC8snyfaHkDDD5P93Z1`), `~/argon-backups/release-20261018-091546/rollback.sh` (earlier dashboard), `~/argon-backups/btbridge-20261018-084451/rollback.sh` (Bluetooth bridge), `~/argon-backups/router-20261017-204546/rollback.sh` (router integration).
 
 ## 8. Future work
 

@@ -225,6 +225,9 @@ parental controls. The app does not send any.
    value, report failure.
 4. Allow one LED command at a time.
 
+### Radio map (TT-ND001, verified by beacon scan 2026-10-18)
+Tri-band: 2.4 GHz (ch 2, 20 MHz), 5 GHz low (ch 44, 80 MHz) and 5 GHz high (ch 149). Every enabled `Index` is a separate network on each client radio (BSSIDs `<base>+3/5/7/A/D/E`), plus a hidden ch 149 BSS (probably backhaul). A 2.4 GHz-only network (`Game Labs-2.4G` on the tested unit) can exist outside `GetWirelessInfoList`. The local protocol cannot see or control it, and there are no channel/width commands.
+
 ## 10. Devices, mesh, WAN, LAN and telemetry
 
 - **Polling cadence used by the app:** every 3 s it sends `GetDevListInfo`
