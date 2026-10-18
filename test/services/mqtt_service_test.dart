@@ -395,6 +395,30 @@ void main() {
       });
     });
 
+    test('ErrorCode 5 marks the router as managed by another phone', () {
+      fakeAsync((async) {
+        var refused = true;
+        final factory = FakeTransportFactory()
+          ..responder = (path, data) =>
+              refused ? {'ErrorCode': 5} : {'ErrorCode': 0, 'Data': {}};
+        final service = _service(factory);
+        final changes = <bool>[];
+        service.managementStream.listen(changes.add);
+        service.connect('mesh1', '10.0.0.1');
+        async.elapse(const Duration(milliseconds: 1));
+
+        service.getSystemConnectionInfo();
+        async.elapse(const Duration(milliseconds: 10));
+        expect(service.managedElsewhere, isTrue);
+
+        refused = false;
+        service.getSystemConnectionInfo();
+        async.elapse(const Duration(milliseconds: 10));
+        expect(service.managedElsewhere, isFalse);
+        expect(changes, [true, false]);
+      });
+    });
+
     test(
       'requests while disconnected return null without publishing',
       () async {

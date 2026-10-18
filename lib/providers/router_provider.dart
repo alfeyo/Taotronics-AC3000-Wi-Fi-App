@@ -71,6 +71,13 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
     _connectionSubscription = _mqtt.connectionStream.listen(
       _onConnectionChanged,
     );
+    _managementSubscription = _mqtt.managementStream.listen((refused) {
+      if (!refused) {
+        _refusedTicks = 0;
+        refreshAll();
+      }
+      notifyListeners();
+    });
     if (autoStart) {
       _initialize();
     } else {
@@ -140,6 +147,16 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
   Timer? _liveTimer;
   Timer? _reconnectTimer;
   bool _liveRefreshing = false;
+  StreamSubscription<bool>? _managementSubscription;
+  int _refusedTicks = 0;
+
+  /// While another phone manages the router, one light read every this many
+  /// 3 s live ticks (~21 s) detects when access frees up, without loading the
+  /// router's single command queue.
+  static const refusedProbeEveryTicks = 7;
+
+  /// The router currently serves another phone and refuses this one.
+  bool get managedElsewhere => isConnected && _mqtt.managedElsewhere;
   bool _liveTelemetryResponsive = true;
   int _telemetryMisses = 0;
 
@@ -846,6 +863,17 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<void> _liveRefresh() async {
     if (!isConnected || _liveRefreshing || _refreshing || isLivePaused) return;
+    if (_mqtt.managedElsewhere) {
+      if (_refusedTicks++ % refusedProbeEveryTicks != 0) return;
+      _liveRefreshing = true;
+      try {
+        await refreshDevices().timeout(const Duration(seconds: 10));
+      } catch (_) {
+      } finally {
+        _liveRefreshing = false;
+      }
+      return;
+    }
     _liveRefreshing = true;
     try {
       final liveWork = <Future<void>>[refreshDevices()];
@@ -864,6 +892,8 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<void> refreshAll() async {
     if (!isConnected || _refreshing) return;
+    // Refused reads would only load the router; the live probe detects access.
+    if (_mqtt.managedElsewhere) return;
     _refreshing = true;
     try {
       await _refreshAllInternal();
@@ -1930,6 +1960,7 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _discoverySubscription?.cancel();
     _connectionSubscription?.cancel();
+    _managementSubscription?.cancel();
     _refreshTimer?.cancel();
     _liveTimer?.cancel();
     _reconnectTimer?.cancel();

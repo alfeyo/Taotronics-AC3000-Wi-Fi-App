@@ -36,6 +36,7 @@ class _Harness {
       mqtt: MqttService(
         transportFactory: factory.call,
         appIdLoader: () async => _appId,
+        v1OnlyStore: MemoryV1OnlyStore(),
       ),
       authService: AuthPairingService(credentialStore: MemoryCredentialStore()),
       autoStart: false,
@@ -182,6 +183,42 @@ void main() {
         async.elapse(const Duration(seconds: 9));
       }
       expect(h.provider.liveTelemetrySupported, isFalse);
+      h.provider.dispose();
+    });
+  });
+
+  test('another phone managing the router: back off, then recover', () {
+    fakeAsync((async) {
+      final h = _Harness();
+      var refused = true;
+      h.factory.responder = (path, data) =>
+          refused ? {'ErrorCode': 5} : {'ErrorCode': 0, 'Data': []};
+      h.provider.selectRouter(_router('meshA', '10.0.0.1'));
+      async.elapse(const Duration(seconds: 4));
+      expect(h.provider.managedElsewhere, isTrue);
+
+      // While refused: one light probe per 20 s, no full refreshes.
+      final before = h.factory.last.published.length;
+      async.elapse(const Duration(seconds: 60));
+      final during = h.factory.last.published
+          .skip(before)
+          .map((p) => p.topic.split(_appId).last)
+          .toList();
+      expect(
+        during.where((p) => p == '/GetDevListInfo').length,
+        lessThanOrEqualTo(4),
+      );
+      expect(during.where((p) => p != '/GetDevListInfo'), isEmpty);
+      expect(h.provider.isConnected, isTrue);
+
+      // The other phone goes idle: the next probe succeeds, full refresh runs.
+      refused = false;
+      async.elapse(const Duration(seconds: 25));
+      expect(h.provider.managedElsewhere, isFalse);
+      expect(
+        h.factory.last.published.map((p) => p.topic.split(_appId).last),
+        contains('/GetSystemState'),
+      );
       h.provider.dispose();
     });
   });

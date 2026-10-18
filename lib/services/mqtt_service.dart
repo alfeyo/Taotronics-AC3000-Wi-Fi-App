@@ -66,6 +66,31 @@ class MqttService {
 
   final _messageController = StreamController<Map<String, dynamic>>.broadcast();
   final _connectionController = StreamController<bool>.broadcast();
+  final _managementController = StreamController<bool>.broadcast();
+
+  /// Router error code meaning another phone currently manages the router.
+  /// Verified 2026-10-18 with two phones: the router answers every request
+  /// from all but one active client with ErrorCode 5; access moves to a
+  /// waiting client ~60-80 s after the holder stops sending requests, and a
+  /// refused client cannot take it over by retrying.
+  static const int managedElsewhereCode = 5;
+  bool _managedElsewhere = false;
+
+  /// True while the router refuses this phone because another phone holds
+  /// the management session.
+  bool get managedElsewhere => _managedElsewhere;
+  Stream<bool> get managementStream => _managementController.stream;
+
+  void _setManagedElsewhere(bool value) {
+    if (_managedElsewhere == value) return;
+    _managedElsewhere = value;
+    debugPrint(
+      value
+          ? 'MqttService: router is managed by another phone (ErrorCode 5)'
+          : 'MqttService: router management available to this phone',
+    );
+    if (!_managementController.isClosed) _managementController.add(value);
+  }
 
   Stream<Map<String, dynamic>> get messageStream => _messageController.stream;
   Stream<bool> get connectionStream => _connectionController.stream;
@@ -198,7 +223,15 @@ class MqttService {
     } else if (data['ErrorCode'] != 0) {
       // Sanitized: command path and router error code only, never the payload.
       final path = message.topic.substring(message.topic.indexOf('/'));
-      debugPrint('MqttService: $path answered ErrorCode ${data['ErrorCode']}');
+      if (data['ErrorCode'] == managedElsewhereCode) {
+        _setManagedElsewhere(true);
+      } else {
+        debugPrint(
+          'MqttService: $path answered ErrorCode ${data['ErrorCode']}',
+        );
+      }
+    } else {
+      _setManagedElsewhere(false);
     }
     pending.complete(data);
   }
@@ -765,6 +798,7 @@ class MqttService {
   void _teardown() {
     final transport = _transport;
     _transport = null;
+    _setManagedElsewhere(false);
     _inboundSubscription?.cancel();
     _inboundSubscription = null;
     _isConnected = false;
@@ -795,6 +829,7 @@ class MqttService {
     _teardown();
     _messageController.close();
     _connectionController.close();
+    _managementController.close();
   }
 
   Future<String> _loadAppId() async {

@@ -32,6 +32,21 @@ class ConnectionStatusBanners extends StatelessWidget {
           ),
         ),
       );
+    } else if (provider.managedElsewhere) {
+      // Router-side limit, not an app fault: one phone manages at a time.
+      banners.add(
+        const InfoBanner(
+          tone: Tone.warning,
+          busy: true,
+          icon: Icons.phonelink_lock_rounded,
+          title: 'Another phone is managing the router',
+          message:
+              'The router serves one phone at a time. This phone gets access '
+              'automatically about a minute after TT Router on the other phone '
+              'is closed or put in the background. Values below may be out of '
+              'date until then.',
+        ),
+      );
     } else if (!provider.isConnected &&
         provider.authState != AuthenticationState.authenticating) {
       banners.add(
