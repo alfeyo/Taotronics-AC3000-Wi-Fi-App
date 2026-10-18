@@ -173,6 +173,7 @@ class ArgonUsage {
   UsagePeriod? get today => periods['today'];
   UsagePeriod? get yesterday => periods['yesterday'];
   UsagePeriod? get last7 => periods['last7'];
+  UsagePeriod? get last30 => periods['last30'];
   UsagePeriod? get previous7 => periods['previous7'];
   UsagePeriod? get thisMonth => periods['thisMonth'];
   UsagePeriod? get lastMonth => periods['lastMonth'];
@@ -186,6 +187,7 @@ class ArgonUsage {
         'today',
         'yesterday',
         'last7',
+        'last30',
         'previous7',
         'thisMonth',
         'lastMonth',

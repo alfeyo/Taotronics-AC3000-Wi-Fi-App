@@ -1,0 +1,1377 @@
+Resolving dependencies...
+Downloading packages...
+  clock 1.1.2 (1.1.3 available)
+  code_assets 1.2.1 (2.1.0 available)
+  connectivity_plus 6.1.5 (7.3.2 available)
+  cupertino_icons 1.0.9 (2.0.0 available)
+  dbus 0.7.12 (0.8.0 available)
+  flutter_secure_storage 10.3.4 (11.2.0 available)
+  flutter_secure_storage_darwin 0.3.2 (0.4.3 available)
+  flutter_secure_storage_windows 4.1.0 (4.2.2 available)
+  hooks 2.0.2 (2.2.0 available)
+  matcher 0.12.19 (0.12.20 available)
+  material_color_utilities 0.13.0 (0.13.1 available)
+  meta 1.18.0 (1.19.0 available)
+  mqtt_client 10.11.11 (10.13.0 available)
+  network_info_plus 6.1.4 (8.2.2 available)
+  network_info_plus_platform_interface 2.0.2 (3.1.0 available)
+  nm 0.5.0 (0.6.0 available)
+  objective_c 9.5.0 (9.6.2 available)
+  path_provider_linux 2.2.1 (2.2.2 available)
+  path_provider_platform_interface 2.1.2 (2.1.3 available)
+  permission_handler 11.4.0 (13.0.2 available)
+  permission_handler_android 12.1.0 (14.1.0 available)
+  permission_handler_apple 9.4.7 (9.6.2 available)
+  permission_handler_html 0.1.3+5 (0.1.4+1 available)
+  permission_handler_platform_interface 4.3.0 (4.4.1 available)
+  permission_handler_windows 0.2.1 (0.2.2 available)
+  petitparser 7.0.2 (7.1.0 available)
+  platform 3.1.6 (3.2.0 available)
+  record_use 0.6.0 (1.1.1 available)
+  shared_preferences 2.5.5 (2.5.6 available)
+  shared_preferences_android 2.4.23 (2.5.0 available)
+  shared_preferences_foundation 2.5.6 (2.6.0 available)
+  stack_trace 1.12.1 (1.12.2 available)
+  test_api 0.7.11 (0.7.15 available)
+  vector_math 2.2.0 (2.4.3 available)
+  vm_service 15.2.0 (15.4.0 available)
+  win32 5.15.0 (6.4.0 available)
+  xml 6.6.1 (7.1.0 available)
+Got dependencies!
+37 packages have newer versions incompatible with dependency constraints.
+Try `flutter pub outdated` for more information.
+00:00 +0: loading /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/home_led_test.dart
+00:00 +0: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/home_led_test.dart: tapping the router light shows pending, then the read-back
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: /GetExistNode replied in 1 ms
+MqttService: /GetLedList replied in 0 ms
+MqttService: /GetSystemState replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetWirelessInfoListV2 answered ErrorCode 1
+MqttService: /GetWirelessInfoListV2 replied in 0 ms
+MqttService: /GetWirelessInfoList replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetPrivateStorageV2 replied in 0 ms
+MqttService: /GetDiskInfo replied in 0 ms
+MqttService: /GetVisitAddress replied in 0 ms
+MqttService: /GetMWanInfo replied in 0 ms
+00:00 +1: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/home_led_test.dart: tapping the router light shows pending, then the read-back
+00:00 +1: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/router_provider_test.dart: a stale reconnect cannot override a newer router selection
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: Disconnected unexpectedly
+RouterProvider: reconnecting saved router in 1s (attempt 1)
+MqttService: Connecting to 10.0.0.2:25678
+MqttService: Connected
+MqttService: timeout waiting for app123/GetSystemState
+MqttService: timeout waiting for app123/GetDevListInfo
+00:00 +2: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/home_led_test.dart: tapping the router light shows pending, then the read-back
+00:00 +2: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/router_provider_test.dart: reconnects with backoff after an unexpected drop
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: Disconnected unexpectedly
+RouterProvider: reconnecting saved router in 1s (attempt 1)
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connection failed - Bad state: Bad credentials
+RouterProvider: reconnecting saved router in 2s (attempt 2)
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connection failed - Bad state: Bad credentials
+RouterProvider: reconnecting saved router in 4s (attempt 3)
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+00:00 +3: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/home_led_test.dart: tapping the router light shows pending, then the read-back
+00:00 +3: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/router_provider_test.dart: rediscovering the saved router retries without waiting
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: Disconnected unexpectedly
+RouterProvider: reconnecting saved router in 1s (attempt 1)
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connection failed - Bad state: Bad credentials
+RouterProvider: reconnecting saved router in 2s (attempt 2)
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connection failed - Bad state: Bad credentials
+RouterProvider: reconnecting saved router in 4s (attempt 3)
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+00:00 +4: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/home_led_test.dart: tapping the router light shows pending, then the read-back
+00:00 +4: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/router_provider_test.dart: logout stops automatic reconnects
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: Disconnected unexpectedly
+RouterProvider: reconnecting saved router in 1s (attempt 1)
+00:00 +5: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/home_led_test.dart: tapping the router light shows pending, then the read-back
+00:00 +5: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/router_provider_test.dart: one late telemetry batch does not stop live telemetry
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: timeout waiting for app123/GetSysConnectInfo
+MqttService: timeout waiting for app123/GetNodeRateInfo
+MqttService: timeout waiting for app123/GetWanRateInfo
+MqttService: /GetSysConnectInfo replied in 1 ms
+MqttService: timeout waiting for app123/GetSystemState
+MqttService: timeout waiting for app123/GetNodeRateInfo
+MqttService: timeout waiting for app123/GetWanRateInfo
+MqttService: timeout waiting for app123/GetDevListInfo
+MqttService: timeout waiting for app123/GetExistNode
+MqttService: timeout waiting for app123/GetSysConnectInfo
+MqttService: timeout waiting for app123/GetNodeRateInfo
+MqttService: timeout waiting for app123/GetWanRateInfo
+MqttService: timeout waiting for app123/GetWirelessInfoListV2
+MqttService: meshA does not answer V2 wireless; using V1
+MqttService: timeout waiting for app123/GetSysConnectInfo
+MqttService: timeout waiting for app123/GetNodeRateInfo
+MqttService: timeout waiting for app123/GetWanRateInfo
+MqttService: timeout waiting for app123/GetWirelessInfoList
+MqttService: timeout waiting for app123/GetSysConnectInfo
+MqttService: timeout waiting for app123/GetNodeRateInfo
+MqttService: timeout waiting for app123/GetWanRateInfo
+MqttService: timeout waiting for app123/GetPrivateStorageV2
+MqttService: timeout waiting for app123/GetDiskInfo
+MqttService: timeout waiting for app123/GetVisitAddress
+00:00 +6: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/home_led_test.dart: tapping the router light shows pending, then the read-back
+00:00 +6: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/router_provider_test.dart: another phone managing the router: back off, then recover
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: router is managed by another phone (ErrorCode 5)
+MqttService: /GetSystemState replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetWirelessInfoListV2 replied in 0 ms
+MqttService: /GetWirelessInfoList replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetPrivateStorageV2 replied in 0 ms
+MqttService: /GetDiskInfo replied in 0 ms
+MqttService: /GetVisitAddress replied in 0 ms
+MqttService: /GetLedList replied in 0 ms
+MqttService: /GetMWanInfo replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: router management available to this phone
+00:00 +6: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/wifi_controls_test.dart: loads all three V1 networks including the disabled one
+MqttService: Connecting to 10.0.0.1:25678
+00:00 +6: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/router_provider_test.dart: another phone managing the router: back off, then recover
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetSystemState replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetWirelessInfoListV2 replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetPrivateStorageV2 replied in 0 ms
+MqttService: /GetDiskInfo replied in 0 ms
+MqttService: /GetVisitAddress replied in 0 ms
+MqttService: /GetLedList replied in 0 ms
+MqttService: /GetMWanInfo replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+00:00 +6: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/wifi_controls_test.dart: loads all three V1 networks including the disabled one
+MqttService: Connected
+00:00 +6: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/router_provider_test.dart: another phone managing the router: back off, then recover
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+00:00 +7: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/home_led_test.dart: tapping the router light shows pending, then the read-back
+00:00 +8: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/home_led_test.dart: tapping the router light shows pending, then the read-back
+00:00 +8: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/router_provider_test.dart: save results ErrorCode 0 is confirmed, non-zero is failed
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+00:00 +9: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/home_led_test.dart: tapping the router light shows pending, then the read-back
+00:00 +9: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/router_provider_test.dart: save results ErrorCode 0 is confirmed, non-zero is failed
+MqttService: router is managed by another phone (ErrorCode 5)
+MqttService: /SetQosInfo replied in 0 ms
+MqttService: /SetFirewallInfo replied in 0 ms
+MqttService: router management available to this phone
+00:00 +10: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/home_led_test.dart: tapping the router light shows pending, then the read-back
+00:00 +11: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/home_led_test.dart: tapping the router light shows pending, then the read-back
+00:00 +11: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/router_provider_test.dart: save results no reply on a non-disruptive setting is a failure
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+00:00 +11: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/wifi_controls_test.dart: loads all three V1 networks including the disabled one
+MqttService: /GetSystemState replied in 7 ms
+00:00 +11: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/router_provider_test.dart: save results no reply on a non-disruptive setting is a failure
+MqttService: timeout waiting for app123/GetSystemState
+MqttService: timeout waiting for app123/SetFirewallInfo
+00:00 +11: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/wifi_controls_test.dart: loads all three V1 networks including the disabled one
+MqttService: /GetDevListInfo replied in 0 ms
+00:00 +12: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/home_led_test.dart: tapping the router light shows pending, then the read-back
+00:00 +13: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/home_led_test.dart: tapping the router light shows pending, then the read-back
+00:00 +13: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/wifi_controls_test.dart: loads all three V1 networks including the disabled one
+MqttService: /GetExistNode replied in 0 ms
+00:00 +13: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/router_provider_test.dart: save results dropped Wi-Fi write is pending, then confirmed by re-reading
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: /GetSystemState replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetWirelessInfoListV2 replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetPrivateStorageV2 replied in 0 ms
+MqttService: /GetDiskInfo replied in 0 ms
+MqttService: /GetVisitAddress replied in 0 ms
+MqttService: /GetLedList replied in 0 ms
+MqttService: /GetMWanInfo replied in 0 ms
+00:00 +13: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/wifi_controls_test.dart: loads all three V1 networks including the disabled one
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+00:00 +13: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/router_provider_test.dart: save results dropped Wi-Fi write is pending, then confirmed by re-reading
+MqttService: /GetWirelessInfoListV2 replied in 0 ms
+00:00 +13: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/wifi_controls_test.dart: loads all three V1 networks including the disabled one
+MqttService: /GetPrivateStorageV2 replied in 0 ms
+MqttService: /GetDiskInfo replied in 0 ms
+MqttService: /GetVisitAddress replied in 0 ms
+00:00 +13: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/router_provider_test.dart: save results dropped Wi-Fi write is pending, then confirmed by re-reading
+MqttService: Disconnected unexpectedly
+00:00 +13: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/wifi_controls_test.dart: loads all three V1 networks including the disabled one
+MqttService: /GetLedList replied in 0 ms
+00:00 +13: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/router_provider_test.dart: save results dropped Wi-Fi write is pending, then confirmed by re-reading
+RouterProvider: reconnecting saved router in 1s (attempt 1)
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: /GetSystemState replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetWirelessInfoListV2 replied in 0 ms
+00:00 +13: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/wifi_controls_test.dart: loads all three V1 networks including the disabled one
+MqttService: /GetMWanInfo replied in 1 ms
+MqttService: /GetDevListInfo replied in 0 ms
+00:00 +13: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/router_provider_test.dart: save results dropped Wi-Fi write is pending, then confirmed by re-reading
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetPrivateStorageV2 replied in 0 ms
+MqttService: /GetDiskInfo replied in 0 ms
+MqttService: /GetVisitAddress replied in 0 ms
+MqttService: /GetMWanInfo replied in 0 ms
+MqttService: /GetWirelessInfoListV2 replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+00:00 +13: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/wifi_controls_test.dart: loads all three V1 networks including the disabled one
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: timeout waiting for app/GetWirelessInfoListV2
+MqttService: m does not answer V2 wireless; using V1
+MqttService: m does not answer V2 wireless; using V1
+MqttService: /GetWirelessInfoList replied in 0 ms
+00:00 +13: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/router_provider_test.dart: save results dropped Wi-Fi write is pending, then confirmed by re-reading
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+00:00 +14: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/home_led_test.dart: tapping the router light shows pending, then the read-back
+00:00 +14: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/router_provider_test.dart: save results dropped Wi-Fi write that the router ignored reports mismatch
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+00:00 +15: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/home_led_test.dart: tapping the router light shows pending, then the read-back
+00:00 +15: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/router_provider_test.dart: save results dropped Wi-Fi write that the router ignored reports mismatch
+MqttService: /GetSystemState replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetWirelessInfoListV2 replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+00:00 +15: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/wifi_controls_test.dart: disabling one band sends the router fields unchanged
+MqttService: Connecting to 10.0.0.1:25678
+00:00 +15: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/router_provider_test.dart: save results dropped Wi-Fi write that the router ignored reports mismatch
+MqttService: /GetPrivateStorageV2 replied in 0 ms
+MqttService: /GetDiskInfo replied in 0 ms
+MqttService: /GetVisitAddress replied in 0 ms
+00:00 +15: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/wifi_controls_test.dart: disabling one band sends the router fields unchanged
+MqttService: Connected
+00:00 +15: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/router_provider_test.dart: save results dropped Wi-Fi write that the router ignored reports mismatch
+MqttService: /GetLedList replied in 0 ms
+MqttService: /GetMWanInfo replied in 0 ms
+00:00 +15: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/wifi_controls_test.dart: disabling one band sends the router fields unchanged
+MqttService: /GetSystemState replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetExistNode replied in 0 ms
+00:00 +15: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/router_provider_test.dart: save results dropped Wi-Fi write that the router ignored reports mismatch
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: timeout waiting for app123/SetWirelessInfoList
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+00:00 +15: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/wifi_controls_test.dart: disabling one band sends the router fields unchanged
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+00:00 +15: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/router_provider_test.dart: save results dropped Wi-Fi write that the router ignored reports mismatch
+MqttService: /GetWirelessInfoListV2 replied in 0 ms
+00:00 +15: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/wifi_controls_test.dart: disabling one band sends the router fields unchanged
+MqttService: /GetPrivateStorageV2 replied in 0 ms
+MqttService: /GetDiskInfo replied in 0 ms
+MqttService: /GetVisitAddress replied in 0 ms
+00:00 +15: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/router_provider_test.dart: save results dropped Wi-Fi write that the router ignored reports mismatch
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+00:00 +15: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/wifi_controls_test.dart: disabling one band sends the router fields unchanged
+MqttService: /GetLedList replied in 0 ms
+MqttService: /GetMWanInfo replied in 0 ms
+00:00 +15: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/router_provider_test.dart: save results dropped Wi-Fi write that the router ignored reports mismatch
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+00:00 +15: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/wifi_controls_test.dart: disabling one band sends the router fields unchanged
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: timeout waiting for app/GetWirelessInfoListV2
+MqttService: m does not answer V2 wireless; using V1
+MqttService: m does not answer V2 wireless; using V1
+00:00 +15: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/router_provider_test.dart: save results dropped Wi-Fi write that the router ignored reports mismatch
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetSystemState replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+00:00 +15: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/wifi_controls_test.dart: disabling one band sends the router fields unchanged
+MqttService: /GetWirelessInfoList replied in 0 ms
+00:00 +15: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/router_provider_test.dart: save results dropped Wi-Fi write that the router ignored reports mismatch
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetWirelessInfoListV2 replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetPrivateStorageV2 replied in 0 ms
+MqttService: /GetDiskInfo replied in 0 ms
+MqttService: /GetVisitAddress replied in 0 ms
+MqttService: /GetMWanInfo replied in 0 ms
+00:00 +15: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/wifi_controls_test.dart: disabling one band sends the router fields unchanged
+MqttService: /SetWirelessInfoList replied in 0 ms
+00:00 +15: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/router_provider_test.dart: save results dropped Wi-Fi write that the router ignored reports mismatch
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 1 ms
+MqttService: /GetNodeRateInfo replied in 1 ms
+MqttService: /GetWanRateInfo replied in 1 ms
+00:00 +16: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/home_led_test.dart: tapping the router light shows pending, then the read-back
+00:00 +16: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/wifi_controls_test.dart: disabling one band sends the router fields unchanged
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+00:00 +16: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/router_provider_test.dart: save results reboot without acknowledgement is pending, not failed
+MqttService: Connecting to 10.0.0.1:25678
+00:00 +17: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/home_led_test.dart: tapping the router light shows pending, then the read-back
+00:00 +17: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/router_provider_test.dart: save results reboot without acknowledgement is pending, not failed
+MqttService: Connected
+MqttService: timeout waiting for app123/GetSystemState
+MqttService: timeout waiting for app123/SetSystemRestartNow
+00:00 +18: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/home_led_test.dart: tapping the router light shows pending, then the read-back
+00:00 +18: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/wifi_controls_test.dart: re-enabling a band keeps its name and password
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: /GetSystemState replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetExistNode replied in 0 ms
+00:00 +19: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/home_led_test.dart: tapping the router light shows pending, then the read-back
+00:00 +19: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/wifi_controls_test.dart: re-enabling a band keeps its name and password
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetPrivateStorageV2 replied in 0 ms
+MqttService: /GetDiskInfo replied in 0 ms
+MqttService: /GetVisitAddress replied in 0 ms
+MqttService: /GetLedList replied in 0 ms
+MqttService: /GetMWanInfo replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: timeout waiting for app/GetWirelessInfoListV2
+MqttService: m does not answer V2 wireless; using V1
+MqttService: m does not answer V2 wireless; using V1
+MqttService: /GetWirelessInfoList replied in 0 ms
+MqttService: /SetWirelessInfoList replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+00:00 +20: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/home_led_test.dart: tapping the router light shows pending, then the read-back
+00:00 +20: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/wifi_controls_test.dart: editing one band changes only that band
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: /GetSystemState replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetPrivateStorageV2 replied in 0 ms
+MqttService: /GetDiskInfo replied in 0 ms
+MqttService: /GetVisitAddress replied in 0 ms
+MqttService: /GetLedList replied in 0 ms
+MqttService: /GetMWanInfo replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: timeout waiting for app/GetWirelessInfoListV2
+MqttService: m does not answer V2 wireless; using V1
+MqttService: m does not answer V2 wireless; using V1
+MqttService: /GetWirelessInfoList replied in 0 ms
+MqttService: /SetWirelessInfoList replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+00:00 +21: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/home_led_test.dart: tapping the router light shows pending, then the read-back
+00:00 +21: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/wifi_controls_test.dart: a dropped session is verified after the automatic reconnect
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: /GetSystemState replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetPrivateStorageV2 replied in 0 ms
+MqttService: /GetDiskInfo replied in 0 ms
+MqttService: /GetVisitAddress replied in 0 ms
+MqttService: /GetLedList replied in 0 ms
+MqttService: /GetMWanInfo replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: timeout waiting for app/GetWirelessInfoListV2
+MqttService: m does not answer V2 wireless; using V1
+MqttService: m does not answer V2 wireless; using V1
+MqttService: /GetWirelessInfoList replied in 0 ms
+MqttService: Disconnected unexpectedly
+RouterProvider: reconnecting saved router in 1s (attempt 1)
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: /GetSystemState replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetWirelessInfoList replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetPrivateStorageV2 replied in 0 ms
+MqttService: /GetDiskInfo replied in 0 ms
+MqttService: /GetVisitAddress replied in 0 ms
+MqttService: /GetMWanInfo replied in 0 ms
+MqttService: /GetWirelessInfoList replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetSystemState replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetWirelessInfoList replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetPrivateStorageV2 replied in 0 ms
+MqttService: /GetDiskInfo replied in 0 ms
+MqttService: /GetVisitAddress replied in 0 ms
+MqttService: /GetMWanInfo replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+00:00 +22: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/home_led_test.dart: tapping the router light shows pending, then the read-back
+00:00 +22: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/wifi_controls_test.dart: the last enabled network cannot be switched off
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: /GetSystemState replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetPrivateStorageV2 replied in 0 ms
+MqttService: /GetDiskInfo replied in 0 ms
+MqttService: /GetVisitAddress replied in 0 ms
+MqttService: /GetLedList replied in 0 ms
+MqttService: /GetMWanInfo replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: timeout waiting for app/GetWirelessInfoListV2
+MqttService: m does not answer V2 wireless; using V1
+MqttService: m does not answer V2 wireless; using V1
+MqttService: /GetWirelessInfoList replied in 0 ms
+00:00 +23: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/home_led_test.dart: tapping the router light shows pending, then the read-back
+00:00 +23: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/wifi_controls_test.dart: a password the router did not report is never sent blank
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: /GetSystemState replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetPrivateStorageV2 replied in 0 ms
+MqttService: /GetDiskInfo replied in 0 ms
+MqttService: /GetVisitAddress replied in 0 ms
+MqttService: /GetLedList replied in 0 ms
+MqttService: /GetMWanInfo replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: timeout waiting for app/GetWirelessInfoListV2
+MqttService: m does not answer V2 wireless; using V1
+MqttService: m does not answer V2 wireless; using V1
+MqttService: /GetWirelessInfoList replied in 0 ms
+MqttService: /SetWirelessInfoList replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+00:00 +24: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/home_led_test.dart: tapping the router light shows pending, then the read-back
+00:00 +24: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/wifi_controls_test.dart: nothing is sent before the Wi-Fi list has loaded
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: /GetSystemState replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetExistNode replied in 0 ms
+00:00 +25: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/home_led_test.dart: tapping the router light shows pending, then the read-back
+00:00 +25: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/providers/wifi_controls_test.dart: a re-read without the compared fields is unconfirmed, not confirmed
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: /GetSystemState replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetPrivateStorageV2 replied in 0 ms
+MqttService: /GetDiskInfo replied in 0 ms
+MqttService: /GetVisitAddress replied in 0 ms
+MqttService: /GetLedList replied in 0 ms
+MqttService: /GetMWanInfo replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: timeout waiting for app/GetWirelessInfoListV2
+MqttService: m does not answer V2 wireless; using V1
+MqttService: m does not answer V2 wireless; using V1
+MqttService: /GetWirelessInfoList replied in 0 ms
+MqttService: Disconnected unexpectedly
+RouterProvider: reconnecting saved router in 1s (attempt 1)
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: /GetSystemState replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetWirelessInfoList replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetPrivateStorageV2 replied in 0 ms
+MqttService: /GetDiskInfo replied in 0 ms
+MqttService: /GetVisitAddress replied in 0 ms
+MqttService: /GetMWanInfo replied in 0 ms
+MqttService: /GetWirelessInfoList replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetSystemState replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetWirelessInfoList replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetPrivateStorageV2 replied in 0 ms
+MqttService: /GetDiskInfo replied in 0 ms
+MqttService: /GetVisitAddress replied in 0 ms
+MqttService: /GetMWanInfo replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+00:00 +26: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/home_led_test.dart: tapping the router light shows pending, then the read-back
+MqttService: /SetNodeLed replied in 0 ms
+MqttService: /GetLedList replied in 0 ms
+00:01 +27: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/home_led_test.dart: tapping the router light shows pending, then the read-back
+00:01 +28: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/home_led_test.dart: tapping the router light shows pending, then the read-back
+00:01 +29: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/home_led_test.dart: tapping the router light shows pending, then the read-back
+00:01 +30: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/home_led_test.dart: tapping the router light shows pending, then the read-back
+00:01 +31: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/home_led_test.dart: tapping the router light shows pending, then the read-back
+00:01 +32: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/home_led_test.dart: tapping the router light shows pending, then the read-back
+00:01 +33: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/home_led_test.dart: tapping the router light shows pending, then the read-back
+00:01 +34: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/home_led_test.dart: tapping the router light shows pending, then the read-back
+00:01 +35: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/setup_screens_test.dart: pairing renders in light mode on the cover screen
+00:01 +35: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/home_led_test.dart: an ignored LED change restores the confirmed state
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetLedList replied in 0 ms
+MqttService: /GetSystemState replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetWirelessInfoListV2 answered ErrorCode 1
+MqttService: /GetWirelessInfoListV2 replied in 0 ms
+MqttService: /GetWirelessInfoList replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetPrivateStorageV2 replied in 0 ms
+MqttService: /GetDiskInfo replied in 0 ms
+MqttService: /GetVisitAddress replied in 0 ms
+MqttService: /GetMWanInfo replied in 0 ms
+00:01 +35: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/wifi_screen_test.dart: every band has its own switch; toggling asks then writes
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: /GetWirelessInfoListV2 answered ErrorCode 1
+MqttService: /GetWirelessInfoListV2 replied in 1 ms
+MqttService: /GetWirelessInfoList replied in 0 ms
+MqttService: /GetSystemState replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetWirelessInfoListV2 answered ErrorCode 1
+MqttService: /GetWirelessInfoListV2 replied in 0 ms
+MqttService: /GetWirelessInfoList replied in 0 ms
+00:01 +36: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/wifi_screen_test.dart: every band has its own switch; toggling asks then writes
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetPrivateStorageV2 replied in 0 ms
+MqttService: /GetDiskInfo replied in 0 ms
+MqttService: /GetVisitAddress replied in 0 ms
+MqttService: /GetLedList replied in 0 ms
+MqttService: /GetMWanInfo replied in 0 ms
+00:01 +36: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/home_led_test.dart: an ignored LED change restores the confirmed state
+MqttService: /SetNodeLed replied in 0 ms
+00:01 +37: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/wifi_screen_test.dart: every band has its own switch; toggling asks then writes
+00:01 +37: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/home_led_test.dart: an ignored LED change restores the confirmed state
+MqttService: /GetLedList replied in 0 ms
+00:01 +38: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/wifi_screen_test.dart: every band has its own switch; toggling asks then writes
+00:01 +38: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/home_led_test.dart: an ignored LED change restores the confirmed state
+MqttService: /GetLedList replied in 0 ms
+MqttService: /GetLedList replied in 0 ms
+MqttService: /GetLedList replied in 0 ms
+00:01 +38: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/wifi_screen_test.dart: every band has its own switch; toggling asks then writes
+MqttService: /GetWirelessInfoListV2 answered ErrorCode 1
+MqttService: /GetWirelessInfoListV2 replied in 0 ms
+MqttService: /GetGuestInfo replied in 1 ms
+MqttService: /GetWirelessInfoList replied in 0 ms
+00:01 +38: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/home_led_test.dart: an ignored LED change restores the confirmed state
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+00:02 +38: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/wifi_screen_test.dart: every band has its own switch; toggling asks then writes
+MqttService: /SetWirelessInfoList replied in 0 ms
+00:02 +39: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/wifi_screen_test.dart: every band has its own switch; toggling asks then writes
+00:02 +39: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/home_led_test.dart: a rejected LED command keeps the previous state
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetLedList replied in 0 ms
+MqttService: /GetSystemState replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetWirelessInfoListV2 answered ErrorCode 1
+MqttService: /GetWirelessInfoListV2 replied in 0 ms
+MqttService: /GetWirelessInfoList replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetPrivateStorageV2 replied in 0 ms
+MqttService: /GetDiskInfo replied in 0 ms
+MqttService: /GetVisitAddress replied in 0 ms
+MqttService: /GetMWanInfo replied in 0 ms
+00:02 +40: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/wifi_screen_test.dart: every band has its own switch; toggling asks then writes
+00:02 +41: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/wifi_screen_test.dart: every band has its own switch; toggling asks then writes
+00:02 +42: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/wifi_screen_test.dart: every band has its own switch; toggling asks then writes
+00:02 +43: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/wifi_screen_test.dart: every band has its own switch; toggling asks then writes
+00:02 +44: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/wifi_screen_test.dart: every band has its own switch; toggling asks then writes
+00:02 +45: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/wifi_screen_test.dart: every band has its own switch; toggling asks then writes
+00:02 +46: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/wifi_screen_test.dart: every band has its own switch; toggling asks then writes
+00:02 +46: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/home_led_test.dart: a rejected LED command keeps the previous state
+MqttService: /SetNodeLed answered ErrorCode 1
+MqttService: /SetNodeLed replied in 0 ms
+00:02 +47: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/wifi_screen_test.dart: every band has its own switch; toggling asks then writes
+00:02 +48: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/wifi_screen_test.dart: every band has its own switch; toggling asks then writes
+00:02 +49: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/wifi_screen_test.dart: every band has its own switch; toggling asks then writes
+00:02 +50: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/wifi_screen_test.dart: every band has its own switch; toggling asks then writes
+00:02 +51: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/widget_test.dart: App launches correctly
+00:02 +52: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/widget_test.dart: App launches correctly
+00:02 +53: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/widget_test.dart: App launches correctly
+00:02 +54: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/pi_screens_test.dart: Network Hub shows the Raspberry Pi and its measurements, not a connection form
+00:02 +55: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/pi_screens_test.dart: Network Hub shows the Raspberry Pi and its measurements, not a connection form
+00:02 +55: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/home_led_test.dart: overlapping LED commands are refused
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetLedList replied in 0 ms
+MqttService: /GetSystemState replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetWirelessInfoListV2 answered ErrorCode 1
+MqttService: /GetWirelessInfoListV2 replied in 0 ms
+MqttService: /GetWirelessInfoList replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetPrivateStorageV2 replied in 0 ms
+MqttService: /GetDiskInfo replied in 0 ms
+MqttService: /GetVisitAddress replied in 0 ms
+MqttService: /GetMWanInfo replied in 0 ms
+MqttService: /SetNodeLed replied in 0 ms
+MqttService: /GetLedList replied in 0 ms
+00:02 +56: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/pi_screens_test.dart: Network Hub shows the Raspberry Pi and its measurements, not a connection form
+00:02 +56: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/home_led_test.dart: five-item navigation opens Statistics
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetLedList replied in 0 ms
+MqttService: /GetSystemState replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetWirelessInfoListV2 answered ErrorCode 1
+MqttService: /GetWirelessInfoListV2 replied in 0 ms
+MqttService: /GetWirelessInfoList replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetPrivateStorageV2 replied in 0 ms
+MqttService: /GetDiskInfo replied in 0 ms
+MqttService: /GetVisitAddress replied in 0 ms
+MqttService: /GetMWanInfo replied in 0 ms
+00:02 +57: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/pi_screens_test.dart: Network Hub shows the Raspberry Pi and its measurements, not a connection form
+00:02 +58: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/network_hub_test.dart: Network Hub screen full report renders without overflow on Fold4 cover
+00:03 +59: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/network_hub_test.dart: Network Hub screen full report renders without overflow on Fold4 cover
+00:03 +60: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/network_hub_test.dart: Network Hub screen full report renders without overflow on Fold4 cover
+00:03 +61: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/network_hub_test.dart: Network Hub screen full report renders without overflow on Fold4 cover
+00:03 +62: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/network_hub_test.dart: Network Hub screen full report renders without overflow on Fold4 cover
+00:03 +63: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/network_hub_test.dart: Network Hub screen full report renders without overflow on Fold4 cover
+00:03 +64: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/network_hub_test.dart: Network Hub screen full report renders without overflow on Fold4 cover
+00:03 +65: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/network_hub_test.dart: Network Hub screen full report renders without overflow on Fold4 cover
+00:03 +66: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/network_hub_test.dart: Network Hub screen full report renders without overflow on Fold4 cover
+00:03 +66: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/screens_test.dart: a phone refused by the router shows waiting, never zero
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: router is managed by another phone (ErrorCode 5)
+MqttService: /GetDevListInfo replied in 2 ms
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetWirelessInfoListV2 replied in 0 ms
+MqttService: /GetWirelessInfoList replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetSystemState replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetWirelessInfoListV2 replied in 0 ms
+MqttService: /GetWirelessInfoList replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetPrivateStorageV2 replied in 0 ms
+MqttService: /GetDiskInfo replied in 0 ms
+MqttService: /GetVisitAddress replied in 0 ms
+MqttService: /GetLedList replied in 0 ms
+MqttService: /GetMWanInfo replied in 0 ms
+00:03 +67: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/home_led_test.dart: five-item navigation opens Statistics
+00:03 +67: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/pi_integration_test.dart: sync: a real router device list reaches Argon from any screen; revoked credential stops it
+MqttService: Connecting to 10.0.0.1:25678
+00:03 +68: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/screens_test.dart: a phone refused by the router shows waiting, never zero
+00:03 +68: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/pi_integration_test.dart: sync: a real router device list reaches Argon from any screen; revoked credential stops it
+MqttService: Connected
+MqttService: /GetDevListInfo replied in 1 ms
+MqttService: /GetMWanInfo replied in 0 ms
+MqttService: /GetGuestInfo replied in 0 ms
+00:03 +69: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/screens_test.dart: a phone refused by the router shows waiting, never zero
+00:03 +70: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/screens_test.dart: a phone refused by the router shows waiting, never zero
+00:03 +70: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/pi_integration_test.dart: sync: a real router device list reaches Argon from any screen; revoked credential stops it
+MqttService: /GetSystemState replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+00:03 +71: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/screens_test.dart: a phone refused by the router shows waiting, never zero
+00:03 +72: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/screens_test.dart: a phone refused by the router shows waiting, never zero
+00:03 +73: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/screens_test.dart: a phone refused by the router shows waiting, never zero
+00:03 +74: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/screens_test.dart: a phone refused by the router shows waiting, never zero
+00:03 +75: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/screens_test.dart: a phone refused by the router shows waiting, never zero
+00:04 +76: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/screens_test.dart: a phone refused by the router shows waiting, never zero
+00:04 +77: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/screens_test.dart: a phone refused by the router shows waiting, never zero
+00:04 +78: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/screens_test.dart: a phone refused by the router shows waiting, never zero
+00:04 +79: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/screens_test.dart: a phone refused by the router shows waiting, never zero
+00:04 +80: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/screens_test.dart: a phone refused by the router shows waiting, never zero
+00:04 +81: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/screens_test.dart: a phone refused by the router shows waiting, never zero
+00:04 +82: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/screens_test.dart: a phone refused by the router shows waiting, never zero
+00:04 +83: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/screens_test.dart: a phone refused by the router shows waiting, never zero
+00:04 +84: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/screens_test.dart: a phone refused by the router shows waiting, never zero
+00:04 +85: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/screens_test.dart: a phone refused by the router shows waiting, never zero
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: router management available to this phone
+00:04 +85: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/settings_safety_test.dart: settings whose load failed cannot be saved
+MqttService: Connecting to 10.0.0.1:25678
+00:04 +86: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/settings_safety_test.dart: settings whose load failed cannot be saved
+MqttService: Connected
+00:04 +86: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/screens_test.dart: home shell renders on cover screen without overflow
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetWirelessInfoListV2 answered ErrorCode 1
+MqttService: /GetWirelessInfoListV2 replied in 0 ms
+MqttService: /GetWirelessInfoList replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetSystemState replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetWirelessInfoListV2 answered ErrorCode 1
+MqttService: /GetWirelessInfoListV2 replied in 0 ms
+MqttService: /GetWirelessInfoList replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetPrivateStorageV2 replied in 0 ms
+MqttService: /GetDiskInfo replied in 0 ms
+MqttService: /GetVisitAddress replied in 0 ms
+MqttService: /GetLedList replied in 0 ms
+MqttService: /GetMWanInfo replied in 0 ms
+00:04 +86: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/settings_safety_test.dart: settings whose load failed cannot be saved
+MqttService: /GetSystemState replied in 1 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetWirelessInfoListV2 replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+00:04 +87: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/settings_safety_test.dart: settings whose load failed cannot be saved
+MqttService: /GetPrivateStorageV2 replied in 0 ms
+MqttService: /GetDiskInfo replied in 0 ms
+MqttService: /GetVisitAddress replied in 0 ms
+MqttService: /GetLedList replied in 0 ms
+MqttService: /GetMWanInfo replied in 0 ms
+00:04 +88: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/settings_safety_test.dart: settings whose load failed cannot be saved
+00:04 +88: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/screens_test.dart: home shell renders on unfolded without overflow
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetWirelessInfoListV2 answered ErrorCode 1
+MqttService: /GetWirelessInfoListV2 replied in 0 ms
+MqttService: /GetWirelessInfoList replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetSystemState replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetWirelessInfoListV2 answered ErrorCode 1
+MqttService: /GetWirelessInfoListV2 replied in 0 ms
+MqttService: /GetWirelessInfoList replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetPrivateStorageV2 replied in 0 ms
+MqttService: /GetDiskInfo replied in 0 ms
+MqttService: /GetVisitAddress replied in 0 ms
+MqttService: /GetLedList replied in 0 ms
+MqttService: /GetMWanInfo replied in 0 ms
+00:04 +89: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/settings_safety_test.dart: settings whose load failed cannot be saved
+00:04 +90: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/settings_safety_test.dart: settings whose load failed cannot be saved
+00:04 +91: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/settings_safety_test.dart: settings whose load failed cannot be saved
+00:04 +92: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/settings_safety_test.dart: settings whose load failed cannot be saved
+00:04 +93: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/settings_safety_test.dart: settings whose load failed cannot be saved
+00:04 +93: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/screens_test.dart: home shell renders on tablet without overflow
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetWirelessInfoListV2 answered ErrorCode 1
+MqttService: /GetWirelessInfoListV2 replied in 0 ms
+MqttService: /GetWirelessInfoList replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetSystemState replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetWirelessInfoListV2 answered ErrorCode 1
+MqttService: /GetWirelessInfoListV2 replied in 0 ms
+MqttService: /GetWirelessInfoList replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetPrivateStorageV2 replied in 0 ms
+MqttService: /GetDiskInfo replied in 0 ms
+MqttService: /GetVisitAddress replied in 0 ms
+MqttService: /GetLedList replied in 0 ms
+MqttService: /GetMWanInfo replied in 0 ms
+00:04 +93: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/settings_safety_test.dart: settings whose load failed cannot be saved
+MqttService: /GetFirewallInfo answered ErrorCode 9
+MqttService: /GetFirewallInfo replied in 0 ms
+MqttService: /GetUpnpDmz replied in 0 ms
+MqttService: /GetFastNatInfo replied in 0 ms
+00:04 +94: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/settings_safety_test.dart: settings whose load failed cannot be saved
+00:04 +94: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/screens_test.dart: home shell renders on phone landscape without overflow
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetWirelessInfoListV2 answered ErrorCode 1
+MqttService: /GetWirelessInfoListV2 replied in 0 ms
+MqttService: /GetWirelessInfoList replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetSystemState replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetWirelessInfoListV2 answered ErrorCode 1
+MqttService: /GetWirelessInfoListV2 replied in 0 ms
+MqttService: /GetWirelessInfoList replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetPrivateStorageV2 replied in 0 ms
+MqttService: /GetDiskInfo replied in 0 ms
+MqttService: /GetVisitAddress replied in 0 ms
+MqttService: /GetLedList replied in 0 ms
+MqttService: /GetMWanInfo replied in 0 ms
+00:04 +95: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/settings_safety_test.dart: settings whose load failed cannot be saved
+00:04 +96: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/settings_safety_test.dart: settings whose load failed cannot be saved
+00:04 +97: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/settings_safety_test.dart: settings whose load failed cannot be saved
+00:04 +98: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/settings_safety_test.dart: settings whose load failed cannot be saved
+00:04 +99: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/settings_safety_test.dart: settings whose load failed cannot be saved
+00:04 +100: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/settings_safety_test.dart: settings whose load failed cannot be saved
+00:04 +101: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/settings_safety_test.dart: settings whose load failed cannot be saved
+00:04 +102: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/network_hub_test.dart: VPN control (UI) paired phone → owner grant → confirm → pending → confirmed; no token form
+00:04 +102: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/settings_safety_test.dart: invalid LAN values are rejected before sending
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: /GetLanInfoV3 replied in 0 ms
+00:04 +103: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/network_hub_test.dart: VPN control (UI) paired phone → owner grant → confirm → pending → confirmed; no token form
+00:04 +103: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/screens_test.dart: devices tab filters, searches and opens details
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetWirelessInfoListV2 answered ErrorCode 1
+MqttService: /GetWirelessInfoListV2 replied in 0 ms
+MqttService: /GetWirelessInfoList replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetSystemState replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetWirelessInfoListV2 answered ErrorCode 1
+MqttService: /GetWirelessInfoListV2 replied in 0 ms
+MqttService: /GetWirelessInfoList replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetPrivateStorageV2 replied in 0 ms
+MqttService: /GetDiskInfo replied in 0 ms
+MqttService: /GetVisitAddress replied in 0 ms
+MqttService: /GetLedList replied in 0 ms
+MqttService: /GetMWanInfo replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+00:05 +104: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/settings_safety_test.dart: invalid LAN values are rejected before sending
+00:05 +104: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/services/mqtt_service_test.dart: connection lifecycle connects with default derived password and subscribes
+MqttService: Connecting to 192.168.10.1:25678
+MqttService: Connected
+00:05 +105: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/settings_safety_test.dart: invalid LAN values are rejected before sending
+00:05 +105: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/services/mqtt_service_test.dart: connection lifecycle a reconnect never tears down a connect still in progress
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: Connecting to 10.0.0.2:25678
+MqttService: Connected
+00:05 +106: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/settings_safety_test.dart: invalid LAN values are rejected before sending
+00:05 +106: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/services/mqtt_service_test.dart: connection lifecycle identical concurrent connects share one attempt
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+00:05 +107: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/settings_safety_test.dart: invalid LAN values are rejected before sending
+00:05 +107: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/services/mqtt_service_test.dart: connection lifecycle failed connect returns false and emits no drop event
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connection failed - Bad state: Bad credentials
+00:05 +108: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/settings_safety_test.dart: invalid LAN values are rejected before sending
+00:05 +108: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/services/mqtt_service_test.dart: connection lifecycle unexpected broker drop emits false once
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: Disconnected unexpectedly
+00:05 +109: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/settings_safety_test.dart: invalid LAN values are rejected before sending
+00:05 +109: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/services/mqtt_service_test.dart: connection lifecycle deliberate disconnect emits no drop event
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+00:05 +110: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/settings_safety_test.dart: invalid LAN values are rejected before sending
+00:05 +110: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/services/mqtt_service_test.dart: request/response returns the reply for the request topic
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: /GetSystemState replied in 2 ms
+00:05 +111: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/settings_safety_test.dart: invalid LAN values are rejected before sending
+00:05 +111: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/services/mqtt_service_test.dart: request/response identical concurrent requests share one round trip
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: /GetDevListInfo replied in 0 ms
+00:05 +112: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/settings_safety_test.dart: invalid LAN values are rejected before sending
+00:05 +112: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/services/mqtt_service_test.dart: request/response different requests to one path run one at a time
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: /SetFirewallInfo replied in 0 ms
+MqttService: /SetFirewallInfo replied in 0 ms
+00:05 +113: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/settings_safety_test.dart: invalid LAN values are rejected before sending
+00:05 +113: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/services/mqtt_service_test.dart: request/response times out with null and releases the path
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: timeout waiting for app123/GetQosInfo
+00:05 +114: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/settings_safety_test.dart: invalid LAN values are rejected before sending
+00:05 +114: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/services/mqtt_service_test.dart: request/response malformed and non-object replies complete with null
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: Failed to parse message on app123/A - FormatException: Unexpected character (at character 1)
+not json
+^
+
+MqttService: Non-object reply on app123/A ignored
+00:05 +115: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/settings_safety_test.dart: invalid LAN values are rejected before sending
+00:05 +115: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/services/mqtt_service_test.dart: request/response pending requests complete with null when the session drops
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: Disconnected unexpectedly
+00:05 +116: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/settings_safety_test.dart: invalid LAN values are rejected before sending
+00:05 +116: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/services/mqtt_service_test.dart: request/response a late write reply is not taken by the next write
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: timeout waiting for app123/SetFirewallInfo
+MqttService: discarded late reply on app123/SetFirewallInfo
+MqttService: /SetFirewallInfo replied in 0 ms
+00:05 +117: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/settings_safety_test.dart: invalid LAN values are rejected before sending
+00:05 +117: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/services/mqtt_service_test.dart: request/response reads are not held back after a read timeout
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: timeout waiting for app123/GetQosInfo
+00:05 +118: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/settings_safety_test.dart: invalid LAN values are rejected before sending
+00:05 +118: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/services/mqtt_service_test.dart: request/response stops sending V2 wireless queries a router never answers
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: timeout waiting for app123/GetWirelessInfoListV2
+MqttService: mesh1 does not answer V2 wireless; using V1
+MqttService: /GetWirelessInfoList replied in 0 ms
+MqttService: /GetWirelessInfoList replied in 0 ms
+00:05 +119: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/settings_safety_test.dart: invalid LAN values are rejected before sending
+00:05 +119: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/services/mqtt_service_test.dart: request/response an unanswered V2 is recorded even when the V1 read also times out
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: timeout waiting for app123/GetWirelessInfoListV2
+MqttService: mesh1 does not answer V2 wireless; using V1
+MqttService: timeout waiting for app123/GetWirelessInfoList
+MqttService: timeout waiting for app123/GetWirelessInfoList
+00:05 +120: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/settings_safety_test.dart: invalid LAN values are rejected before sending
+00:05 +120: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/services/mqtt_service_test.dart: request/response the V1-only verdict survives a new session
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: /GetWirelessInfoList replied in 0 ms
+00:05 +121: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/settings_safety_test.dart: invalid LAN values are rejected before sending
+00:05 +121: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/services/mqtt_service_test.dart: request/response a router error reply to V2 does not mark the router V1-only
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: /GetWirelessInfoListV2 answered ErrorCode 1
+MqttService: /GetWirelessInfoListV2 replied in 0 ms
+MqttService: /GetWirelessInfoList replied in 0 ms
+00:05 +122: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/settings_safety_test.dart: invalid LAN values are rejected before sending
+00:05 +122: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/services/mqtt_service_test.dart: request/response telemetry waits for slow but valid router replies
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: /GetSysConnectInfo replied in 0 ms
+00:05 +123: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/settings_safety_test.dart: invalid LAN values are rejected before sending
+00:05 +123: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/services/mqtt_service_test.dart: request/response two app instances keep separate client identities and replies
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: Connected
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+00:05 +124: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/settings_safety_test.dart: invalid LAN values are rejected before sending
+00:05 +124: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/services/mqtt_service_test.dart: request/response ErrorCode 5 marks the router as managed by another phone
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: router is managed by another phone (ErrorCode 5)
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: router management available to this phone
+MqttService: /GetSysConnectInfo replied in 0 ms
+00:05 +125: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/settings_safety_test.dart: invalid LAN values are rejected before sending
+00:05 +126: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/settings_safety_test.dart: invalid LAN values are rejected before sending
+00:05 +127: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/settings_safety_test.dart: invalid LAN values are rejected before sending
+00:05 +128: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/screens_test.dart: devices tab filters, searches and opens details
+00:05 +129: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/network_hub_test.dart: VPN control (UI) response 202 is shown
+00:05 +129: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/screens_test.dart: Home tab survives 1.6x text on the cover screen
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetWirelessInfoListV2 answered ErrorCode 1
+MqttService: /GetWirelessInfoListV2 replied in 0 ms
+MqttService: /GetWirelessInfoList replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetSystemState replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetWirelessInfoListV2 answered ErrorCode 1
+MqttService: /GetWirelessInfoListV2 replied in 0 ms
+MqttService: /GetWirelessInfoList replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetPrivateStorageV2 replied in 0 ms
+MqttService: /GetDiskInfo replied in 0 ms
+MqttService: /GetVisitAddress replied in 0 ms
+MqttService: /GetLedList replied in 0 ms
+MqttService: /GetMWanInfo replied in 0 ms
+00:05 +130: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/network_hub_test.dart: VPN control (UI) response 202 is shown
+00:05 +131: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/network_hub_test.dart: VPN control (UI) response 202 is shown
+00:05 +132: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/network_hub_test.dart: VPN control (UI) response 202 is shown
+00:05 +133: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/screens_test.dart: Home tab survives 1.6x text on the cover screen
+00:05 +134: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/network_hub_test.dart: VPN control (UI) response 401 is shown
+00:05 +134: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/screens_test.dart: Devices tab survives 1.6x text on the cover screen
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetWirelessInfoListV2 answered ErrorCode 1
+MqttService: /GetWirelessInfoListV2 replied in 0 ms
+MqttService: /GetWirelessInfoList replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetSystemState replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetWirelessInfoListV2 answered ErrorCode 1
+MqttService: /GetWirelessInfoListV2 replied in 0 ms
+MqttService: /GetWirelessInfoList replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetPrivateStorageV2 replied in 0 ms
+MqttService: /GetDiskInfo replied in 0 ms
+MqttService: /GetVisitAddress replied in 0 ms
+MqttService: /GetLedList replied in 0 ms
+MqttService: /GetMWanInfo replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+00:05 +135: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/network_hub_test.dart: VPN control (UI) response 401 is shown
+00:05 +135: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/screens_test.dart: Wi-Fi tab survives 1.6x text on the cover screen
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetWirelessInfoListV2 answered ErrorCode 1
+MqttService: /GetWirelessInfoListV2 replied in 0 ms
+MqttService: /GetWirelessInfoList replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetSystemState replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetWirelessInfoListV2 answered ErrorCode 1
+MqttService: /GetWirelessInfoListV2 replied in 0 ms
+MqttService: /GetWirelessInfoList replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetPrivateStorageV2 replied in 0 ms
+MqttService: /GetDiskInfo replied in 0 ms
+MqttService: /GetVisitAddress replied in 0 ms
+MqttService: /GetLedList replied in 0 ms
+MqttService: /GetMWanInfo replied in 0 ms
+MqttService: /GetWirelessInfoListV2 answered ErrorCode 1
+MqttService: /GetWirelessInfoListV2 replied in 0 ms
+MqttService: /GetGuestInfo replied in 0 ms
+MqttService: /GetWirelessInfoList replied in 0 ms
+00:05 +136: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/screens_test.dart: Wi-Fi tab survives 1.6x text on the cover screen
+00:05 +137: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/network_hub_test.dart: VPN control (UI) response 403 is shown
+00:05 +137: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/screens_test.dart: Statistics tab survives 1.6x text on the cover screen
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetWirelessInfoListV2 answered ErrorCode 1
+MqttService: /GetWirelessInfoListV2 replied in 0 ms
+MqttService: /GetWirelessInfoList replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetSystemState replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetWirelessInfoListV2 answered ErrorCode 1
+MqttService: /GetWirelessInfoListV2 replied in 0 ms
+MqttService: /GetWirelessInfoList replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetPrivateStorageV2 replied in 0 ms
+MqttService: /GetDiskInfo replied in 0 ms
+MqttService: /GetVisitAddress replied in 0 ms
+MqttService: /GetLedList replied in 0 ms
+MqttService: /GetMWanInfo replied in 0 ms
+00:05 +138: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/network_hub_test.dart: VPN control (UI) response 403 is shown
+00:05 +138: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/screens_test.dart: Network Hub tab survives 1.6x text on the cover screen
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetWirelessInfoListV2 answered ErrorCode 1
+MqttService: /GetWirelessInfoListV2 replied in 0 ms
+MqttService: /GetWirelessInfoList replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetSystemState replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetWirelessInfoListV2 answered ErrorCode 1
+MqttService: /GetWirelessInfoListV2 replied in 0 ms
+MqttService: /GetWirelessInfoList replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetPrivateStorageV2 replied in 0 ms
+MqttService: /GetDiskInfo replied in 0 ms
+MqttService: /GetVisitAddress replied in 0 ms
+MqttService: /GetLedList replied in 0 ms
+MqttService: /GetMWanInfo replied in 0 ms
+00:05 +139: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/screens_test.dart: Network Hub tab survives 1.6x text on the cover screen
+00:06 +140: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/network_hub_test.dart: VPN control (UI) response 409 is shown
+00:06 +140: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/screens_test.dart: Settings tab survives 1.6x text on the cover screen
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetWirelessInfoListV2 answered ErrorCode 1
+MqttService: /GetWirelessInfoListV2 replied in 0 ms
+MqttService: /GetWirelessInfoList replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetSystemState replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetWirelessInfoListV2 answered ErrorCode 1
+MqttService: /GetWirelessInfoListV2 replied in 0 ms
+MqttService: /GetWirelessInfoList replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetPrivateStorageV2 replied in 0 ms
+MqttService: /GetDiskInfo replied in 0 ms
+MqttService: /GetVisitAddress replied in 0 ms
+MqttService: /GetLedList replied in 0 ms
+MqttService: /GetMWanInfo replied in 0 ms
+00:06 +141: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/network_hub_test.dart: VPN control (UI) response 409 is shown
+00:06 +142: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/screens_test.dart: dark theme renders the dashboard
+MqttService: Connecting to 10.0.0.1:25678
+MqttService: Connected
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetWirelessInfoListV2 answered ErrorCode 1
+MqttService: /GetWirelessInfoListV2 replied in 0 ms
+MqttService: /GetWirelessInfoList replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetSystemState replied in 0 ms
+MqttService: /GetDevListInfo replied in 0 ms
+MqttService: /GetExistNode replied in 0 ms
+MqttService: /GetWirelessInfoListV2 answered ErrorCode 1
+MqttService: /GetWirelessInfoListV2 replied in 0 ms
+MqttService: /GetWirelessInfoList replied in 0 ms
+MqttService: /GetSysConnectInfo replied in 0 ms
+MqttService: /GetNodeRateInfo replied in 0 ms
+MqttService: /GetWanRateInfo replied in 0 ms
+MqttService: /GetPrivateStorageV2 replied in 0 ms
+MqttService: /GetDiskInfo replied in 0 ms
+MqttService: /GetVisitAddress replied in 0 ms
+MqttService: /GetLedList replied in 0 ms
+MqttService: /GetMWanInfo replied in 0 ms
+00:06 +143: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/network_hub_test.dart: VPN control (UI) response 502 is shown
+00:06 +144: All tests passed!

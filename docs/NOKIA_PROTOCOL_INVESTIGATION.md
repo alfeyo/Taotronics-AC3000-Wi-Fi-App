@@ -1,5 +1,14 @@
 # Nokia WiFi app: protocol investigation (static analysis)
 
+> Update, 18 October 2026: both Nokia Beacons are factory-reset and powered off.
+> Older Nokia addresses, identity and configuration below are historical, not
+> current. TaoTronics broadcasts `Nokia Wifi`. The supported target is a separate
+> **two-Beacon Nokia mesh in AP bridge mode behind TaoTronics**; cross-vendor
+> enrollment remains unsupported. Exact models/firmware and bridge behavior are
+> unverified. Follow [Nokia bridge validation](NOKIA_BRIDGE_VALIDATION.md), including
+> temporary-SSID testing and approval before household-SSID activation.
+
+
 Date: 2026-10-18. Method: static inspection only (unzip, shasum, apksigner, aapt2, jadx).
 The app was never installed or run, no code from it was executed, and nothing was sent over the network.
 The APK was not modified. Embedded secrets are listed as present but their values are not reproduced.

@@ -1,5 +1,14 @@
 # TT Router + Argon — project overview
 
+> Update, 18 October 2026: both Nokia Beacons are factory-reset and powered off.
+> Older Nokia addresses, identity and configuration below are historical, not
+> current. TaoTronics broadcasts `Nokia Wifi`. The supported target is a separate
+> **two-Beacon Nokia mesh in AP bridge mode behind TaoTronics**; cross-vendor
+> enrollment remains unsupported. Exact models/firmware and bridge behavior are
+> unverified. Follow [Nokia bridge validation](NOKIA_BRIDGE_VALIDATION.md), including
+> temporary-SSID testing and approval before household-SSID activation.
+
+
 Last verified: 2026-10-18 (Africa/Lusaka). Every statement below is labelled
 **proven** (observed this run), **recorded** (from earlier validation logs) or
 **unknown**. The requested source file `TT_Router_Argon_Project_Overview.md` was

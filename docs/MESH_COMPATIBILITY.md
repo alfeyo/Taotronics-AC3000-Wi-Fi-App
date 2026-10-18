@@ -1,5 +1,14 @@
 # Nokia ↔ TaoTronics mesh compatibility
 
+> Update, 18 October 2026: both Nokia Beacons are factory-reset and powered off.
+> Older Nokia addresses, identity and configuration below are historical, not
+> current. TaoTronics broadcasts `Nokia Wifi`. The supported target is a separate
+> **two-Beacon Nokia mesh in AP bridge mode behind TaoTronics**; cross-vendor
+> enrollment remains unsupported. Exact models/firmware and bridge behavior are
+> unverified. Follow [Nokia bridge validation](NOKIA_BRIDGE_VALIDATION.md), including
+> temporary-SSID testing and approval before household-SSID activation.
+
+
 Determination date: 2026-10-18. Inputs: TaoTronics protocol handoff and live router data, beacon-element radio scans from Argon and the OnePlus, and static analysis of the official Nokia WiFi app 3.260311.00 ([NOKIA_PROTOCOL_INVESTIGATION.md](NOKIA_PROTOCOL_INVESTIGATION.md); signer `CN=Nokia, O=Nokia`, Play source stamp).
 
 ## Determination

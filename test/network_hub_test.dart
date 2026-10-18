@@ -95,6 +95,7 @@ Map<String, dynamic> _gatewayFull(Map<String, dynamic> vpn) => {
       'today': _period(2 * _gib, _gib ~/ 2, share: 0.42),
       'yesterday': _period(3 * _gib, _gib),
       'last7': _period(20 * _gib, 4 * _gib, share: 0.5),
+      'last30': _period(80 * _gib, 8 * _gib, share: 0.5),
       'previous7': _period(16 * _gib, 4 * _gib),
       'thisMonth': _period(60 * _gib, 10 * _gib, share: 0.6),
       'lastMonth': _period(1, 1, measured: false, coverage: 0),
