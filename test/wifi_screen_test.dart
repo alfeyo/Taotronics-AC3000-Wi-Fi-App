@@ -136,11 +136,11 @@ void main() {
   });
 
   testWidgets(
-    'security selector writes only Encrypt and never offers weak modes',
+    'security selector never offers WPA3 (stored as open) or weak modes',
     (tester) async {
       final network = WirelessNetwork.fromJson({
         'Ssid': 'TT-35A0',
-        'Encrypt': 3,
+        'Encrypt': 4,
         'Password': 'p' * 10,
         'Vlanid': 0,
         'VlanEnable': 0,
@@ -169,18 +169,17 @@ void main() {
       );
       await tester.tap(find.text('open'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('WPA2 (AES)'));
+      await tester.tap(find.text('WPA/WPA2 mixed'));
       await tester.pumpAndSettle();
+      expect(find.textContaining('WPA3'), findsNothing);
       expect(find.text('WEP'), findsNothing);
       expect(find.text('None'), findsNothing);
-      await tester.tap(find.text('WPA3 (router option)').last);
+      await tester.tap(find.text('WPA2 (AES)').last);
       await tester.pumpAndSettle();
-      expect(find.textContaining('may not support WPA3'), findsOneWidget);
       await tester.tap(find.text('Continue'));
       await tester.pumpAndSettle();
       final payload = result!.toRouterPayload();
-      expect(payload['Encrypt'], 5);
-      expect(payload['Ssid'], 'TT-35A0');
+      expect(payload['Encrypt'], 3);
       expect(payload['Password'], 'p' * 10);
     },
   );

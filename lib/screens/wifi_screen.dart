@@ -612,13 +612,13 @@ class _WifiEditSheetState extends State<WifiEditSheet> {
   bool _showPassword = false;
 
   /// Router `Encrypt` modes offered for a secured network. Weaker modes
-  /// (none, WEP, WPA-only) are never offered. 5 is the router's "WPA3"
-  /// option; whether it is SAE-only or WPA2/WPA3 transition depends on the
-  /// firmware, so the beacon must be checked after applying it.
+  /// (none, WEP, WPA-only) are never offered. The router's `Encrypt=5`
+  /// ("WPA3") is deliberately absent: tested 2026-10-18 on the TT-ND001, the
+  /// router stored it as an unsecured network (read-back: no password,
+  /// secured=false), so offering it would create open Wi-Fi.
   static const securityModes = <int, String>{
     3: 'WPA2 (AES)',
     4: 'WPA/WPA2 mixed',
-    5: 'WPA3 (router option)',
   };
   late int _encrypt = widget.network.encrypt;
 
@@ -727,12 +727,12 @@ class _WifiEditSheetState extends State<WifiEditSheet> {
                   ],
                   onChanged: (v) => setState(() => _encrypt = v ?? _encrypt),
                 ),
-                if (_encrypt == 5 && n.encrypt != 5)
+                if (_encrypt == 4 && n.encrypt != 4)
                   Padding(
                     padding: const EdgeInsets.only(top: Space.xs),
                     child: Text(
-                      'Older or smart-home devices may not support WPA3. Test '
-                      'on an unused network first.',
+                      'Mixed mode also accepts WPA1 clients. Keep WPA2 unless '
+                      'an old device needs it.',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.error,
                       ),
