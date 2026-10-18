@@ -40,6 +40,44 @@ class MainActivity : FlutterActivity() {
             flutterEngine.dartExecutor.binaryMessenger,
             "tt_router/ble_provisioning",
         ).setMethodCallHandler(::handleBleCall)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "tt_router/hub_links").setMethodCallHandler { call, result ->
+            if (call.method != "open") { result.notImplemented() } else {
+                val uri = android.net.Uri.parse(call.argument<String>("url").orEmpty())
+                if (uri.scheme !in listOf("https", "http") || uri.host.isNullOrBlank() || uri.userInfo != null) {
+                    result.error("invalid_url", "Invalid web address", null)
+                } else try {
+                    startActivity(Intent(Intent.ACTION_VIEW, uri)); result.success(null)
+                } catch (_: ActivityNotFoundException) { result.error("unavailable", "No browser available", null) }
+            }
+        }
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "tt_router/device_key").setMethodCallHandler { call, result ->
+            try {
+                val instance = call.argument<String>("instance").orEmpty()
+                require(Regex("^[0-9a-f-]{36}$").matches(instance))
+                val alias = "argon.vpn.$instance"
+                val store = java.security.KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+                if (!store.containsAlias(alias)) {
+                    val generator = java.security.KeyPairGenerator.getInstance("EC", "AndroidKeyStore")
+                    generator.initialize(android.security.keystore.KeyGenParameterSpec.Builder(alias,
+                        android.security.keystore.KeyProperties.PURPOSE_SIGN or android.security.keystore.KeyProperties.PURPOSE_VERIFY)
+                        .setAlgorithmParameterSpec(java.security.spec.ECGenParameterSpec("secp256r1"))
+                        .setDigests(android.security.keystore.KeyProperties.DIGEST_SHA256).build())
+                    generator.generateKeyPair()
+                }
+                when (call.method) {
+                    "publicKey" -> result.success(android.util.Base64.encodeToString(store.getCertificate(alias).publicKey.encoded, android.util.Base64.NO_WRAP))
+                    "sign" -> {
+                        val message = call.argument<String>("message").orEmpty()
+                        require(message.startsWith("argon-device-v2\n") && message.length <= 4096)
+                        val signature = java.security.Signature.getInstance("SHA256withECDSA")
+                        signature.initSign(store.getKey(alias, null) as java.security.PrivateKey)
+                        signature.update(message.toByteArray(Charsets.UTF_8))
+                        result.success(android.util.Base64.encodeToString(signature.sign(), android.util.Base64.NO_WRAP))
+                    }
+                    else -> result.notImplemented()
+                }
+            } catch (_: Exception) { result.error("key_unavailable", "Phone signing key is unavailable", null) }
+        }
         val argonBluetooth = ArgonBluetooth(applicationContext)
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,

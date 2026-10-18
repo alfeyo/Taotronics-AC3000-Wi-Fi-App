@@ -372,7 +372,10 @@ void main() {
             }
           : throw const PiApiException('That code is not valid.', status: 401),
     });
-    final pi = _pi(_offlineRouter(), {'192.168.50.1': lan});
+    final pi = _pi(_offlineRouter(), {
+      '192.168.50.1': lan,
+      '100.94.137.17': lan,
+    });
     await pi.ready;
     await pi.discover();
     await expectLater(pi.pair('000000'), throwsA(isA<PiApiException>()));
@@ -441,7 +444,7 @@ void main() {
       late PiProvider pi;
       await tester.runAsync(() async {
         // Created in the real async zone: its storage load must complete here.
-        pi = _pi(router, {'192.168.50.1': lan});
+        pi = _pi(router, {'192.168.50.1': lan, '100.94.137.17': lan});
         await router.selectRouter(
           MeshEntity(meshId: 'm', ssid: 'm', ipAddress: '10.0.0.1'),
         );

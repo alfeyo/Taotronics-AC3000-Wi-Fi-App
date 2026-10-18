@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../providers/pi_provider.dart';
 import '../services/argon_status.dart';
-import '../services/pi_api.dart';
 import '../theme/app_theme.dart';
 import '../utils/format.dart';
 import 'app_widgets.dart';
@@ -37,9 +36,19 @@ class VpnCard extends StatelessWidget {
       await pi.setVpnMode(on);
       return;
     }
-    if (!pi.hasOperatorToken) {
-      final saved = await showOperatorTokenSheet(context, pi);
-      if (saved != true || !context.mounted) return;
+    if (!pi.paired || !pi.vpnDeviceAllowed) {
+      await pi.refreshVpnPermission();
+      if (!context.mounted) return;
+      if (!pi.vpnDeviceAllowed) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'The Argon owner can allow VPN control for this phone in Devices.',
+            ),
+          ),
+        );
+        return;
+      }
     }
     final confirmed = await showDialog<bool>(
       context: context,
@@ -225,24 +234,32 @@ class VpnCard extends StatelessWidget {
           Row(
             children: [
               Icon(
-                pi.hasOperatorToken ? Icons.key_rounded : Icons.key_off_rounded,
+                pi.vpnDeviceAllowed ? Icons.key_rounded : Icons.key_off_rounded,
                 size: 18,
                 color: muted,
               ),
               const SizedBox(width: Space.sm),
               Expanded(
                 child: Text(
-                  pi.hasOperatorToken
-                      ? 'Operator token saved on this phone'
-                      : 'Operator token needed to change VPN mode',
+                  pi.vpnDeviceAllowed
+                      ? 'VPN permission granted to this phone'
+                      : 'Owner approval needed for this phone',
                   style: theme.textTheme.bodySmall?.copyWith(color: muted),
                 ),
               ),
-              TextButton(
-                onPressed: () => showOperatorTokenSheet(context, pi),
-                child: Text(pi.hasOperatorToken ? 'Manage' : 'Add token'),
-              ),
             ],
+          ),
+          if (pi.vpnKeyFingerprint != null)
+            Text(
+              'Phone key: ${pi.vpnKeyFingerprint!.substring(0, pi.vpnKeyFingerprint!.length.clamp(0, 16))}…',
+              style: theme.textTheme.bodySmall,
+            ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              onPressed: pi.refreshVpnPermission,
+              child: const Text('Refresh permission'),
+            ),
           ),
         ],
       ),
@@ -299,8 +316,8 @@ class _Result extends StatelessWidget {
               issue == VpnCommandIssue.tokenInvalid ||
                   issue == VpnCommandIssue.needsToken
               ? TextButton(
-                  onPressed: () => showOperatorTokenSheet(context, pi),
-                  child: const Text('Enter token again'),
+                  onPressed: pi.refreshVpnPermission,
+                  child: const Text('Refresh permission'),
                 )
               : null,
         );
@@ -340,142 +357,6 @@ class _ConfirmVpnDialog extends StatelessWidget {
           child: Text(on ? 'Turn on' : 'Turn off'),
         ),
       ],
-    );
-  }
-}
-
-/// Enter, replace or forget the operator token. Returns true when a token
-/// was saved. The token is kept only in Android secure storage.
-Future<bool?> showOperatorTokenSheet(BuildContext context, PiProvider pi) {
-  return showModalBottomSheet<bool>(
-    context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
-    builder: (_) => _OperatorTokenSheet(pi: pi),
-  );
-}
-
-class _OperatorTokenSheet extends StatefulWidget {
-  const _OperatorTokenSheet({required this.pi});
-
-  final PiProvider pi;
-
-  @override
-  State<_OperatorTokenSheet> createState() => _OperatorTokenSheetState();
-}
-
-class _OperatorTokenSheetState extends State<_OperatorTokenSheet> {
-  final _token = TextEditingController();
-  bool _busy = false;
-  bool _obscure = true;
-  String? _error;
-
-  @override
-  void dispose() {
-    _token.dispose();
-    super.dispose();
-  }
-
-  Future<void> _save() async {
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    try {
-      await widget.pi.saveOperatorToken(_token.text);
-      if (mounted) Navigator.pop(context, true);
-    } on PiApiException catch (e) {
-      if (mounted) setState(() => _error = e.message);
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  Future<void> _forget() async {
-    await widget.pi.forgetOperatorToken();
-    if (mounted) Navigator.pop(context, false);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final muted = theme.colorScheme.onSurfaceVariant;
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        Space.lg,
-        0,
-        Space.lg,
-        Space.xl + MediaQuery.viewInsetsOf(context).bottom,
-      ),
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text('Operator token', style: theme.textTheme.titleLarge),
-            const SizedBox(height: Space.xs),
-            Text(
-              'Changing VPN mode needs Argon\'s operator token (not the '
-              'pairing code). It is stored only in this phone\'s secure '
-              'storage and used to sign each command; the token itself is '
-              'never sent.',
-              style: theme.textTheme.bodySmall?.copyWith(color: muted),
-            ),
-            const SizedBox(height: Space.md),
-            TextField(
-              key: const ValueKey('operator-token-field'),
-              controller: _token,
-              obscureText: _obscure,
-              autocorrect: false,
-              enableSuggestions: false,
-              decoration: InputDecoration(
-                labelText: widget.pi.hasOperatorToken
-                    ? 'Replace operator token'
-                    : 'Operator token',
-                suffixIcon: IconButton(
-                  tooltip: _obscure ? 'Show token' : 'Hide token',
-                  icon: Icon(
-                    _obscure
-                        ? Icons.visibility_rounded
-                        : Icons.visibility_off_rounded,
-                  ),
-                  onPressed: () => setState(() => _obscure = !_obscure),
-                ),
-              ),
-              onSubmitted: (_) => _busy ? null : _save(),
-            ),
-            if (_error != null)
-              Padding(
-                padding: const EdgeInsets.only(top: Space.sm),
-                child: Text(
-                  _error!,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: context.tone(Tone.danger).foreground,
-                  ),
-                ),
-              ),
-            const SizedBox(height: Space.md),
-            Wrap(
-              spacing: Space.sm,
-              runSpacing: Space.sm,
-              children: [
-                PillButton(
-                  label: _busy ? 'Saving…' : 'Save token',
-                  icon: Icons.key_rounded,
-                  primary: true,
-                  onPressed: _busy ? null : _save,
-                ),
-                if (widget.pi.hasOperatorToken)
-                  PillButton(
-                    label: 'Forget operator token',
-                    icon: Icons.delete_outline_rounded,
-                    onPressed: _busy ? null : _forget,
-                  ),
-              ],
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

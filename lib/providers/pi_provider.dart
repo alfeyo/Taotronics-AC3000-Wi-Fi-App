@@ -7,6 +7,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/argon_operator.dart';
+import '../services/argon_device_key.dart';
 import '../services/argon_status.dart';
 import '../services/pi_api.dart';
 import '../services/pi_snapshot.dart';
@@ -91,7 +92,9 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
     this.vpnVerifyInterval = const Duration(seconds: 3),
     this.vpnVerifyAttempts = 10,
     String Function()? nonce,
-  }) : _nonce = nonce ?? ArgonOperatorAuth.nonce,
+    ArgonDeviceKey? deviceKey,
+  }) : _deviceKey = deviceKey ?? ArgonDeviceKey(),
+       _nonce = nonce ?? ArgonOperatorAuth.nonce,
        _storage = storage ?? const FlutterSecureStorage(),
        _http = httpTransport ?? ((uri) => HttpPiTransport(uri)),
        _bt = bluetoothTransport ?? ((a) => BluetoothPiTransport(a)),
@@ -133,6 +136,11 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
   final Duration vpnVerifyInterval;
   final int vpnVerifyAttempts;
   final String Function() _nonce;
+  final ArgonDeviceKey _deviceKey;
+  String? _deviceId;
+  int _keyGeneration = -1;
+  DateTime? _lastPermissionCheck;
+  Future<void>? _permissionCheck;
   late final Future<void> ready;
   StreamSubscription<List<ConnectivityResult>>? _connectivity;
   Timer? _timer;
@@ -146,7 +154,11 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
   Uri? _lastEndpoint;
   Uri? manualEndpoint;
   String _token = '';
-  String _operatorToken = '';
+  bool vpnDeviceAllowed = false;
+  String? vpnKeyFingerprint;
+  PiTransport? _secureRoute;
+  int _secureGeneration = -1;
+  DateTime? _nextSecureAttempt;
   String? pairedName;
   bool syncEnabled = true;
   bool bluetoothFallback = false;
@@ -324,10 +336,12 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
       // A credential provisioned earlier (shared token or paired device) is
       // used automatically.
       _token = await _storage.read(key: companionKey) ?? '';
-      _operatorToken = await _storage.read(key: operatorKey) ?? '';
+      await _storage.delete(
+        key: operatorKey,
+      ); // retire the broad operator credential
     } catch (_) {
       _token = '';
-      _operatorToken = '';
+
       lastError = 'Saved Network Hub settings could not be read securely.';
     }
     _emit();
@@ -375,7 +389,7 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
       case AppLifecycleState.detached:
         // No background work: stop timers and discard in-flight results.
         _foreground = false;
-        _generation++;
+        _invalidateConnection();
         _timer?.cancel();
         _timer = null;
       case AppLifecycleState.inactive:
@@ -384,6 +398,7 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   void _networkChanged() {
+    _invalidateConnection();
     _networkDebounce?.cancel();
     _networkDebounce = Timer(const Duration(milliseconds: 1500), () {
       if (_disposed || !_foreground) return;
@@ -422,6 +437,7 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   /// Re-run discovery now (e.g. Manage connection > Retry).
   Future<void> reconnect() async {
+    _invalidateConnection();
     _attempt = 0;
     _nextDiscovery = null;
     transport = null;
@@ -570,6 +586,12 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   void _requestFailed(PiApiException e, int generation) {
     if (generation != _generation) return;
+    if (e is PiSecureRouteUnavailable) {
+      lastError = e.message;
+      _emit();
+      return;
+    }
+    if (e.status == null) _dropSecureRoute();
     if (e.unauthorized && _token.isNotEmpty) {
       credentialRejected = true;
       _addEvent(
@@ -610,7 +632,10 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
     _lastLive = _now();
     final generation = _generation;
     try {
-      final r = await t.get('/api/v1/live', token: _readToken);
+      final route = _readToken != null && t.kind == PiTransportKind.lan
+          ? await _secureTransport()
+          : t;
+      final r = await route.get('/api/v1/live', token: _readToken);
       if (generation != _generation || transport != t) return;
       live = r;
       liveAt = _now();
@@ -641,7 +666,10 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
     _lastGateway = _now();
     final generation = _generation;
     try {
-      final r = await t.get(
+      final route = _readToken != null && t.kind == PiTransportKind.lan
+          ? await _secureTransport()
+          : t;
+      final r = await route.get(
         '/api/v1/gateway',
         token: _readToken,
         timeout: const Duration(seconds: 15),
@@ -652,6 +680,7 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
       lastContact = gatewayAt;
       _failures = 0;
       _mergeServerEvents(r['events']);
+      unawaited(refreshVpnPermission(force: false));
       _emit();
     } on PiApiException catch (e) {
       _requestFailed(e, generation);
@@ -774,7 +803,9 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
         return;
       }
       try {
-        final r = await t.post(
+        final secure = await _secureTransport();
+        if (generation != _generation || !_foreground) return;
+        final r = await secure.post(
           '/api/v1/router/snapshot',
           snapshot,
           token: _token,
@@ -784,6 +815,7 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
         sharedCount = (r['count'] as num?)?.toInt();
         syncError = null;
       } on PiApiException catch (e) {
+        if (e.status == null) _dropSecureRoute();
         if (generation != _generation) return;
         if (e.status == 409) return; // same observation already delivered
         if (e.unauthorized) {
@@ -812,7 +844,8 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
     if (!RegExp(r'^\d{6}$').hasMatch(code.trim())) {
       throw const PiApiException('Enter the 6-digit code shown on Argon.');
     }
-    final r = await t.post('/api/v1/pairing/complete', {
+    final secure = await _secureTransport();
+    final r = await secure.post('/api/v1/pairing/complete', {
       'code': code.trim(),
       'name': deviceName,
     });
@@ -826,7 +859,13 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
         'Secure storage failed; pairing was not saved.',
       );
     }
+    _invalidateConnection();
     _token = token;
+    _deviceId = null;
+    vpnKeyFingerprint = null;
+    _keyGeneration = -1;
+    vpnDeviceAllowed = false;
+    _lastPermissionCheck = null;
     credentialRejected = false;
     pairedName = (r['name'] as String?) ?? deviceName;
     syncEnabled = true;
@@ -867,6 +906,11 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   /// Removes this phone's credential and the trusted Argon identity.
   Future<void> forget() async {
+    _invalidateConnection();
+    _deviceId = null;
+    vpnKeyFingerprint = null;
+    _keyGeneration = -1;
+    vpnDeviceAllowed = false;
     await _storage.delete(key: companionKey);
     _token = '';
     credentialRejected = false;
@@ -882,50 +926,153 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   // ------------------------------------------------------------ VPN control
 
-  bool get hasOperatorToken => _operatorToken.isNotEmpty;
   bool get vpnInFlight =>
       vpnPhase == VpnCommandPhase.sending ||
       vpnPhase == VpnCommandPhase.verifying;
+  bool get vpnControlRoute =>
+      connected &&
+      transport is PiOperatorTransport &&
+      transport?.kind != PiTransportKind.bluetooth;
 
-  /// The current route can carry an operator command (not Bluetooth).
-  bool get vpnControlRoute {
+  // Private LAN HTTP remains available for public monitoring. Secrets and
+  // privileged commands always use a normally verified HTTPS or Tailscale route.
+  Future<PiTransport> _secureTransport() async {
     final t = transport;
-    return connected &&
-        t != null &&
-        t.kind != PiTransportKind.bluetooth &&
-        t is PiOperatorTransport;
+    if (t != null &&
+        (t.kind == PiTransportKind.https ||
+            t.kind == PiTransportKind.tailscale)) {
+      return t;
+    }
+    if (_secureRoute != null && _secureGeneration == _generation) {
+      return _secureRoute!;
+    }
+    if (_nextSecureAttempt != null && _now().isBefore(_nextSecureAttempt!)) {
+      throw const PiSecureRouteUnavailable();
+    }
+    final generation = _generation;
+    for (final uri in [
+      if (manualEndpoint?.scheme == 'https') manualEndpoint!,
+      tailscaleDefault,
+    ]) {
+      final candidate = _http(uri);
+      try {
+        final id = PiIdentity.parse(await candidate.get('/api/v1/identity'));
+        if (trustedId != null &&
+            id.instanceId == trustedId &&
+            generation == _generation &&
+            !_disposed) {
+          _secureGeneration = generation;
+          return _secureRoute = candidate;
+        }
+      } on PiApiException {
+        continue;
+      }
+    }
+    _nextSecureAttempt = _now().add(const Duration(seconds: 30));
+    throw const PiSecureRouteUnavailable();
   }
 
-  /// Stores the operator token in Android secure storage only, under its own
-  /// key. The companion (pairing) token is never accepted as operator token.
-  Future<void> saveOperatorToken(String value) async {
-    final token = value.trim();
-    if (token.length < 8 || token.contains(RegExp(r'\s'))) {
-      throw const PiApiException('Enter the operator token from Argon.');
+  Future<void> _enrollKey(PiTransport t) async {
+    if (_deviceId != null && _keyGeneration == _generation) return;
+    final instance = trustedId;
+    if (instance == null || !paired) {
+      throw const PiApiException('Pair this phone first.');
     }
-    if (token == _token) {
-      throw const PiApiException(
-        'That is this phone\'s pairing token, not the operator token.',
-      );
+    final generation = _generation;
+    final publicKey = await _deviceKey.publicKey(instance);
+    final r = await t.post('/api/v1/pairing/key', {
+      'publicKey': publicKey,
+    }, token: _token);
+    if (generation != _generation || _disposed) {
+      throw const PiApiException('Connection changed. Retry.');
     }
-    await _storage.write(key: operatorKey, value: token);
-    if (await _storage.read(key: operatorKey) != token) {
-      throw const PiApiException(
-        'Secure storage failed; the operator token was not saved.',
-      );
+    if (r['id'] is! String) {
+      throw const PiApiException('Phone key registration failed.');
     }
-    _operatorToken = token;
-    if (vpnIssue == VpnCommandIssue.tokenInvalid ||
-        vpnIssue == VpnCommandIssue.needsToken) {
-      _resetVpnCommand();
-    }
-    _emit();
+    _deviceId = r['id'] as String;
+    vpnKeyFingerprint = r['keyFingerprint'] is String
+        ? r['keyFingerprint'] as String
+        : null;
+    _keyGeneration = generation;
   }
 
-  Future<void> forgetOperatorToken() async {
-    await _storage.delete(key: operatorKey);
-    _operatorToken = '';
-    _resetVpnCommand();
+  void _dropSecureRoute() {
+    _secureRoute = null;
+    _secureGeneration = -1;
+  }
+
+  void _invalidateConnection() {
+    _generation++;
+    _nextSecureAttempt = null;
+    _dropSecureRoute();
+    _lastPermissionCheck = null;
+    if (vpnInFlight) {
+      vpnPhase = VpnCommandPhase.failed;
+      vpnIssue = VpnCommandIssue.unconfirmed;
+      vpnMessage =
+          'Connection changed while checking the VPN. Refresh its actual state before retrying.';
+    }
+  }
+
+  Future<void> refreshVpnPermission({bool force = true}) async {
+    if (_permissionCheck != null) {
+      await _permissionCheck;
+      return;
+    }
+    if (!force &&
+        _lastPermissionCheck != null &&
+        _now().difference(_lastPermissionCheck!).inSeconds < 60) {
+      return;
+    }
+    _lastPermissionCheck = _now();
+    _permissionCheck = _checkVpnPermission();
+    try {
+      await _permissionCheck;
+    } finally {
+      _permissionCheck = null;
+    }
+  }
+
+  Future<void> _checkVpnPermission() async {
+    var allowed = false;
+    if (!paired) {
+      vpnDeviceAllowed = false;
+      return;
+    }
+    final generation = _generation;
+    try {
+      final t = await _secureTransport();
+      await _enrollKey(t);
+      final r = await t.get('/api/v1/vpn', token: _token);
+      if (generation != _generation || _disposed) return;
+      if (r['deviceAllowed'] == true && t is PiOperatorTransport) {
+        const path = '/api/v1/vpn/authorize';
+        final body = utf8.encode('{}');
+        final proof = await (t as PiOperatorTransport).sendRaw(
+          'POST',
+          path,
+          body: body,
+          headers: {
+            'Authorization': await _deviceKey.header(
+              instance: trustedId!,
+              id: _deviceId!,
+              method: 'POST',
+              path: path,
+              ts: _now().millisecondsSinceEpoch ~/ 1000,
+              nonce: _nonce(),
+              body: body,
+            ),
+          },
+        );
+        if (generation != _generation || _disposed) return;
+        allowed = proof.status == 200 && proof.data?['authorized'] == true;
+      }
+      _absorbVpn(r['vpn']);
+    } catch (_) {
+      _dropSecureRoute();
+    }
+    if (generation != _generation || _disposed) return;
+    vpnDeviceAllowed = allowed;
     _emit();
   }
 
@@ -976,28 +1123,34 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
     if (t.kind == PiTransportKind.bluetooth || t is! PiOperatorTransport) {
       return _vpnFail(VpnCommandIssue.bluetooth, vpnNeedsIpRouteMessage);
     }
-    if (_operatorToken.isEmpty) {
+    if (!paired) {
       return _vpnFail(
         VpnCommandIssue.needsToken,
-        'Enter the operator token to change VPN mode.',
+        'Pair this phone once, then ask the Argon owner to allow VPN control.',
       );
     }
     vpnPhase = VpnCommandPhase.sending;
     vpnMessage = on ? 'Turning VPN on…' : 'Turning VPN off…';
     _emit();
+    final generation = _generation;
     const path = '/api/v1/vpn';
     final body = utf8.encode(
       jsonEncode({'state': target, 'confirm': 'VPN_MODE'}),
     );
     final PiRawResponse r;
     try {
-      r = await (t as PiOperatorTransport).sendRaw(
+      final secure = await _secureTransport();
+      if (generation != _generation || _disposed) return false;
+      await _enrollKey(secure);
+      if (generation != _generation || _disposed) return false;
+      r = await (secure as PiOperatorTransport).sendRaw(
         'POST',
         path,
         body: body,
         headers: {
-          'Authorization': ArgonOperatorAuth.header(
-            token: _operatorToken,
+          'Authorization': await _deviceKey.header(
+            instance: trustedId!,
+            id: _deviceId!,
             method: 'POST',
             path: path,
             body: body,
@@ -1007,9 +1160,15 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
         },
       );
     } on PiApiException catch (e) {
+      if (e.status == null) _dropSecureRoute();
       return _vpnFail(VpnCommandIssue.network, e.message);
+    } catch (_) {
+      return _vpnFail(
+        VpnCommandIssue.network,
+        'Phone signing key is unavailable. Retry after unlocking the phone.',
+      );
     }
-    if (_disposed) return false;
+    if (_disposed || generation != _generation) return false;
     final data = r.data;
     String? text(Object? v) => v is String && v.trim().isNotEmpty ? v : null;
     switch (r.status) {
@@ -1021,16 +1180,16 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
             ? 'Argon accepted the change · waiting for it to take effect…'
             : 'Confirming with Argon…';
         _emit();
-        return _verifyVpn(target);
+        return _verifyVpn(target, generation);
       case 401:
         return _vpnFail(
           VpnCommandIssue.tokenInvalid,
-          'The operator token was not accepted. Enter it again.',
+          'Phone authorization was rejected. Refresh permissions or pair again.',
         );
       case 403:
         return _vpnFail(
           VpnCommandIssue.forbidden,
-          'Operator authorization required.',
+          'VPN permission is not granted. Ask the Argon owner to allow this phone in Devices.',
         );
       case 409:
         _absorbVpn(data?['observed']);
@@ -1058,21 +1217,28 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  Future<bool> _verifyVpn(String target) async {
+  Future<bool> _verifyVpn(String target, int generation) async {
     for (var i = 0; i < vpnVerifyAttempts; i++) {
       if (i > 0) await Future<void>.delayed(vpnVerifyInterval);
       if (_disposed) return false;
-      final t = transport;
-      if (t == null) continue;
+      if (generation != _generation) return false;
       try {
-        final r = await t.get('/api/v1/vpn', token: _readToken);
+        final t = await _secureTransport();
+        final r = await t.get('/api/v1/vpn', token: _token);
+        if (generation != _generation || _disposed) return false;
         _absorbVpn(r['vpn']);
       } on PiApiException {
+        _dropSecureRoute();
         // Keep waiting: the route may blip while the tunnel changes.
       }
       if (_disposed) return false;
       final now = vpn;
-      if (now?.mode == target && now?.busy != true) {
+      if (now?.mode == target &&
+          now?.busy != true &&
+          (target == 'on'
+              ? now?.connected == true
+              : (now?.state == 'disconnected' || now?.state == 'off')) &&
+          now?.healthOk != false) {
         vpnPhase = VpnCommandPhase.confirmed;
         vpnMessage = target == 'on'
             ? 'VPN is on · confirmed by Argon'

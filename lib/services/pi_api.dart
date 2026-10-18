@@ -73,6 +73,13 @@ class PiApiException implements Exception {
   String toString() => message;
 }
 
+class PiSecureRouteUnavailable extends PiApiException {
+  const PiSecureRouteUnavailable()
+    : super(
+        'Phone authorization requires Tailscale or HTTPS. Public LAN monitoring remains available when enabled on Argon.',
+      );
+}
+
 /// A way to reach Argon's companion API.
 abstract class PiTransport {
   PiTransportKind get kind;
@@ -169,6 +176,14 @@ class HttpPiTransport implements PiTransport, PiOperatorTransport {
     Map<String, String> headers,
     Duration timeout,
   ) async {
+    if (kind == PiTransportKind.lan &&
+        (headers.containsKey(HttpHeaders.authorizationHeader) ||
+            headers.containsKey('Authorization') ||
+            path == '/api/v1/pairing/complete')) {
+      throw const PiApiException(
+        'Use Tailscale or HTTPS for phone authorization.',
+      );
+    }
     final client = HttpClient()..connectionTimeout = connectTimeout;
     try {
       final request = await client

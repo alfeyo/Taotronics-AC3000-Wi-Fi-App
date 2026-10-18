@@ -14,6 +14,9 @@ import '../widgets/home_widgets.dart';
 import '../widgets/hub_widgets.dart';
 import '../widgets/pi_board.dart';
 import '../widgets/vpn_card.dart';
+import '../services/hub_links.dart';
+import 'nokia_mesh_screen.dart';
+import 'diagnostics_screen.dart';
 
 /// Network Hub: Argon, the Raspberry Pi between the internet and the
 /// TaoTronics router. Connection is automatic (PiProvider); this screen shows
@@ -48,6 +51,8 @@ class NetworkHubScreen extends StatelessWidget {
                     const SizedBox(height: Space.md),
                     _Hero(pi: pi),
                     const SizedBox(height: Space.lg),
+                    _QuickActions(pi: pi, router: router),
+                    const SizedBox(height: Space.md),
                     _SyncCard(pi: pi, router: router),
                     SectionLabel(
                       'Live traffic',
@@ -67,10 +72,21 @@ class NetworkHubScreen extends StatelessWidget {
                             ),
                     ),
                     _Usage(pi: pi),
+                    _ClientUsage(pi: pi),
                     const SectionLabel('VPN'),
                     VpnCard(pi: pi),
                     const SectionLabel('Health'),
                     _Health(pi: pi, router: router),
+                    if (pi.gatewayInfo?['storage'] is Map &&
+                        pi.gatewayInfo!['storage']['usedPercent'] is num &&
+                        (pi.gatewayInfo!['storage']['usedPercent'] as num)
+                            .isFinite)
+                      Padding(
+                        padding: const EdgeInsets.all(Space.md),
+                        child: Text(
+                          'Storage: ${pi.gatewayInfo!['storage']['usedPercent']}% used · filesystem capacity; SD-card health not measured',
+                        ),
+                      ),
                     const SectionLabel('Internet uplink'),
                     _Uplink(pi: pi),
                     const SectionLabel('Recent events'),
@@ -974,13 +990,19 @@ class _Uplink extends StatelessWidget {
             v(
               u?.fallbackReady == null
                   ? null
-                  : (u!.fallbackReady! ? 'Ready' : 'Not ready'),
+                  : (u!.fallbackReady! ? 'Configured' : 'Not ready'),
             ),
             tone: u?.fallbackReady == null
                 ? null
                 : u!.fallbackReady!
                 ? Tone.success
                 : Tone.warning,
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: Space.sm),
+            child: Text(
+              'Backup readiness reflects the saved profile and radio. Hotspot reachability is verified only when it connects.',
+            ),
           ),
           KvRow(
             'Fallback networks',
@@ -1224,6 +1246,146 @@ class _ManageSheetState extends State<_ManageSheet> {
             ),
         ],
       ),
+    );
+  }
+}
+
+class _QuickActions extends StatelessWidget {
+  const _QuickActions({required this.pi, required this.router});
+  final PiProvider pi;
+  final RouterProvider router;
+  @override
+  Widget build(BuildContext context) => Wrap(
+    spacing: 8,
+    runSpacing: 8,
+    children: [
+      OutlinedButton.icon(
+        icon: const Icon(Icons.refresh),
+        label: const Text('Refresh statistics'),
+        onPressed: pi.reconnect,
+      ),
+      OutlinedButton.icon(
+        icon: const Icon(Icons.devices),
+        label: const Text('Refresh devices'),
+        onPressed: !router.isConnected || router.isLivePaused
+            ? null
+            : router.refreshDevices,
+      ),
+      OutlinedButton.icon(
+        icon: const Icon(Icons.router),
+        label: const Text('Nokia Mesh'),
+        onPressed: () => Navigator.of(context).push(
+          MaterialPageRoute<void>(builder: (_) => const NokiaMeshScreen()),
+        ),
+      ),
+      OutlinedButton.icon(
+        icon: const Icon(Icons.monitor_heart_outlined),
+        label: const Text('Diagnostics'),
+        onPressed: () => Navigator.of(context).push(
+          MaterialPageRoute<void>(builder: (_) => const DiagnosticsScreen()),
+        ),
+      ),
+      OutlinedButton.icon(
+        icon: const Icon(Icons.open_in_new),
+        label: const Text('Argon dashboard'),
+        onPressed: () async {
+          try {
+            await HubLinks.open(PiProvider.tailscaleDefault.toString());
+          } catch (_) {
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'Could not open Argon. Enable Tailscale and retry.',
+                  ),
+                ),
+              );
+            }
+          }
+        },
+      ),
+      OutlinedButton.icon(
+        icon: const Icon(Icons.notifications_none),
+        label: Text('Network alerts (${pi.unreadEvents})'),
+        onPressed: () {
+          pi.markEventsRead();
+          showModalBottomSheet<void>(
+            context: context,
+            builder: (_) => SafeArea(
+              child: ListView(
+                padding: const EdgeInsets.all(Space.lg),
+                children: [
+                  const Text(
+                    'Recent network alerts',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  ),
+                  if (pi.events.isEmpty)
+                    const Text('No observed network events.'),
+                  for (final e in pi.events.take(30))
+                    ListTile(
+                      title: Text(e.title),
+                      subtitle: Text('${e.message} · ${e.at.toLocal()}'),
+                    ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    ],
+  );
+}
+
+String _estimate(Map c) {
+  final usage = c['usage'];
+  final today = usage is Map ? usage['today'] : null;
+  final total = today is Map ? today['totalBytes'] : null;
+  final coverage = today is Map ? today['coverage'] : null;
+  return total is num && total.isFinite && total >= 0
+      ? '≈ ${formatBytes(total.toInt())}${coverage is num && coverage.isFinite ? '\n${(coverage.clamp(0, 1) * 100).toStringAsFixed(1)}% observed' : ''}'
+      : 'Not observed today';
+}
+
+class _ClientUsage extends StatelessWidget {
+  const _ClientUsage({required this.pi});
+  final PiProvider pi;
+  @override
+  Widget build(BuildContext context) {
+    final router = pi.gateway?['router'];
+    final rawClients = router is Map ? router['clients'] : null;
+    final clients = rawClients is List
+        ? rawClients.whereType<Map>().toList()
+        : const <Map>[];
+    return ExpansionTile(
+      title: const Text('Device usage & coverage'),
+      subtitle: Text('${clients.length} known identities · observed estimates'),
+      children: [
+        const Padding(
+          padding: EdgeInsets.all(Space.md),
+          child: Text(
+            'Estimates integrate short observed router-rate intervals only. Gaps over 45 seconds are excluded. MAC changes remain separate identities; VPN attribution is unavailable behind NAT.',
+          ),
+        ),
+        if (clients.isEmpty)
+          const ListTile(
+            title: Text(
+              'Waiting for a paired phone to share router observations.',
+            ),
+          ),
+        for (final c in clients)
+          ListTile(
+            title: Text(
+              c['name']?.toString() ?? c['mac']?.toString() ?? 'Unknown device',
+            ),
+            subtitle: Text(
+              '${c['ip'] ?? 'IP unknown'} · ${c['mac'] ?? 'MAC unknown'}',
+            ),
+            trailing: SizedBox(
+              width: 130,
+              child: Text(_estimate(c), textAlign: TextAlign.right),
+            ),
+          ),
+      ],
     );
   }
 }

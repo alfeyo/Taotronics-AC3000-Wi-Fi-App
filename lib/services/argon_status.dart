@@ -51,7 +51,7 @@ class ArgonVpn {
 
   bool get isOn => mode == 'on';
   bool get isOff => mode == 'off';
-  bool get connected => state == 'connected';
+  bool get connected => (state == 'connected' || state == 'on');
 
   static ArgonVpn? parse(Object? raw) {
     final v = _map(raw);

@@ -10,7 +10,7 @@ import 'package:tt_router_flutter/providers/pi_provider.dart';
 import 'package:tt_router_flutter/providers/router_provider.dart';
 import 'package:tt_router_flutter/screens/home_screen.dart';
 import 'package:tt_router_flutter/screens/network_hub_screen.dart';
-import 'package:tt_router_flutter/services/argon_operator.dart';
+import 'package:tt_router_flutter/services/argon_device_key.dart';
 import 'package:tt_router_flutter/services/auth_pairing_service.dart';
 import 'package:tt_router_flutter/services/credential_store.dart';
 import 'package:tt_router_flutter/services/mqtt_service.dart';
@@ -169,6 +169,7 @@ class HubFake implements PiTransport, PiOperatorTransport {
   final bool minimal;
   Map<String, dynamic> vpnState;
 
+  bool deviceAllowed = true;
   int postStatus = 200;
   Map<String, dynamic>? postReply;
 
@@ -205,7 +206,13 @@ class HubFake implements PiTransport, PiOperatorTransport {
           vpnState = _vpn(_pending!);
           _pending = null;
         }
-        return {'version': 1, 'ok': true, 'generatedAt': 1, 'vpn': vpnState};
+        return {
+          'version': 1,
+          'ok': true,
+          'generatedAt': 1,
+          'deviceAllowed': deviceAllowed,
+          'vpn': vpnState,
+        };
     }
     throw const PiApiException('Argon is not reachable on this route.');
   }
@@ -216,7 +223,9 @@ class HubFake implements PiTransport, PiOperatorTransport {
     Map<String, dynamic> body, {
     String? token,
     Duration? timeout,
-  }) async => throw const PiApiException('not used');
+  }) async => path == '/api/v1/pairing/key'
+      ? {'version': 1, 'ok': true, 'id': '11111111-2222-3333-4444-555555555555'}
+      : throw const PiApiException('not used');
 
   @override
   Future<PiRawResponse> sendRaw(
@@ -226,6 +235,12 @@ class HubFake implements PiTransport, PiOperatorTransport {
     required Map<String, String> headers,
     Duration? timeout,
   }) async {
+    if (path == '/api/v1/vpn/authorize') {
+      return PiRawResponse(deviceAllowed ? 200 : 403, {
+        'ok': deviceAllowed,
+        'authorized': deviceAllowed,
+      });
+    }
     posts.add((body: body, headers: headers));
     if (postGate != null) await postGate!.future;
     final target = (jsonDecode(utf8.decode(body)) as Map)['state'] as String;
@@ -268,6 +283,14 @@ class _BtOnly implements PiTransport {
   }) async => throw const PiApiException('Not available over Bluetooth.');
 }
 
+class _TestDeviceKey extends ArgonDeviceKey {
+  @override
+  Future<String> publicKey(String instance) async => 'test-public-key';
+  @override
+  Future<String> sign(String instance, String value) async =>
+      base64Encode(utf8.encode('test-signature'));
+}
+
 RouterProvider _router() => RouterProvider(
   mqtt: MqttService(
     transportFactory: FakeTransportFactory().call,
@@ -298,6 +321,7 @@ PiProvider _pi(
   vpnVerifyInterval: Duration.zero,
   vpnVerifyAttempts: attempts,
   nonce: () => _nonce,
+  deviceKey: _TestDeviceKey(),
 );
 
 class _Down implements PiTransport {
@@ -326,6 +350,7 @@ Future<PiProvider> _connected(PiTransport argon, {_Clock? clock}) async {
   await pi.ready;
   await pi.discover();
   await pi.tick();
+  await pi.refreshVpnPermission();
   return pi;
 }
 
@@ -432,7 +457,7 @@ void main() {
       });
     });
 
-    test('200: signed with the operator token only, then confirmed by a '
+    test('200: signed with the device key, then confirmed by a '
         're-read', () async {
       final argon = HubFake();
       final pi = await _connected(argon);
@@ -443,18 +468,12 @@ void main() {
       final post = argon.posts.single;
       expect(utf8.decode(post.body), '{"state":"off","confirm":"VPN_MODE"}');
       final auth = post.headers['Authorization']!;
-      expect(auth, startsWith('ArgonOperator v1 ts='));
+      expect(auth, startsWith('ArgonDevice v2 id='));
       expect(auth, contains('nonce=$_nonce'));
       expect(auth.contains(_companion), false);
       expect(auth.contains(_operator), false, reason: 'token never sent');
       expect(post.headers.values.any((v) => v.startsWith('Bearer')), false);
-      final ts = int.parse(RegExp(r'ts=(\d+)').firstMatch(auth)!.group(1)!);
-      expect(
-        auth.endsWith(
-          'sig=${ArgonOperatorAuth.signature(token: _operator, method: 'POST', path: '/api/v1/vpn', ts: ts, nonce: _nonce, body: post.body)}',
-        ),
-        true,
-      );
+      expect(auth, contains('sig=dGVzdC1zaWduYXR1cmU'));
       expect(pi.events.first.title, 'VPN turned off');
       pi.dispose();
     });
@@ -487,9 +506,13 @@ void main() {
       (
         401,
         VpnCommandIssue.tokenInvalid,
-        'The operator token was not accepted. Enter it again.',
+        'Phone authorization was rejected. Refresh permissions or pair again.',
       ),
-      (403, VpnCommandIssue.forbidden, 'Operator authorization required.'),
+      (
+        403,
+        VpnCommandIssue.forbidden,
+        'VPN permission is not granted. Ask the Argon owner to allow this phone in Devices.',
+      ),
       (409, VpnCommandIssue.busy, 'A change is already in progress.'),
     ]) {
       test('$status is reported as ${issue.name}', () async {
@@ -498,7 +521,7 @@ void main() {
         expect(await pi.setVpnMode(false), false);
         expect(pi.vpnIssue, issue);
         expect(pi.vpnMessage, text);
-        expect(argon.vpnReads, 0, reason: 'no confirmation polling');
+        expect(argon.vpnReads, 1, reason: 'initial permission read only');
         pi.dispose();
       });
     }
@@ -534,6 +557,25 @@ void main() {
       pi.dispose();
     });
 
+    test(
+      'backgrounding a pending VPN command leaves a recoverable unconfirmed result',
+      () async {
+        final argon = HubFake()..postGate = Completer<void>();
+        final pi = await _connected(argon);
+        final command = pi.setVpnMode(false);
+        await pumpEventQueue();
+        expect(pi.vpnInFlight, true);
+        pi.didChangeAppLifecycleState(AppLifecycleState.paused);
+        argon.postGate!.complete();
+        expect(await command, false);
+        expect(pi.vpnInFlight, false);
+        expect(pi.vpnIssue, VpnCommandIssue.unconfirmed);
+        pi.dismissVpnResult();
+        expect(pi.vpnPhase, VpnCommandPhase.idle);
+        pi.dispose();
+      },
+    );
+
     test('Bluetooth route explains that an IP route is needed', () async {
       SharedPreferences.setMockInitialValues({
         'argon.v2.trustedId': '11111111-2222-3333-4444-555555555555',
@@ -553,35 +595,25 @@ void main() {
     });
 
     test(
-      'operator token is stored separately; companion token refused',
+      'operator token is retired; pairing remains secure and unpaired phones cannot send commands',
       () async {
         FlutterSecureStorage.setMockInitialValues({
           PiProvider.companionKey: _companion,
+          PiProvider.operatorKey: _operator,
         });
-        final argon = HubFake();
-        final pi = await _connected(argon);
-        expect(pi.hasOperatorToken, false);
-        expect(await pi.setVpnMode(false), false);
-        expect(pi.vpnIssue, VpnCommandIssue.needsToken);
-        expect(argon.posts, isEmpty);
-        await expectLater(
-          pi.saveOperatorToken(_companion),
-          throwsA(isA<PiApiException>()),
-        );
-        await pi.saveOperatorToken(_operator);
+        final pi = await _connected(HubFake());
         const storage = FlutterSecureStorage();
-        expect(await storage.read(key: PiProvider.operatorKey), _operator);
-        expect(await storage.read(key: PiProvider.companionKey), _companion);
-        final prefs = await SharedPreferences.getInstance();
-        expect(
-          prefs.getKeys().any((k) => '${prefs.get(k)}'.contains(_operator)),
-          false,
-        );
-        await pi.forgetOperatorToken();
-        expect(pi.hasOperatorToken, false);
         expect(await storage.read(key: PiProvider.operatorKey), isNull);
         expect(await storage.read(key: PiProvider.companionKey), _companion);
+        await pi.refreshVpnPermission();
+        expect(pi.vpnDeviceAllowed, true);
         pi.dispose();
+        FlutterSecureStorage.setMockInitialValues({});
+        final argon = HubFake();
+        final unpaired = await _connected(argon);
+        expect(await unpaired.setVpnMode(false), false);
+        expect(argon.posts, isEmpty);
+        unpaired.dispose();
       },
     );
   });
@@ -615,7 +647,7 @@ void main() {
         );
         expect(_text('42%'), findsOneWidget, reason: 'VPN share today');
         expect(_text('Ethernet'), findsOneWidget);
-        expect(_text('Ready'), findsOneWidget);
+        expect(_text('Configured'), findsOneWidget);
         expect(_text('Enforced · 12 packets blocked'), findsOneWidget);
         expect(_text('tun0 · up'), findsOneWidget);
         expect(_text('52°C'), findsOneWidget);
@@ -734,27 +766,22 @@ void main() {
     }
 
     testWidgets(
-      'no token → sheet → confirm → pending → confirmed; no re-entry',
+      'paired phone → owner grant → confirm → pending → confirmed; no token form',
       (tester) async {
         _size(tester, const Size(904, 2316), 2.6);
+        FlutterSecureStorage.setMockInitialValues({
+          PiProvider.companionKey: _companion,
+        });
         final argon = HubFake()..postGate = Completer<void>();
         final pi = await _connectedInWidget(tester, argon);
         await tester.pumpWidget(_app(pi, const NetworkHubScreen()));
         await tester.pump();
-        expect(
-          _text('Operator token needed to change VPN mode'),
-          findsOneWidget,
-        );
-
+        expect(_text('VPN permission granted to this phone'), findsOneWidget);
         await tapToggle(tester);
-        expect(find.text('Save token'), findsOneWidget);
-        await tester.enterText(
+        expect(
           find.byKey(const ValueKey('operator-token-field')),
-          _operator,
+          findsNothing,
         );
-        await tester.tap(find.text('Save token'));
-        await _settle(tester);
-
         expect(find.text('Turn VPN off?'), findsOneWidget);
         expect(
           find.textContaining('directly to the internet via'),
@@ -788,6 +815,7 @@ void main() {
     testWidgets('cancelling the confirmation sends nothing', (tester) async {
       FlutterSecureStorage.setMockInitialValues({
         PiProvider.operatorKey: _operator,
+        PiProvider.companionKey: _companion,
       });
       _size(tester, const Size(904, 2316), 2.6);
       final argon = HubFake();
@@ -807,16 +835,21 @@ void main() {
       (202, 'VPN is off · confirmed by Argon', null),
       (
         401,
-        'The operator token was not accepted. Enter it again.',
-        'Enter token again',
+        'Phone authorization was rejected. Refresh permissions or pair again.',
+        'Refresh permission',
       ),
-      (403, 'Operator authorization required.', null),
+      (
+        403,
+        'VPN permission is not granted. Ask the Argon owner to allow this phone in Devices.',
+        null,
+      ),
       (409, 'A change is already in progress.', null),
       (502, 'WireGuard did not come up.', 'Argon restored the previous mode.'),
     ]) {
       testWidgets('response $status is shown', (tester) async {
         FlutterSecureStorage.setMockInitialValues({
           PiProvider.operatorKey: _operator,
+          PiProvider.companionKey: _companion,
         });
         _size(tester, const Size(904, 2316), 2.6);
         final argon = HubFake()
@@ -836,7 +869,7 @@ void main() {
         await tester.tap(find.text('Turn off'));
         await _settle(tester);
         expect(_text(expected), findsOneWidget);
-        if (extra != null) expect(_text(extra), findsOneWidget);
+        if (extra != null) expect(_text(extra), findsWidgets);
         expect(tester.takeException(), isNull);
         await tester.pumpWidget(const SizedBox());
         pi.dispose();
