@@ -1,23 +1,23 @@
 # Nokia ↔ TaoTronics mesh compatibility
 
-> Current update, 18 October 2026: TT Router provisions the root **Nokia WiFi Beacon 2** directly through its owner-authorized local WebGUI API. Firmware `3FE49334IJJJ09`, root `ALCLB4392160`, MAC `b4:63:6f:db:e6:c0`. The root now reports **AP_Bridge** at `192.168.10.97`; Fold4 received a TaoTronics DHCP lease/gateway and reached HTTPS internet through its Nokia radio. Factory SSID `NOKIA-E6C0` is retained. The second Beacon awaits owner activation/serial; no mesh-backhaul success is claimed. See [current bridge evidence](NOKIA_BRIDGE_VALIDATION.md). Earlier snapshots below are historical and are superseded where they conflict with this update.
+> Current update, 18 October 2026: TT Router provisions the root **Nokia WiFi Beacon 2** directly through its owner-authorized local WebGUI API. Firmware `3FE49334IJJJ09`, root `ALCLB4392160`, MAC `b4:63:6f:db:e6:c0`. The root now reports **AP_Bridge** at `192.168.10.97`; Fold4 received a TaoTronics DHCP lease/gateway and reached HTTPS internet through its Nokia radio. Both primary bands now use the approved `Nokia Wifi` SSID, existing household password and WPA2/AES; Fold4 Wi-Fi-bound HTTPS passed on both Nokia BSSIDs. The second Beacon remains unenrolled; no mesh-backhaul success is claimed. The [final wireless-uplink audit](NOKIA_WIRELESS_UPLINK_OPTIONS.md) found no supported direct TaoTronics Wi-Fi upstream for this installed firmware. See [current bridge evidence](NOKIA_BRIDGE_VALIDATION.md). Earlier snapshots below are historical and are superseded where they conflict with this update.
 
 
 Determination date: 2026-10-18. Inputs: TaoTronics protocol handoff and live router data, beacon-element radio scans from Argon and the OnePlus, and static analysis of the official Nokia WiFi app 3.260311.00 ([NOKIA_PROTOCOL_INVESTIGATION.md](NOKIA_PROTOCOL_INVESTIGATION.md); signer `CN=Nokia, O=Nokia`, Play source stamp).
 
 ## Determination
 
-The owner's root-cable removal test produced Nokia Wi-Fi association without a client IPv4 lease, followed by phone disconnection. No functioning root wireless upstream was established. Restore the original cable before enrollment. A single third-party Wi-Fi client adapter is not automatically a transparent multi-MAC bridge; a matched dedicated bridge pair is a stronger candidate for replacing a long cable, subject to actual DHCP/MAC/radio validation. See [hardware assessment and recovery](NOKIA_WIRELESS_UPLINK_OPTIONS.md).
+The owner's root-cable removal test produced Nokia Wi-Fi association without a client IPv4 lease, followed by phone disconnection. No functioning root wireless upstream was established. The original cable was restored and Nokia-bound internet reverified; keep it connected. A single third-party Wi-Fi client adapter is not automatically a transparent multi-MAC bridge; a matched dedicated bridge pair is a stronger candidate for replacing a long cable, subject to actual DHCP/MAC/radio validation. See [hardware assessment and recovery](NOKIA_WIRELESS_UPLINK_OPTIONS.md).
 
 **No supported shared Nokia–TaoTronics mesh or wireless root uplink has been established for the installed firmware. Requires wired root uplink.** Retain the verified Ethernet-fed Nokia AP bridge and use supported Nokia-to-Nokia wireless backhaul for the second unit after enrollment. Wi-Fi client/station, universal repeater, WISP, interoperable WDS and a compatible TaoTronics EasyMesh controller were not exposed by the reviewed interfaces. See [authenticated capability evidence and recovery](NOKIA_BRIDGE_VALIDATION.md). No experimental uplink configuration was sent.
 
 | Capability | TaoTronics TT-ND001 | Nokia Beacon 2 (identified from the device) | Shared? |
 |---|---|---|---|
-| EasyMesh controller | No evidence. Local MQTT protocol has no controller/agent, onboarding or 1905.1 commands; no vendor claim found | [Beacon 2 guide](https://www.nokia.com/asset/i/215103/) documents EasyMesh; local management is through Nokia APIs. This does not establish cross-vendor role interoperability | **Not established** (TaoTronics side unsupported) |
-| EasyMesh agent | No evidence | Documented by Nokia (role details not verified) | No |
+| EasyMesh controller | No evidence. Local MQTT protocol has no controller/agent, onboarding or 1905.1 commands; no vendor claim found | [Beacon 2 guide](https://www.nokia.com/asset/i/215103/) documents EasyMesh; local management is through Nokia APIs. This does not establish cross-vendor role interoperability | **Not established** (no supported TaoTronics interface found) |
+| EasyMesh agent | No verified role/enrollment interface | Generic EasyMesh support documented; this firmware’s interoperable agent role/enrollment is not established | Not established |
 | Proprietary mesh enrollment | TaoTronics app/BLE flow (`TTBT*` setup, `SetMeshInitByBt`), TaoTronics nodes only | `whw_zerotouchonb_app.cgi act=AddBeacon` by **Nokia serial number** | No: each enrolls only its own vendor's nodes |
-| Wireless backhaul | Hidden BSS `80:C5:48:50:35:AC` on 5 GHz ch 149 (inferred backhaul; 1 node, so unused) | Nokia mesh links (`MeshLinks` events) | No |
-| Ethernet backhaul | TaoTronics satellites (vendor feature) | Supported for Beacons | Only within each vendor |
+| Wireless backhaul | Hidden BSS `80:C5:48:50:35:AC` on 5 GHz ch 149 (inferred backhaul; 1 node) | Nokia-to-Nokia mesh links (`MeshLinks` events) | No compatible cross-vendor mechanism established |
+| Ethernet backhaul | TaoTronics satellites (vendor feature) | Supported for Beacons | Standard Ethernet interconnection works with the Nokia AP bridge; it does not merge mesh control planes |
 | Standard Wi-Fi roaming | Clients roam on signal; no 802.11k/v/r coordination observed across vendors | same | Same SSID/PSK only, so client-driven roaming without coordination |
 | Access point / bridge mode | — | **Confirmed in the app:** `whw_beacon_mode_app.cgi` `getWorkMode` → `RGW`/`AP_BRIDGE`; `act=setWorkMode&brEnable=1` (then reboot) | Usable as a separate AP |
 
@@ -73,7 +73,7 @@ The two networks share an SSID, security and passphrase, so they are **accidenta
 
 `Game Labs-2.4G` (`…:A9`) is unchanged: the same radio, the same security, broadcast independently of index 1. Its purpose is still only inferred (a vendor-app 2.4 GHz compatibility/IoT network); confirming it needs the vendor app. Leave it on until no device depends on it.
 
-## Recommended coverage solution
+## Historical coverage recommendations (superseded by the final audit)
 
 1. **Best unified option:** a second **TaoTronics TT-ND001** satellite, if one can still be obtained, enrolled through the vendor's own flow.
    - It's a real mesh: one SSID set, one management app, one client list. Backhaul runs over the dedicated 5 GHz-high radio (hidden `…:AC`) or Ethernet.
@@ -81,7 +81,7 @@ The two networks share an SSID, security and passphrase, so they are **accidenta
 2. **Available now:** the Nokia Beacon as a **bridged access point** (below).
    - It adds coverage, but as a separately managed AP with client-driven roaming. It's not a mesh.
 
-### Executable bridged-AP setup (Nokia Beacon; radios stay off until approved)
+### Historical bridged-AP setup (already completed; do not repeat)
 
 Topology:
 `MikroTik → Argon eth0 … Argon eth1 → TaoTronics WAN │ TaoTronics LAN port ──Ethernet──► Nokia Beacon (AP bridge)`

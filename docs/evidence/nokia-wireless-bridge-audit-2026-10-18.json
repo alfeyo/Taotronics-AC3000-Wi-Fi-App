@@ -1,0 +1,109 @@
+{
+  "audit_date": "2026-10-18",
+  "application_version": "1.9.2+19",
+  "scope": "Read-only existing source and recorded device evidence; no new router requests or configuration changes.",
+  "verdict": "No supported direct third-party Wi-Fi upstream operation or interoperable TaoTronics/Nokia backhaul mechanism found for installed firmware. Keep Ethernet-fed root.",
+  "limits": [
+    "No full firmware filesystem, kernel or driver audit.",
+    "Negative keyword results alone are not proof of hardware incapability.",
+    "TaoTronics EasyMesh controller and compatible four-address/WDS mode not established.",
+    "Second Beacon identity, enrollment and RF path remain unverified."
+  ],
+  "root": {
+    "model": "Nokia WiFi Beacon 2",
+    "hardware": "3FE49294BAAA",
+    "firmware": "3FE49334IJJJ09",
+    "serial": "ALCLB4392160",
+    "management_ip": "192.168.10.97",
+    "mode": "AP_Bridge"
+  },
+  "apk_corpus": {
+    "version": "3.260311.00",
+    "top_level_js_files": 407,
+    "case_insensitive_regex_match_counts": {
+      "\\bWISP\\b": 0,
+      "\\bWDS\\b": 0,
+      "four[-_ ]?addr": 0,
+      "station[-_ ]?mode": 0,
+      "client[-_ ]?mode": 0,
+      "wireless[-_ ]?WAN": 0,
+      "upstream[-_ ]?SSID": 0,
+      "EasyMesh|Multi-AP|IEEE.?1905": 0,
+      "backhaul[-_ ]?SSID": 0
+    }
+  },
+  "source_sha256": {
+    "sources/nokia/prism/AndroidPlugin.java": "84ff3e233be359c841749ce5ce2ec2987653b9b424d127a9aa242c685b20b937",
+    "resources/assets/public/chunk-O5UGQCOY.js": "82d8dc7d75ac2e7a9e3f9f5a05b2bab892adb8aeac405f16cd438fb3f17c7135",
+    "resources/assets/public/chunk-ZTUP5JXS.js": "b0e27f89a73e2a8ef563aec54923ed6102a94421ef53d3e7c35b3fc776b3d639",
+    "resources/assets/public/chunk-SKC2FBIM.js": "fad360c4b728c11636be5e51f9ca92134e95a03588b94158d9451974d89c6d78",
+    "resources/assets/public/chunk-N6TIFTLF.js": "2a3f296c088944148059debfad7cc450ad33cd2a2bb6d867326eaceb7283dded",
+    "resources/assets/public/chunk-Q47COLNM.js": "d79f7565769adb7ce1080e04084b7263d452cecdbd63164f69b7bfec764957f0",
+    "resources/assets/public/chunk-RZ4D673W.js": "aa5c994382e3bbee5b1912ea8f66da5c4d5107380e6a5708a81b9eb07380443a",
+    "resources/assets/public/chunk-2KNR2WW5.js": "b4dfc45a389d4f23595a0c56995df6e2ade8dab019210c189c1acf8d0c918ea3",
+    "nokia-web-main.c2e6eb720d33b3e7702c.js": "a05f5abc0342bd704cacd16586cbd1781065020941c66071671e51ceb750431c",
+    "nokia-network-web.js": "5a797a58905ecd0021cd0a2205ce2bfd2d15c83b57694a2919094e242d03c394"
+  },
+  "classified_paths": [
+    {
+      "source": "sources/nokia/prism/AndroidPlugin.java:437",
+      "symbol": "connectToSSID",
+      "meaning": "Android WifiManager configures handset association, not Beacon upstream."
+    },
+    {
+      "source": "chunk-N6TIFTLF.js",
+      "symbol": "goToExtenderOnboardingFlow / getAPOnboarding(\"WiFi_Onboarding\")",
+      "meaning": "Nokia extender enrollment."
+    },
+    {
+      "source": "chunk-RZ4D673W.js",
+      "symbol": "encryptScanSSIDDetails / QRSCANNED_DATA",
+      "meaning": "QR onboarding data redaction, not upstream radio scanning."
+    },
+    {
+      "source": "chunk-2KNR2WW5.js",
+      "symbol": "RECEIVER_SCAN_AND_CONNECT_TIMEOUT",
+      "meaning": "Receiver Bluetooth workflow; does not establish meaning of separate RGW Scan_and_Connect capability."
+    },
+    {
+      "source": "chunk-O5UGQCOY.js / chunk-Q47COLNM.js",
+      "symbol": "isDynamicBackhaulSupported / TestConnectionExtenderPage",
+      "meaning": "Generic AP capability used for extender signal prediction; Dynamic_Backhaul absent from captured Beacon 2 AP_Onboarding block."
+    },
+    {
+      "source": "chunk-ZTUP5JXS.js",
+      "symbol": "setSerialNumberExtender",
+      "meaning": "act=AddBeacon and BeaconSrn for Nokia serial enrollment."
+    },
+    {
+      "source": "nokia-network-web.js",
+      "symbol": "PossibleConnectionTypes",
+      "meaning": "Unconfigured, IP_Routed, IP_Bridged; IP/PPP WAN objects do not establish Wi-Fi station mode."
+    }
+  ],
+  "recorded_capability": {
+    "main_web_app.cgi": {
+      "HAS_WIFI_PORT_MODE": 0,
+      "can_end_user_config_wifi_port_mode": 0,
+      "HAS_PORT_MODE": 0,
+      "g_has_bridge_wan_set": 0,
+      "g_has_connection_mode": 1,
+      "IS_AP_BRIDGE_MODE": 1
+    },
+    "AP_Onboarding": {
+      "WiFi_Onboarding": 1,
+      "Ethernet_Onboarding": 1
+    },
+    "RGW_Onboarding_Scan_and_Connect": 1
+  },
+  "prior_physical_evidence": "nokia-beacon2-uplink-2026-10-18.json",
+  "current_wifi_evidence": "nokia-beacon1-household-wifi-2026-10-18.json",
+  "not_performed": [
+    "Cable removal",
+    "New enrollment or role replacement",
+    "Broadcast or WAN changes",
+    "Production Argon changes",
+    "Bridge hardware qualification",
+    "App code changes"
+  ]
+}
