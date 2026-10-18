@@ -266,8 +266,8 @@ class ArgonUplink {
               for (final r in radios)
                 if (r is String)
                   r
-                else if (r is Map && _str(r['name']) != null)
-                  _str(r['name'])!,
+                else if (r is Map && _str(r['interface'] ?? r['name']) != null)
+                  _str(r['interface'] ?? r['name'])!,
             ]
           : null,
       fallbackReady: _bool(fb?['ready']),

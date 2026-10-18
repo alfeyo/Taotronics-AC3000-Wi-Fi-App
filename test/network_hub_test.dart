@@ -121,7 +121,9 @@ Map<String, dynamic> _gatewayFull(Map<String, dynamic> vpn) => {
       'profiles': [
         {'name': 'nokia', 'ssid': 'Nokia Wifi', 'priority': 10},
       ],
-      'radios': ['wlan0'],
+      'radios': [
+        {'interface': 'wlan0', 'bus': 'onboard', 'ready': false},
+      ],
       'ready': true,
     },
   },

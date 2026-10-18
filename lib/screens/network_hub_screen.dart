@@ -730,8 +730,8 @@ class _Usage extends StatelessWidget {
             _PeriodTile(
               label: 'This month',
               period: usage?.thisMonth,
-              previous: usage?.lastMonth,
-              compareLabel: 'vs last month',
+              // A partial month is never compared with a complete one.
+              previous: null,
               state: usageState,
             ),
           ],
