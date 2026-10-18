@@ -47,11 +47,19 @@ enum VpnCommandIssue {
   /// The phone key differs from the one Argon enrolled or the owner approved.
   keyChanged,
   rateLimited,
+
+  /// Argon does not offer the requested VPN location.
+  unknownLocation,
+
+  /// The VPN is off and Argon changes location only while it is on.
+  vpnOff,
 }
 
 /// Shown when the only route to Argon is the read-only Bluetooth bridge.
 const vpnNeedsIpRouteMessage =
     'Connect over Tailscale or HTTPS to change VPN mode';
+
+const vpnLocationNeedsVpnOnMessage = 'Turn the VPN on to change location';
 
 const vpnRateLimitedMessage =
     'Too many VPN requests. Wait a minute, then try again.';
@@ -230,6 +238,19 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   /// The VPN confirmation flow is open; further taps are ignored.
   bool vpnPrompting = false;
+
+  // VPN exit location.
+  VpnLocations? vpnLocations;
+  DateTime? vpnLocationsAt;
+  bool vpnLocationsLoading = false;
+  String? vpnLocationsError;
+  VpnCommandPhase locationPhase = VpnCommandPhase.idle;
+  VpnCommandIssue locationIssue = VpnCommandIssue.none;
+
+  /// Id of the location being switched to.
+  String? locationTarget;
+  String? locationMessage;
+  String? locationRecovery;
 
   bool get paired => _token.isNotEmpty && !credentialRejected;
   bool get connected => state == PiLinkState.connected && transport != null;
@@ -1179,6 +1200,13 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
       vpnMessage =
           'Connection changed while checking the VPN. Refresh its actual state before retrying.';
     }
+    if (locationInFlight) {
+      locationPhase = VpnCommandPhase.failed;
+      locationIssue = VpnCommandIssue.unconfirmed;
+      locationMessage =
+          'Connection changed while checking the VPN location. Refresh before retrying.';
+      locationRecovery = null;
+    }
   }
 
   Future<void> refreshVpnPermission({bool force = true}) async {
@@ -1288,7 +1316,7 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
   /// the change is confirmed. Never overlaps: a second call while one is in
   /// flight returns false without sending anything.
   Future<bool> setVpnMode(bool on) async {
-    if (vpnInFlight || _disposed) return false;
+    if (vpnInFlight || locationInFlight || _disposed) return false;
     final target = on ? 'on' : 'off';
     vpnTarget = target;
     vpnMessage = vpnRecovery = null;
@@ -1319,26 +1347,9 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
     );
     final PiRawResponse r;
     try {
-      final secure = await _secureTransport();
-      if (generation != _generation || _disposed) return false;
-      await _enrollKey(secure);
-      if (generation != _generation || _disposed) return false;
-      r = await (secure as PiOperatorTransport).sendRaw(
-        'POST',
-        path,
-        body: body,
-        headers: {
-          'Authorization': await _deviceKey.header(
-            alias: _keyAlias!,
-            id: _deviceId!,
-            method: 'POST',
-            path: path,
-            body: body,
-            ts: _now().millisecondsSinceEpoch ~/ 1000,
-            nonce: _nonce(),
-          ),
-        },
-      );
+      final signed = await _signedPost(path, body, generation);
+      if (signed == null) return false;
+      r = signed;
     } on PiApiException catch (e) {
       if (e.status == null) _dropSecureRoute();
       final (issue, message) = _issueFor(e);
@@ -1405,6 +1416,304 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
+  /// Sends [body] to [path] signed with this pairing's `ArgonDevice v2` key
+  /// over a secure route. Null when the connection changed meanwhile.
+  Future<PiRawResponse?> _signedPost(
+    String path,
+    List<int> body,
+    int generation,
+  ) async {
+    final secure = await _secureTransport();
+    if (generation != _generation || _disposed) return null;
+    await _enrollKey(secure);
+    if (generation != _generation || _disposed) return null;
+    return (secure as PiOperatorTransport).sendRaw(
+      'POST',
+      path,
+      body: body,
+      headers: {
+        'Authorization': await _deviceKey.header(
+          alias: _keyAlias!,
+          id: _deviceId!,
+          method: 'POST',
+          path: path,
+          body: body,
+          ts: _now().millisecondsSinceEpoch ~/ 1000,
+          nonce: _nonce(),
+        ),
+      },
+    );
+  }
+
+  // ----------------------------------------------------- VPN exit location
+
+  bool get locationInFlight =>
+      locationPhase == VpnCommandPhase.sending ||
+      locationPhase == VpnCommandPhase.verifying;
+
+  /// Reads `/api/v1/vpn/locations` with the companion credential, the same
+  /// way as the gateway report (secure route when a credential travels).
+  Future<VpnLocations> _readLocations() async {
+    final t = transport;
+    if (!connected || t == null) {
+      throw const PiApiException('Network Hub is not reachable right now.');
+    }
+    final token = paired ? _token : _readToken;
+    final route = token != null && t.kind == PiTransportKind.lan
+        ? await _secureTransport()
+        : t;
+    final r = await route.get('/api/v1/vpn/locations', token: token);
+    final parsed = VpnLocations.parse(r);
+    if (parsed == null) {
+      throw const PiApiException('Argon returned an invalid location list.');
+    }
+    return parsed;
+  }
+
+  /// Refreshes the exit-location list. Unless [force], skips when the list
+  /// is under 30 s old. Failures only affect the location list.
+  Future<void> refreshVpnLocations({bool force = true}) async {
+    if (vpnLocationsLoading || _disposed) return;
+    if (!force &&
+        vpnLocationsAt != null &&
+        _now().difference(vpnLocationsAt!).inSeconds < 30) {
+      return;
+    }
+    final generation = _generation;
+    vpnLocationsLoading = true;
+    _emit();
+    try {
+      final list = await _readLocations();
+      if (generation != _generation || _disposed) return;
+      vpnLocations = list;
+      vpnLocationsAt = _now();
+      vpnLocationsError = null;
+    } on PiApiException catch (e) {
+      if (generation != _generation || _disposed) return;
+      if (e is PiSecureRouteUnavailable) {
+        vpnLocationsError = e.message;
+      } else if (e.status == 404) {
+        vpnLocationsError = 'This Argon does not offer location selection yet.';
+      } else {
+        vpnLocationsError = 'Could not load VPN locations: ${e.message}';
+      }
+    } finally {
+      vpnLocationsLoading = false;
+      _emit();
+    }
+  }
+
+  void dismissLocationResult() {
+    if (locationInFlight) return;
+    locationPhase = VpnCommandPhase.idle;
+    locationIssue = VpnCommandIssue.none;
+    locationMessage = locationRecovery = locationTarget = null;
+    _emit();
+  }
+
+  bool _locationFail(
+    VpnCommandIssue issue,
+    String message, {
+    String? recovery,
+  }) {
+    locationPhase = VpnCommandPhase.failed;
+    locationIssue = issue;
+    locationMessage = message;
+    locationRecovery = recovery;
+    _emit();
+    return false;
+  }
+
+  String _locationLabel(String id) =>
+      vpnLocations?.locations.where((l) => l.id == id).firstOrNull?.label ?? id;
+
+  /// Switches the VPN exit location with the same device-key authority as
+  /// the mode switch, then re-reads Argon until it reports the new location.
+  /// Returns true only when confirmed. Never overlaps with another location
+  /// or mode change.
+  Future<bool> setVpnLocation(String id) async {
+    if (locationInFlight || vpnInFlight || _disposed) return false;
+    locationTarget = id;
+    locationMessage = locationRecovery = null;
+    locationIssue = VpnCommandIssue.none;
+    final t = transport;
+    if (!connected || t == null) {
+      return _locationFail(
+        VpnCommandIssue.unreachable,
+        'Network Hub is not reachable right now.',
+      );
+    }
+    if (t.kind == PiTransportKind.bluetooth || t is! PiOperatorTransport) {
+      return _locationFail(
+        VpnCommandIssue.bluetooth,
+        'Connect over Tailscale or HTTPS to change VPN location',
+      );
+    }
+    if (!paired) {
+      return _locationFail(
+        VpnCommandIssue.needsToken,
+        'Pair this phone once, then ask the Argon owner to allow VPN control.',
+      );
+    }
+    final known = vpnLocations;
+    if (known != null && known.vpnOff && !known.canSwitchWhileOff) {
+      return _locationFail(
+        VpnCommandIssue.vpnOff,
+        vpnLocationNeedsVpnOnMessage,
+      );
+    }
+    final label = _locationLabel(id);
+    locationPhase = VpnCommandPhase.sending;
+    locationMessage = 'Switching to $label…';
+    _emit();
+    final generation = _generation;
+    const path = '/api/v1/vpn/location';
+    final body = utf8.encode(
+      jsonEncode({'location': id, 'confirm': 'VPN_LOCATION'}),
+    );
+    final PiRawResponse r;
+    try {
+      final signed = await _signedPost(path, body, generation);
+      if (signed == null) return false;
+      r = signed;
+    } on PiApiException catch (e) {
+      if (e.status == null) _dropSecureRoute();
+      final (issue, message) = _issueFor(e);
+      return _locationFail(issue, message);
+    } catch (_) {
+      return _locationFail(
+        VpnCommandIssue.network,
+        'Phone signing key is unavailable. Retry after unlocking the phone.',
+      );
+    }
+    if (_disposed || generation != _generation) return false;
+    final data = r.data;
+    String? text(Object? v) => v is String && v.trim().isNotEmpty ? v : null;
+    switch (r.status) {
+      case 200:
+      case 202:
+        locationPhase = VpnCommandPhase.verifying;
+        locationMessage = r.status == 202
+            ? 'Argon accepted the change · waiting for $label…'
+            : 'Confirming $label with Argon…';
+        _emit();
+        return _verifyLocation(id, label, generation);
+      case 400:
+        unawaited(refreshVpnLocations());
+        return _locationFail(
+          VpnCommandIssue.unknownLocation,
+          text(data?['error']) ??
+              'Argon does not offer that location. Refresh the list and '
+                  'choose another.',
+        );
+      case 401:
+        return _locationFail(
+          VpnCommandIssue.tokenInvalid,
+          'Phone authorization was rejected. Refresh permissions or pair again.',
+        );
+      case 403:
+        vpnDeviceAllowed = false;
+        return _locationFail(VpnCommandIssue.forbidden, vpnNotGrantedMessage);
+      case 409:
+        final reason = '${data?['code'] ?? ''} ${data?['error'] ?? ''}'
+            .toLowerCase();
+        if (reason.contains('key')) {
+          vpnDeviceAllowed = false;
+          _keyGeneration = -1; // re-enroll on the next attempt
+          return _locationFail(
+            VpnCommandIssue.keyChanged,
+            vpnKeyChangedMessage,
+          );
+        }
+        if (reason.contains('turn the vpn on') ||
+            reason.contains('vpn_off') ||
+            reason.contains('vpn is off')) {
+          unawaited(refreshVpnLocations());
+          return _locationFail(
+            VpnCommandIssue.vpnOff,
+            vpnLocationNeedsVpnOnMessage,
+          );
+        }
+        return _locationFail(
+          VpnCommandIssue.busy,
+          text(data?['error']) ?? 'A VPN change is already in progress.',
+        );
+      case 429:
+        return _locationFail(
+          VpnCommandIssue.rateLimited,
+          vpnRateLimitedMessage,
+        );
+      case 502:
+        unawaited(refreshVpnLocations());
+        return _locationFail(
+          VpnCommandIssue.upstream,
+          text(data?['error']) ?? 'Argon could not switch location.',
+          recovery: text(data?['recovery']),
+        );
+      default:
+        return _locationFail(
+          VpnCommandIssue.network,
+          text(data?['error']) ?? 'Argon request failed (${r.status}).',
+        );
+    }
+  }
+
+  Future<bool> _verifyLocation(String id, String label, int generation) async {
+    for (var i = 0; i < vpnVerifyAttempts; i++) {
+      if (i > 0) await Future<void>.delayed(vpnVerifyInterval);
+      if (_disposed || generation != _generation) return false;
+      try {
+        final list = await _readLocations();
+        if (generation != _generation || _disposed) return false;
+        vpnLocations = list;
+        vpnLocationsAt = _now();
+        vpnLocationsError = null;
+      } on PiApiException {
+        _dropSecureRoute();
+        // Keep waiting: the route may blip while the tunnel reconnects.
+        continue;
+      }
+      final now = vpnLocations!;
+      if (now.current?.id == id &&
+          !now.busy &&
+          (now.mode != 'on' || now.state == 'connected' || now.state == 'on')) {
+        locationPhase = VpnCommandPhase.confirmed;
+        locationMessage =
+            'Exit location is ${now.current!.label} · '
+            'confirmed by Argon';
+        _addEvent(
+          'vpn',
+          'VPN location changed',
+          'Household VPN traffic now exits via ${now.current!.label}.',
+          'success',
+        );
+        unawaited(_refreshVpnObservation(generation));
+        _lastGateway = null; // refresh the full report promptly
+        _emit();
+        return true;
+      }
+      _emit();
+    }
+    return _locationFail(
+      VpnCommandIssue.unconfirmed,
+      'Argon has not confirmed $label yet. Check the VPN location again '
+      'shortly.',
+    );
+  }
+
+  /// Best-effort /api/v1/vpn read so the card shows the new exit location.
+  Future<void> _refreshVpnObservation(int generation) async {
+    try {
+      final t = await _secureTransport();
+      final r = await t.get('/api/v1/vpn', token: _token);
+      if (generation != _generation || _disposed) return;
+      _absorbVpn(r['vpn']);
+      _emit();
+    } on PiApiException {
+      // The next gateway poll carries it anyway.
+    }
+  }
+
   Future<bool> _verifyVpn(String target, int generation) async {
     for (var i = 0; i < vpnVerifyAttempts; i++) {
       if (i > 0) await Future<void>.delayed(vpnVerifyInterval);
@@ -1440,6 +1749,7 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
           'success',
         );
         _lastGateway = null; // refresh the full report promptly
+        if (vpnLocations != null) unawaited(refreshVpnLocations());
         _emit();
         return true;
       }

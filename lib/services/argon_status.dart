@@ -77,6 +77,101 @@ class ArgonVpn {
   }
 }
 
+/// One VPN exit location Argon offers (`/api/v1/vpn/locations`).
+class VpnLocation {
+  const VpnLocation({
+    required this.id,
+    required this.label,
+    this.country,
+    this.city,
+    this.available = true,
+  });
+
+  final String id;
+  final String label;
+  final String? country;
+  final String? city;
+
+  /// False when Argon lists the location but cannot use it right now.
+  final bool available;
+
+  /// "City, Country" when both are known; otherwise whichever is.
+  String? get place =>
+      [?city, ?country].where((s) => s != label).join(', ').ifBlank();
+
+  bool matches(String query) {
+    final q = query.trim().toLowerCase();
+    if (q.isEmpty) return true;
+    return [label, ?country, ?city].any((s) => s.toLowerCase().contains(q));
+  }
+
+  static VpnLocation? parse(Object? raw) {
+    final v = _map(raw);
+    final id = _str(v?['id']);
+    if (v == null || id == null) return null;
+    final country = _str(v['country']);
+    final city = _str(v['city']);
+    return VpnLocation(
+      id: id,
+      label: _str(v['label']) ?? [?country, ?city].join(' — ').ifBlank() ?? id,
+      country: country,
+      city: city,
+      available: _bool(v['available']) ?? true,
+    );
+  }
+}
+
+/// Argon's `/api/v1/vpn/locations` answer. Locations always come from Argon;
+/// the app never supplies its own list.
+class VpnLocations {
+  const VpnLocations({
+    this.mode,
+    this.state,
+    this.current,
+    this.locations = const [],
+    this.busy = false,
+    this.canSwitchWhileOff = false,
+    this.generatedAt,
+  });
+
+  final String? mode;
+  final String? state;
+  final VpnLocation? current;
+  final List<VpnLocation> locations;
+  final bool busy;
+  final bool canSwitchWhileOff;
+  final DateTime? generatedAt;
+
+  bool get vpnOff => mode == 'off';
+
+  /// Selection is possible unless the VPN is off and Argon only switches
+  /// location while it is on.
+  bool get selectable => !busy && (!vpnOff || canSwitchWhileOff);
+
+  static VpnLocations? parse(Object? raw) {
+    final v = _map(raw);
+    if (v == null) return null;
+    final list = v['locations'];
+    final mode = _str(v['mode']);
+    return VpnLocations(
+      mode: mode == 'on' || mode == 'off' ? mode : null,
+      state: _str(v['state']),
+      current: VpnLocation.parse(v['current']),
+      locations: [
+        if (list is List)
+          for (final item in list) ?VpnLocation.parse(item),
+      ],
+      busy: _bool(v['busy']) ?? false,
+      canSwitchWhileOff: _bool(v['canSwitchWhileOff']) ?? false,
+      generatedAt: _unix(v['generatedAt']),
+    );
+  }
+}
+
+extension on String {
+  String? ifBlank() => trim().isEmpty ? null : this;
+}
+
 /// Household totals over one period. VPN bytes are a subset of the totals.
 class UsagePeriod {
   const UsagePeriod({

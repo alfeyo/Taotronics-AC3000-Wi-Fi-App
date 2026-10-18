@@ -7,9 +7,11 @@ import '../theme/app_theme.dart';
 import '../utils/format.dart';
 import 'app_widgets.dart';
 import 'hub_widgets.dart';
+import 'vpn_location.dart';
 
-/// Household VPN status and the operator-authorized on/off control.
-class VpnCard extends StatelessWidget {
+/// Household VPN status, the operator-authorized on/off control and the exit
+/// location selector. Deeper tunnel details sit in an expandable section.
+class VpnCard extends StatefulWidget {
   const VpnCard({super.key, required this.pi});
 
   final PiProvider pi;
@@ -33,8 +35,46 @@ class VpnCard extends StatelessWidget {
   /// Off: household traffic leaves directly via the ISP.
   static const directLabel = 'Direct internet (VPN off)';
 
+  @override
+  State<VpnCard> createState() => _VpnCardState();
+}
+
+class _VpnCardState extends State<VpnCard> {
+  bool _detailsOpen = false;
+
+  PiProvider get pi => widget.pi;
+  static String stateLabel(ArgonVpn? vpn) => VpnCard.stateLabel(vpn);
+  static const directLabel = VpnCard.directLabel;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && pi.connected) pi.refreshVpnLocations(force: false);
+    });
+  }
+
+  /// Ensures this phone holds the owner's VPN grant; explains why not.
+  Future<bool> _ensureAllowed(BuildContext context) async {
+    if (pi.paired && pi.vpnDeviceAllowed) return true;
+    await pi.refreshVpnPermission();
+    if (!context.mounted) return false;
+    if (pi.vpnDeviceAllowed) return true;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          pi.vpnPermissionError ??
+              (pi.paired
+                  ? pi.vpnNotGrantedMessage
+                  : 'Pair this phone once, then ask the Argon owner to allow VPN control.'),
+        ),
+      ),
+    );
+    return false;
+  }
+
   Future<void> _request(BuildContext context, bool on) async {
-    if (pi.vpnInFlight || pi.vpnPrompting) return;
+    if (pi.vpnInFlight || pi.locationInFlight || pi.vpnPrompting) return;
     if (!pi.vpnControlRoute) {
       // Explains Bluetooth / unreachable without asking for anything.
       await pi.setVpnMode(on);
@@ -42,23 +82,7 @@ class VpnCard extends StatelessWidget {
     }
     pi.setVpnPrompting(true);
     try {
-      if (!pi.paired || !pi.vpnDeviceAllowed) {
-        await pi.refreshVpnPermission();
-        if (!context.mounted) return;
-        if (!pi.vpnDeviceAllowed) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                pi.vpnPermissionError ??
-                    (pi.paired
-                        ? pi.vpnNotGrantedMessage
-                        : 'Pair this phone once, then ask the Argon owner to allow VPN control.'),
-              ),
-            ),
-          );
-          return;
-        }
-      }
+      if (!await _ensureAllowed(context) || !context.mounted) return;
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (context) => _ConfirmVpnDialog(on: on, vpn: pi.vpn),
@@ -71,6 +95,41 @@ class VpnCard extends StatelessWidget {
     }
   }
 
+  Future<void> _changeLocation(BuildContext context) async {
+    if (pi.vpnInFlight || pi.locationInFlight || pi.vpnPrompting) return;
+    if (!pi.vpnControlRoute) {
+      // Explains Bluetooth / unreachable without asking for anything.
+      await pi.setVpnLocation(pi.vpnLocations?.current?.id ?? '');
+      return;
+    }
+    pi.setVpnPrompting(true);
+    try {
+      if (!await _ensureAllowed(context) || !context.mounted) return;
+      final picked = await showModalBottomSheet<VpnLocation>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        builder: (_) => VpnLocationSheet(pi: pi),
+      );
+      if (picked == null || !context.mounted) return;
+      final locs = pi.vpnLocations;
+      if (picked.id == locs?.current?.id) return;
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (_) => ConfirmLocationDialog(
+          target: picked,
+          current: locs?.current,
+          vpnOn: !(locs?.vpnOff ?? pi.vpn?.isOff ?? false),
+        ),
+      );
+      if (confirmed != true) return;
+      pi.setVpnPrompting(false);
+      await pi.setVpnLocation(picked.id);
+    } finally {
+      pi.setVpnPrompting(false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -78,6 +137,7 @@ class VpnCard extends StatelessWidget {
     final state = pi.hubState;
     final vpn = pi.vpn;
     final busy = pi.vpnInFlight;
+    final locating = pi.locationInFlight;
     final known = vpn?.mode != null;
     final switchValue = busy ? pi.vpnTarget == 'on' : vpn?.isOn ?? false;
     final healthy = vpn?.healthOk;
@@ -219,7 +279,11 @@ class VpnCard extends StatelessWidget {
                   key: const ValueKey('vpn-toggle'),
                   value: switchValue,
                   onChanged:
-                      busy || pi.vpnPrompting || !known || vpn?.busy == true
+                      busy ||
+                          locating ||
+                          pi.vpnPrompting ||
+                          !known ||
+                          vpn?.busy == true
                       ? null
                       : (value) => _request(context, value),
                 ),
@@ -238,19 +302,75 @@ class VpnCard extends StatelessWidget {
             const SizedBox(height: Space.md),
             _Result(pi: pi),
           ],
-          const SizedBox(height: Space.sm),
-          for (final (i, (label, value, rowTone)) in rows.indexed)
-            KvRow(label, value, tone: rowTone, last: i == rows.length - 1),
-          const SizedBox(height: Space.sm),
-          Text(
-            vpn?.isOff == true
-                ? 'VPN off: household traffic goes directly via your ISP.'
-                : 'VPN on: household traffic routes through Surfshark; the '
-                      'kill switch keeps it off the direct ISP path if the '
-                      'tunnel drops.',
-            style: theme.textTheme.bodySmall?.copyWith(color: muted),
-          ),
           const SizedBox(height: Space.md),
+          VpnLocationTile(pi: pi, onChange: () => _changeLocation(context)),
+          const SizedBox(height: Space.sm),
+          InkWell(
+            key: const ValueKey('vpn-details-toggle'),
+            borderRadius: BorderRadius.circular(Radii.sm),
+            onTap: () => setState(() => _detailsOpen = !_detailsOpen),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: Space.sm),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'VPN details',
+                      style: theme.textTheme.titleSmall,
+                    ),
+                  ),
+                  Icon(
+                    _detailsOpen
+                        ? Icons.expand_less_rounded
+                        : Icons.expand_more_rounded,
+                    color: muted,
+                    semanticLabel: _detailsOpen
+                        ? 'Hide VPN details'
+                        : 'Show VPN details',
+                  ),
+                ],
+              ),
+            ),
+          ),
+          // Kept in the tree (offstage) while collapsed so state survives.
+          Visibility(
+            visible: _detailsOpen,
+            maintainState: true,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final (i, (label, value, rowTone)) in rows.indexed)
+                  KvRow(
+                    label,
+                    value,
+                    tone: rowTone,
+                    last: i == rows.length - 1,
+                  ),
+                const SizedBox(height: Space.sm),
+                Text(
+                  vpn?.isOff == true
+                      ? 'VPN off: household traffic goes directly via your ISP.'
+                      : 'VPN on: household traffic routes through Surfshark; '
+                            'the kill switch keeps it off the direct ISP path '
+                            'if the tunnel drops.',
+                  style: theme.textTheme.bodySmall?.copyWith(color: muted),
+                ),
+                if (pi.vpnKeyFingerprint != null) ...[
+                  const SizedBox(height: Space.sm),
+                  Text(
+                    'Phone key: ${ArgonDeviceKey.shortFingerprint(pi.vpnKeyFingerprint!)}',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ],
+                if (pi.vpnKeyHardwareLabel != null)
+                  Text(
+                    pi.vpnKeyHardwareLabel!,
+                    style: theme.textTheme.bodySmall?.copyWith(color: muted),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: Space.sm),
           Row(
             children: [
               Icon(
@@ -269,16 +389,6 @@ class VpnCard extends StatelessWidget {
               ),
             ],
           ),
-          if (pi.vpnKeyFingerprint != null)
-            Text(
-              'Phone key: ${ArgonDeviceKey.shortFingerprint(pi.vpnKeyFingerprint!)}',
-              style: theme.textTheme.bodySmall,
-            ),
-          if (pi.vpnKeyHardwareLabel != null)
-            Text(
-              pi.vpnKeyHardwareLabel!,
-              style: theme.textTheme.bodySmall?.copyWith(color: muted),
-            ),
           Align(
             alignment: Alignment.centerLeft,
             child: TextButton(

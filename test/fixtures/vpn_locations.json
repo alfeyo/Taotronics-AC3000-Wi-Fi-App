@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "ok": true,
+  "generatedAt": 1792313151,
+  "mode": "on",
+  "state": "connected",
+  "current": {"id": "uk-lon", "label": "United Kingdom — London", "country": "United Kingdom", "city": "London"},
+  "locations": [
+    {"id": "uk-lon", "label": "United Kingdom — London", "country": "United Kingdom", "city": "London", "available": true},
+    {"id": "de-fra", "label": "Germany — Frankfurt", "country": "Germany", "city": "Frankfurt", "available": true},
+    {"id": "za-jnb", "label": "South Africa — Johannesburg", "country": "South Africa", "city": "Johannesburg", "available": true},
+    {"id": "nl-ams", "label": "Netherlands — Amsterdam", "country": "Netherlands", "city": "Amsterdam", "available": false}
+  ],
+  "busy": false,
+  "canSwitchWhileOff": false
+}

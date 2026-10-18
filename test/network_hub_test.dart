@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -11,6 +12,7 @@ import 'package:tt_router_flutter/providers/router_provider.dart';
 import 'package:tt_router_flutter/screens/home_screen.dart';
 import 'package:tt_router_flutter/screens/network_hub_screen.dart';
 import 'package:tt_router_flutter/services/argon_device_key.dart';
+import 'package:tt_router_flutter/services/argon_status.dart';
 import 'package:tt_router_flutter/services/auth_pairing_service.dart';
 import 'package:tt_router_flutter/services/credential_store.dart';
 import 'package:tt_router_flutter/services/mqtt_service.dart';
@@ -157,6 +159,11 @@ Map<String, dynamic> _gatewayFull(Map<String, dynamic> vpn) => {
   ],
 };
 
+/// Argon's `/api/v1/vpn/locations` answer recorded in the fixture.
+Map<String, dynamic> _locationsFixture() =>
+    jsonDecode(File('test/fixtures/vpn_locations.json').readAsStringSync())
+        as Map<String, dynamic>;
+
 /// Argon over an IP route: monitoring reads plus operator-signed POSTs.
 class HubFake implements PiTransport, PiOperatorTransport {
   HubFake({
@@ -185,6 +192,17 @@ class HubFake implements PiTransport, PiOperatorTransport {
   final posts = <({List<int> body, Map<String, String> headers})>[];
   final tokens = <String?>[];
 
+  // VPN exit location.
+  Map<String, dynamic> locations = _locationsFixture();
+  int locationReads = 0;
+  int applyLocationAfterReads = 1;
+  int locationPostStatus = 200;
+  Map<String, dynamic>? locationPostReply;
+  Completer<void>? locationGate;
+  String? _pendingLocation;
+  final locationPosts =
+      <({String path, List<int> body, Map<String, String> headers})>[];
+
   @override
   String get describe => '192.168.50.1';
 
@@ -204,6 +222,22 @@ class HubFake implements PiTransport, PiOperatorTransport {
         return minimal
             ? {'version': 1, 'ok': true, 'gateway': <String, dynamic>{}}
             : _gatewayFull(vpnState);
+      case '/api/v1/vpn/locations':
+        locationReads++;
+        if (_pendingLocation != null &&
+            locationReads >= applyLocationAfterReads) {
+          final next = (locations['locations'] as List)
+              .cast<Map<String, dynamic>>()
+              .firstWhere((l) => l['id'] == _pendingLocation);
+          locations['current'] = {...next}..remove('available');
+          vpnState = {...vpnState, 'location': next['label']};
+          _pendingLocation = null;
+        }
+        return {
+          ...locations,
+          'mode': vpnState['mode'],
+          'state': vpnState['state'],
+        };
       case '/api/v1/vpn':
         vpnReads++;
         if (_pending != null && vpnReads >= applyAfterReads) {
@@ -273,6 +307,29 @@ class HubFake implements PiTransport, PiOperatorTransport {
         'ok': deviceAllowed,
         'authorized': deviceAllowed,
       });
+    }
+    if (path == '/api/v1/vpn/location') {
+      locationPosts.add((path: path, body: body, headers: headers));
+      if (locationGate != null) await locationGate!.future;
+      final id = (jsonDecode(utf8.decode(body)) as Map)['location'] as String;
+      if (locationPostStatus == 200 || locationPostStatus == 202) {
+        _pendingLocation = id;
+        locationReads = 0;
+      }
+      return PiRawResponse(
+        locationPostStatus,
+        locationPostReply ??
+            {
+              'ok': locationPostStatus < 300,
+              if (locationPostStatus == 200) 'confirmed': true,
+              if (locationPostStatus == 202) 'pending': true,
+              'observed': {
+                'current': locations['current'],
+                'mode': vpnState['mode'],
+                'state': vpnState['state'],
+              },
+            },
+      );
     }
     posts.add((body: body, headers: headers));
     if (postGate != null) await postGate!.future;
@@ -1131,5 +1188,366 @@ void main() {
       await tester.pumpWidget(const SizedBox());
       pi.dispose();
     });
+  });
+
+  group('VPN location (provider)', () {
+    setUp(() {
+      FlutterSecureStorage.setMockInitialValues({
+        PiProvider.companionKey: _companion,
+      });
+    });
+
+    test('fixture parses: real locations, current and availability', () {
+      final locs = VpnLocations.parse(_locationsFixture())!;
+      expect(locs.locations.map((l) => l.id), [
+        'uk-lon',
+        'de-fra',
+        'za-jnb',
+        'nl-ams',
+      ]);
+      expect(locs.current!.id, 'uk-lon');
+      expect(locs.current!.place, 'London, United Kingdom');
+      expect(locs.locations.last.available, false);
+      expect(locs.mode, 'on');
+      expect(locs.canSwitchWhileOff, false);
+      expect(locs.selectable, true);
+      expect(locs.locations.where((l) => l.matches('frank')), hasLength(1));
+    });
+
+    test('list is read with the companion credential', () async {
+      final argon = HubFake();
+      final pi = await _connected(argon);
+      argon.tokens.clear();
+      await pi.refreshVpnLocations();
+      expect(argon.tokens, [_companion]);
+      expect(pi.vpnLocations!.locations, hasLength(4));
+      expect(pi.vpnLocationsError, isNull);
+      pi.dispose();
+    });
+
+    test('200: signed POST with exact path and body, then confirmed by a '
+        'read-back', () async {
+      final argon = HubFake();
+      final pi = await _connected(argon);
+      await pi.refreshVpnLocations();
+      expect(await pi.setVpnLocation('de-fra'), true);
+      final post = argon.locationPosts.single;
+      expect(post.path, '/api/v1/vpn/location');
+      expect(
+        utf8.decode(post.body),
+        '{"location":"de-fra","confirm":"VPN_LOCATION"}',
+      );
+      final auth = post.headers['Authorization']!;
+      expect(auth, startsWith('ArgonDevice v2 id='));
+      expect(auth, contains('nonce=$_nonce'));
+      expect(auth.contains(_companion), false);
+      expect(argon.posts, isEmpty, reason: 'mode endpoint untouched');
+      expect(pi.locationPhase, VpnCommandPhase.confirmed);
+      expect(pi.vpnLocations!.current!.id, 'de-fra');
+      expect(argon.locationReads, greaterThanOrEqualTo(1));
+      expect(
+        pi.locationMessage,
+        'Exit location is Germany — Frankfurt · confirmed by Argon',
+      );
+      expect(pi.events.first.title, 'VPN location changed');
+      pi.dispose();
+    });
+
+    test('202: pending until Argon reports the new location', () async {
+      final argon = HubFake()
+        ..locationPostStatus = 202
+        ..applyLocationAfterReads = 3;
+      final pi = await _connected(argon);
+      await pi.refreshVpnLocations();
+      expect(await pi.setVpnLocation('za-jnb'), true);
+      expect(argon.locationReads, 3);
+      expect(pi.vpnLocations!.current!.id, 'za-jnb');
+      pi.dispose();
+    });
+
+    test('202 that never takes effect is not reported as success', () async {
+      final argon = HubFake()
+        ..locationPostStatus = 202
+        ..applyLocationAfterReads = 99;
+      final pi = _pi(argon, attempts: 3);
+      await pi.ready;
+      await pi.discover();
+      await pumpEventQueue();
+      await pi.refreshVpnLocations();
+      expect(await pi.setVpnLocation('de-fra'), false);
+      expect(pi.locationIssue, VpnCommandIssue.unconfirmed);
+      expect(argon.locationReads, 3);
+      expect(pi.vpnLocations!.current!.id, 'uk-lon');
+      pi.dispose();
+    });
+
+    for (final (status, reply, issue, text) in [
+      (
+        400,
+        {'ok': false, 'error': 'Unknown location.'},
+        VpnCommandIssue.unknownLocation,
+        'Unknown location.',
+      ),
+      (403, null, VpnCommandIssue.forbidden, _notGranted),
+      (
+        409,
+        {'ok': false, 'error': 'A VPN change is already in progress.'},
+        VpnCommandIssue.busy,
+        'A VPN change is already in progress.',
+      ),
+      (
+        409,
+        {'ok': false, 'error': 'Turn the VPN on to change location'},
+        VpnCommandIssue.vpnOff,
+        vpnLocationNeedsVpnOnMessage,
+      ),
+      (429, null, VpnCommandIssue.rateLimited, vpnRateLimitedMessage),
+    ]) {
+      test('$status is reported as ${issue.name}', () async {
+        final argon = HubFake()
+          ..locationPostStatus = status
+          ..locationPostReply = reply;
+        final pi = await _connected(argon);
+        await pi.refreshVpnLocations();
+        expect(await pi.setVpnLocation('de-fra'), false);
+        expect(pi.locationIssue, issue);
+        expect(pi.locationMessage, text);
+        expect(argon.locationPosts, hasLength(1));
+        pi.dispose();
+      });
+    }
+
+    test('502 shows Argon\'s error and recovery text', () async {
+      final argon = HubFake()
+        ..locationPostStatus = 502
+        ..locationPostReply = {
+          'ok': false,
+          'error': 'Surfshark did not answer for Frankfurt.',
+          'recovery': 'Argon kept London.',
+        };
+      final pi = await _connected(argon);
+      await pi.refreshVpnLocations();
+      expect(await pi.setVpnLocation('de-fra'), false);
+      expect(pi.locationIssue, VpnCommandIssue.upstream);
+      expect(pi.locationMessage, 'Surfshark did not answer for Frankfurt.');
+      expect(pi.locationRecovery, 'Argon kept London.');
+      pi.dispose();
+    });
+
+    test(
+      'no double submit; mode switch waits for the location change',
+      () async {
+        final argon = HubFake()..locationGate = Completer<void>();
+        final pi = await _connected(argon);
+        await pi.refreshVpnLocations();
+        final first = pi.setVpnLocation('de-fra');
+        await pumpEventQueue();
+        expect(pi.locationInFlight, true);
+        expect(await pi.setVpnLocation('de-fra'), false);
+        expect(await pi.setVpnLocation('za-jnb'), false);
+        expect(await pi.setVpnMode(false), false);
+        argon.locationGate!.complete();
+        expect(await first, true);
+        expect(argon.locationPosts, hasLength(1));
+        expect(argon.posts, isEmpty);
+        pi.dispose();
+      },
+    );
+
+    test('VPN off without canSwitchWhileOff: nothing is sent', () async {
+      final argon = HubFake(mode: 'off');
+      final pi = await _connected(argon);
+      await pi.refreshVpnLocations();
+      expect(pi.vpnLocations!.selectable, false);
+      expect(await pi.setVpnLocation('de-fra'), false);
+      expect(pi.locationIssue, VpnCommandIssue.vpnOff);
+      expect(argon.locationPosts, isEmpty);
+      pi.dispose();
+    });
+  });
+
+  group('VPN location (UI)', () {
+    setUp(() {
+      FlutterSecureStorage.setMockInitialValues({
+        PiProvider.companionKey: _companion,
+      });
+    });
+
+    Future<PiProvider> open(WidgetTester tester, HubFake argon) async {
+      _size(tester, const Size(904, 2316), 2.6);
+      final pi = await _connectedInWidget(tester, argon);
+      await tester.runAsync(pi.refreshVpnLocations);
+      await tester.pumpWidget(_app(pi, const NetworkHubScreen()));
+      await tester.pump();
+      return pi;
+    }
+
+    Future<void> tapChange(WidgetTester tester) async {
+      final button = find.byKey(const ValueKey('vpn-change-location'));
+      await tester.ensureVisible(button);
+      await tester.pump();
+      await tester.tap(button);
+      await _settle(tester);
+    }
+
+    testWidgets('current location and a searchable list from Argon', (
+      tester,
+    ) async {
+      final argon = HubFake();
+      final pi = await open(tester, argon);
+      expect(
+        tester
+            .widget<Text>(find.byKey(const ValueKey('vpn-current-location')))
+            .data,
+        'United Kingdom — London',
+      );
+      await tapChange(tester);
+      expect(find.text('Choose exit location'), findsOneWidget);
+      for (final id in ['uk-lon', 'de-fra', 'za-jnb', 'nl-ams']) {
+        expect(find.byKey(ValueKey('vpn-location-$id')), findsOneWidget);
+      }
+      final current = tester.widget<ListTile>(
+        find.byKey(const ValueKey('vpn-location-uk-lon')),
+      );
+      expect(current.enabled, false, reason: 'current is marked, not offered');
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('vpn-location-uk-lon')),
+          matching: find.text('Current'),
+        ),
+        findsOneWidget,
+      );
+      final unavailable = tester.widget<ListTile>(
+        find.byKey(const ValueKey('vpn-location-nl-ams')),
+      );
+      expect(unavailable.enabled, false);
+      expect(find.textContaining('Unavailable'), findsOneWidget);
+      await tester.enterText(
+        find.byKey(const ValueKey('vpn-location-search')),
+        'africa',
+      );
+      await tester.pump();
+      expect(find.byKey(const ValueKey('vpn-location-za-jnb')), findsOneWidget);
+      expect(find.byKey(const ValueKey('vpn-location-de-fra')), findsNothing);
+      expect(argon.locationPosts, isEmpty);
+      await tester.pumpWidget(const SizedBox());
+      pi.dispose();
+    });
+
+    testWidgets('choose → confirm → pending → confirmed, sent once', (
+      tester,
+    ) async {
+      final argon = HubFake()..locationGate = Completer<void>();
+      final pi = await open(tester, argon);
+      await tapChange(tester);
+      await tester.tap(find.byKey(const ValueKey('vpn-location-de-fra')));
+      await _settle(tester);
+      expect(find.text('Switch to Germany — Frankfurt?'), findsOneWidget);
+      expect(find.textContaining('pause briefly'), findsOneWidget);
+      await tester.tap(find.text('Switch location'));
+      await _settle(tester);
+      expect(_text('Sending to Argon…'), findsOneWidget);
+      final change = tester.widget<FilledButton>(
+        find.descendant(
+          of: find.byKey(const ValueKey('vpn-change-location')),
+          matching: find.byWidgetPredicate((w) => w is FilledButton),
+        ),
+      );
+      expect(change.onPressed, isNull, reason: 'no duplicate requests');
+      expect(
+        tester
+            .widget<Switch>(find.byKey(const ValueKey('vpn-toggle')))
+            .onChanged,
+        isNull,
+      );
+      argon.locationGate!.complete();
+      await _settle(tester);
+      expect(
+        _text('Exit location is Germany — Frankfurt · confirmed by Argon'),
+        findsOneWidget,
+      );
+      expect(argon.locationPosts, hasLength(1));
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      pi.dispose();
+    });
+
+    testWidgets('cancelling the confirmation sends nothing', (tester) async {
+      final argon = HubFake();
+      final pi = await open(tester, argon);
+      await tapChange(tester);
+      await tester.tap(find.byKey(const ValueKey('vpn-location-de-fra')));
+      await _settle(tester);
+      await tester.tap(find.text('Cancel'));
+      await _settle(tester);
+      expect(argon.locationPosts, isEmpty);
+      await tester.pumpWidget(const SizedBox());
+      pi.dispose();
+    });
+
+    testWidgets('VPN off: selection disabled with an explanation', (
+      tester,
+    ) async {
+      final argon = HubFake(mode: 'off');
+      final pi = await open(tester, argon);
+      final change = tester.widget<FilledButton>(
+        find.descendant(
+          of: find.byKey(const ValueKey('vpn-change-location')),
+          matching: find.byWidgetPredicate((w) => w is FilledButton),
+        ),
+      );
+      expect(change.onPressed, isNull);
+      expect(
+        find.textContaining(vpnLocationNeedsVpnOnMessage, skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(argon.locationPosts, isEmpty);
+      await tester.pumpWidget(const SizedBox());
+      pi.dispose();
+    });
+
+    for (final (status, reply, expected, extra) in [
+      (
+        400,
+        {'ok': false, 'error': 'Unknown location.'},
+        'Unknown location.',
+        'Refresh locations',
+      ),
+      (403, null, _notGranted, 'Refresh permission'),
+      (
+        409,
+        {'ok': false, 'error': 'A VPN change is already in progress.'},
+        'A VPN change is already in progress.',
+        null,
+      ),
+      (
+        502,
+        {
+          'ok': false,
+          'error': 'Surfshark did not answer for Frankfurt.',
+          'recovery': 'Argon kept London.',
+        },
+        'Surfshark did not answer for Frankfurt.',
+        'Argon kept London.',
+      ),
+    ]) {
+      testWidgets('response $status is shown', (tester) async {
+        final argon = HubFake()
+          ..locationPostStatus = status
+          ..locationPostReply = reply;
+        final pi = await open(tester, argon);
+        await tapChange(tester);
+        await tester.tap(find.byKey(const ValueKey('vpn-location-de-fra')));
+        await _settle(tester);
+        await tester.tap(find.text('Switch location'));
+        await _settle(tester);
+        expect(_text(expected), findsOneWidget);
+        if (extra != null) expect(_text(extra), findsWidgets);
+        expect(argon.locationPosts, hasLength(1));
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox());
+        pi.dispose();
+      });
+    }
   });
 }

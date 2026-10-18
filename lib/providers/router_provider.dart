@@ -1166,6 +1166,16 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
         'A network changed on the router. Refresh and try again.',
       );
     }
+    // Never switch on a network without a password.
+    final opening = changed.where((c) {
+      final before = _wirelessNetworksParsed.firstWhere(
+        (n) => n.index == c.index,
+      );
+      return c.isEnabled && c.isUnsecured && !before.isEnabled;
+    });
+    if (opening.isNotEmpty) {
+      return const SaveResult.failed(unsecuredEnableMessage);
+    }
     final merged = [
       for (final n in _wirelessNetworksParsed)
         changed.where((c) => c.index == n.index).firstOrNull ?? n,

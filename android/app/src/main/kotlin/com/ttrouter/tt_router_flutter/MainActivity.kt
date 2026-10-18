@@ -52,6 +52,8 @@ class MainActivity : FlutterActivity() {
         }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "tt_router/device_key")
             .setMethodCallHandler(ArgonDeviceKeys(applicationContext)::handle)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "tt_router/wifi_scan")
+            .setMethodCallHandler(WifiScan(applicationContext)::handle)
         val argonBluetooth = ArgonBluetooth(applicationContext)
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,

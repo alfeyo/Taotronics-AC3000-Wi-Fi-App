@@ -188,8 +188,12 @@ removed; the table records where each 1.2.x control now lives.
 | Internet status, quality, WAN type, WAN IP, gateway, DNS, router response | Statistics → Internet |
 | Guest devices online, USB storage, rate source, samples, certificate, raw node rates | Statistics → Technical details |
 | Router uptime, mesh nodes, Wi-Fi on count | Home "Network" tiles |
-| Per-network on/off, name/password edit, Show/Copy, security | Wi-Fi tab → compact card (switch) → expand for details, Edit, Show |
-| Edit both bands together, Guest Wi-Fi | Wi-Fi tab; Settings → Wi-Fi & wireless |
+| Primary household network (entries sharing the most common SSID: state, security, bands, router-reported devices, mesh nodes, health) | Wi-Fi tab → top card (read-only, built from router data) |
+| Duplicate configuration notice + guided Consolidate (turn off the higher entry after explicit approval, read-back, Re-enable rollback) | Wi-Fi tab → under the primary card |
+| All networks: Configured & controllable, Disabled, Guest, Observed (phone scan, router BSSID block only), Mesh/internal, Unknown; Unsecured chip | Wi-Fi tab → All networks (scan needs location permission; asked only on tap) |
+| Per-network on/off, name/password edit, Show/Copy, security (WPA2 / mixed; open entries cannot be turned on; WPA2 restorable with a new password) | Wi-Fi tab → Advanced (per-configuration) → card |
+| Edit both bands together, Guest Wi-Fi | Wi-Fi tab → Advanced; Settings → Wi-Fi & wireless |
+| VPN exit location (Argon list, search, confirm, read-back) | Network Hub → VPN card → Change location; tunnel details under "VPN details" |
 | Devices: summary, search, filters, sort, details sheet | Devices tab (sort is the icon in the search bar) |
 | WAN, LAN, DNS, DDNS | Settings → Internet & local network |
 | Mesh nodes, Set up a router, USB storage | Settings → Devices & mesh |

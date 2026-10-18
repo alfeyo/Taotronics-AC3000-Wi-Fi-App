@@ -11,9 +11,16 @@ import 'package:tt_router_flutter/screens/wifi_screen.dart';
 import 'package:tt_router_flutter/services/auth_pairing_service.dart';
 import 'package:tt_router_flutter/services/credential_store.dart';
 import 'package:tt_router_flutter/services/mqtt_service.dart';
+import 'package:tt_router_flutter/services/wifi_scan.dart';
 import 'package:tt_router_flutter/theme/app_theme.dart';
 
 import 'support/fake_mqtt_transport.dart';
+
+class _NoScan implements WifiScanner {
+  @override
+  Future<WifiScanSnapshot> scan({bool requestPermission = false}) async =>
+      const WifiScanSnapshot(status: WifiScanStatus.unsupported);
+}
 
 final _table = [
   {
@@ -88,11 +95,19 @@ void main() {
         value: provider,
         child: MaterialApp(
           theme: AppTheme.light(),
-          home: const WifiSettingsScreen(),
+          home: WifiSettingsScreen(scanner: _NoScan()),
         ),
       ),
     );
     await tester.pump();
+
+    // Per-entry controls live under "Advanced (per-configuration)".
+    expect(find.byType(WifiNetworkCard), findsNothing);
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('wifi-advanced-toggle')),
+    );
+    await tester.tap(find.byKey(const ValueKey('wifi-advanced-toggle')));
+    await tester.pumpAndSettle();
 
     expect(find.byType(WifiNetworkCard), findsNWidgets(3));
     expect(find.byType(Switch), findsNWidgets(3));
@@ -108,14 +123,16 @@ void main() {
     );
 
     // Cancelling the confirmation sends nothing.
+    await tester.ensureVisible(find.byType(Switch).at(1));
     await tester.tap(find.byType(Switch).at(1));
     await tester.pumpAndSettle();
-    expect(find.text('Turn off 5 GHz Wi-Fi?'), findsOneWidget);
+    expect(find.text('Turn off "TT-35A0" (entry 2)?'), findsOneWidget);
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
     expect(writes, isEmpty);
 
     // Confirming turns the band off with its settings intact.
+    await tester.ensureVisible(find.byType(Switch).at(1));
     await tester.tap(find.byType(Switch).at(1));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Turn off'));

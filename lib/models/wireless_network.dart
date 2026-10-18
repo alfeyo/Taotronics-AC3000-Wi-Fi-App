@@ -1,3 +1,8 @@
+/// Shown instead of turning on a network that has no password.
+const unsecuredEnableMessage =
+    'This network is unsecured. Set WPA2 (AES) and a password before '
+    'turning it on.';
+
 /// One wireless network entry from GetWirelessInfoList (V1) or
 /// GetWirelessInfoListV2.
 ///
@@ -166,6 +171,18 @@ class WirelessNetwork {
   );
 
   bool get isEnabled => create == 1 && disable == 0;
+
+  /// Broadcasts without a password. `Encrypt=5` counts too: the TT-ND001
+  /// stores its "WPA3" mode as an open network (tested 2026-10-18).
+  bool get isUnsecured => encrypt == 0 || encrypt == 5;
+
+  /// Security as users should read it; never presents Encrypt=5 as WPA3.
+  String get securityLabel =>
+      isUnsecured ? 'Unsecured (open)' : encryptionLabel;
+
+  /// Neutral name for this router entry. Each entry is its own dual-band
+  /// network, so the index is not a band.
+  String get entryLabel => 'Router entry ${index + 1}';
 
   /// Band label used by this app for each router index. The router does not
   /// report the band, so the mapping is the one the app has always used.
