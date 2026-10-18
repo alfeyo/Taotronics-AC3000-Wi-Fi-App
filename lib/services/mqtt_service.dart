@@ -22,14 +22,23 @@ import 'router_certificate_verifier.dart';
 ///   one round trip. Every request completes exactly once: with the reply, or
 ///   with `null` on timeout, disconnect or malformed payload.
 class MqttService {
-  MqttService({MqttTransportFactory? transportFactory, this._appIdLoader}) {
+  MqttService({
+    MqttTransportFactory? transportFactory,
+    this._appIdLoader,
+    V1OnlyStore? v1OnlyStore,
+  }) : _v1OnlyStore = v1OnlyStore ?? const PrefsV1OnlyStore() {
     _transportFactory = transportFactory ?? _defaultTransport;
   }
 
   static const int mqttPort = 25678;
 
+  /// Measured router round trips reach ~4-5 s while other commands (or other
+  /// phones) are queued ahead, so 4 s dropped valid telemetry replies.
+  static const int telemetryTimeoutSeconds = 8;
+
   late final MqttTransportFactory _transportFactory;
   final Future<String> Function()? _appIdLoader;
+  final V1OnlyStore _v1OnlyStore;
 
   MqttTransport? _transport;
   StreamSubscription<MqttInbound>? _inboundSubscription;
@@ -246,6 +255,16 @@ class MqttService {
     }
     final completer = Completer<Map<String, dynamic>?>();
     _pendingByTopic[responseTopic] = completer;
+    final sentAt = DateTime.now();
+    if (kDebugMode) {
+      completer.future.then((r) {
+        if (r != null) {
+          debugPrint(
+            'MqttService: $path replied in ${DateTime.now().difference(sentAt).inMilliseconds} ms',
+          );
+        }
+      });
+    }
 
     final payload = {
       'AppId': appId,
@@ -312,13 +331,21 @@ class MqttService {
     ]);
   }
 
-  /// Routers that left GetWirelessInfoListV2 unanswered while V1 worked.
-  /// The router handles commands one at a time and an unanswered V2 request
-  /// blocks every other command for ~10 s, so it is only tried once.
+  /// Routers that left GetWirelessInfoListV2 unanswered. The router handles
+  /// commands one at a time and an unanswered V2 request blocks every other
+  /// command - for every connected phone - for ~10 s, so V2 is tried once per
+  /// router and the verdict is kept across sessions and app restarts.
   final _wirelessV2Unsupported = <String>{};
+  bool _v1OnlyLoaded = false;
 
   Future<Map<String, dynamic>?> getWirelessSettings() async {
     final meshId = _meshId;
+    if (!_v1OnlyLoaded) {
+      _v1OnlyLoaded = true;
+      try {
+        _wirelessV2Unsupported.addAll(await _v1OnlyStore.load());
+      } catch (_) {}
+    }
     if (meshId != null && _wirelessV2Unsupported.contains(meshId)) {
       return _getWirelessSettingsV1();
     }
@@ -343,16 +370,21 @@ class MqttService {
       return v2Result;
     }
 
-    final v1Result = await _getWirelessSettingsV1();
+    // No reply at all (not an error reply) while still connected to the same
+    // router: V2 is unsupported. Decided here, before V1, because the V1 read
+    // queues behind the stalled router and may itself time out under load.
     if (v2Result == null &&
-        v1Result != null &&
-        v1Result['ErrorCode'] == 0 &&
+        _isConnected &&
         meshId != null &&
         meshId == _meshId) {
       debugPrint('MqttService: $meshId does not answer V2 wireless; using V1');
-      _wirelessV2Unsupported.add(meshId);
+      if (_wirelessV2Unsupported.add(meshId)) {
+        try {
+          await _v1OnlyStore.save(_wirelessV2Unsupported);
+        } catch (_) {}
+      }
     }
-    return v1Result;
+    return _getWirelessSettingsV1();
   }
 
   Future<Map<String, dynamic>?> _getWirelessSettingsV1() {
@@ -396,7 +428,7 @@ class MqttService {
         'OnlineGuestDev': 0,
         'NetworkQuality': 0,
       },
-      timeout: 4,
+      timeout: telemetryTimeoutSeconds,
       routerTimeout: 2,
     );
   }
@@ -407,7 +439,7 @@ class MqttService {
       [
         {'MeshNodeName': '', 'Rate': 0},
       ],
-      timeout: 4,
+      timeout: telemetryTimeoutSeconds,
       routerTimeout: 2,
     );
   }
@@ -418,7 +450,7 @@ class MqttService {
       [
         {'UpRate': 0, 'DownRate': 0},
       ],
-      timeout: 4,
+      timeout: telemetryTimeoutSeconds,
       routerTimeout: 2,
     );
   }
@@ -813,4 +845,40 @@ HKY04dj6faJvSPvBUyV4fWhxDJlxISYUokzXIB7gl3QDqpWxdpNuz/cQXy1MlJrQ
 VIJ1OjVQ119ztnCTT6YvKfq11tugKxmJN69IVQeaslf5eliwIOoEazBLP6zlDQaC
 M9IwCGs=
 -----END CERTIFICATE-----''';
+}
+
+/// Persists the mesh ids of routers that never answer V2 wireless queries.
+abstract class V1OnlyStore {
+  Future<Set<String>> load();
+  Future<void> save(Set<String> meshIds);
+}
+
+class PrefsV1OnlyStore implements V1OnlyStore {
+  const PrefsV1OnlyStore();
+  static const _key = 'mqtt_wireless_v1_only';
+
+  @override
+  Future<Set<String>> load() async =>
+      (await SharedPreferences.getInstance()).getStringList(_key)?.toSet() ??
+      <String>{};
+
+  @override
+  Future<void> save(Set<String> meshIds) async =>
+      (await SharedPreferences.getInstance()).setStringList(
+        _key,
+        meshIds.toList()..sort(),
+      );
+}
+
+class MemoryV1OnlyStore implements V1OnlyStore {
+  MemoryV1OnlyStore([Set<String>? initial]) : meshIds = {...?initial};
+  final Set<String> meshIds;
+
+  @override
+  Future<Set<String>> load() async => {...meshIds};
+
+  @override
+  Future<void> save(Set<String> ids) async => meshIds
+    ..clear()
+    ..addAll(ids);
 }

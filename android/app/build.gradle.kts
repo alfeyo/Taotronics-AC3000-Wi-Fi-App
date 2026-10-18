@@ -46,6 +46,10 @@ android {
     }
 
     buildTypes {
+        // Debug builds install next to the release app instead of replacing it.
+        debug {
+            applicationIdSuffix = ".dev"
+        }
         release {
             signingConfig = signingConfigs.findByName("release")
                 ?: signingConfigs.getByName("debug")

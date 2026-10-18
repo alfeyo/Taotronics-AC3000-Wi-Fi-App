@@ -93,11 +93,14 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
   }
 
   /// Runs one scan at a time; overlapping requests share the running scan.
-  Future<void> _startDiscovery() => _scan ??= _runScan().whenComplete(() {
-    _scan = null;
-  });
+  Future<void> _startDiscovery({bool askPermission = false}) =>
+      _scan ??= _runScan(askPermission: askPermission).whenComplete(() {
+        _scan = null;
+      });
 
-  Future<void> _runScan() async {
+  Future<void> _retryDiscovery() => _startDiscovery(askPermission: true);
+
+  Future<void> _runScan({bool askPermission = false}) async {
     _update(() {
       _isScanning = true;
       _errorMessage = null;
@@ -105,7 +108,7 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
       _mqttPortOpen = false;
     });
 
-    await _requestPermissions();
+    await _requestPermissions(ask: askPermission);
     await _getNetworkInfo();
     await _checkRouterReachability();
     await _checkMqttPort();
@@ -118,8 +121,17 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
     _update(() => _isScanning = false);
   }
 
-  Future<void> _requestPermissions() async {
-    final locationStatus = await Permission.locationWhenInUse.request();
+  bool _permissionAsked = false;
+
+  /// Prompts at most once per visit: scans re-run on every connectivity change,
+  /// and re-requesting would keep raising the system dialog over this screen.
+  /// Later scans only read the current status; Retry asks again.
+  Future<void> _requestPermissions({bool ask = false}) async {
+    final shouldAsk = ask || !_permissionAsked;
+    _permissionAsked = true;
+    final locationStatus = shouldAsk
+        ? await Permission.locationWhenInUse.request()
+        : await Permission.locationWhenInUse.status;
     _update(() => _permissionBlocked = locationStatus.isPermanentlyDenied);
     if (!locationStatus.isGranted) {
       _update(
@@ -222,7 +234,7 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
         body: Consumer<RouterProvider>(
           builder: (context, provider, child) {
             return RefreshIndicator(
-              onRefresh: _startDiscovery,
+              onRefresh: _retryDiscovery,
               child: ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.fromLTRB(
@@ -477,7 +489,7 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
     } else {
       children.addAll([
         FilledButton.icon(
-          onPressed: _startDiscovery,
+          onPressed: _retryDiscovery,
           icon: const Icon(Icons.refresh_rounded),
           label: const Text('Retry scan'),
         ),

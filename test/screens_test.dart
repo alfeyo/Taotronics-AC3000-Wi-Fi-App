@@ -141,6 +141,8 @@ void main() {
     ('cover screen', const Size(344, 780)),
     ('unfolded', const Size(690, 840)),
     ('tablet', const Size(1100, 800)),
+    // OnePlus 8T rotated: wide enough for the rail, only ~330 dp tall.
+    ('phone landscape', const Size(800, 330)),
   ]) {
     testWidgets('home shell renders on $name without overflow', (tester) async {
       await _setSize(tester, size);

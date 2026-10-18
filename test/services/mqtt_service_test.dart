@@ -6,9 +6,14 @@ import '../support/fake_mqtt_transport.dart';
 
 const _appId = 'app123';
 
-MqttService _service(FakeTransportFactory factory) => MqttService(
+MqttService _service(
+  FakeTransportFactory factory, {
+  String appId = _appId,
+  V1OnlyStore? store,
+}) => MqttService(
   transportFactory: factory.call,
-  appIdLoader: () async => _appId,
+  appIdLoader: () async => appId,
+  v1OnlyStore: store ?? MemoryV1OnlyStore(),
 );
 
 void main() {
@@ -271,6 +276,122 @@ void main() {
           '/GetWirelessInfoList',
           '/GetWirelessInfoList',
         ]);
+      });
+    });
+
+    test(
+      'an unanswered V2 is recorded even when the V1 read also times out',
+      () {
+        fakeAsync((async) {
+          // A busy router (another phone polling) leaves both reads unanswered.
+          final factory = FakeTransportFactory()
+            ..responder = (path, data) => null;
+          final store = MemoryV1OnlyStore();
+          final service = _service(factory, store: store);
+          service.connect('mesh1', '10.0.0.1');
+          async.elapse(const Duration(milliseconds: 1));
+
+          service.getWirelessSettings();
+          async.elapse(const Duration(seconds: 25));
+          service.getWirelessSettings();
+          async.elapse(const Duration(seconds: 12));
+
+          final paths = factory.last.published
+              .map((p) => p.topic.split(_appId).last)
+              .toList();
+          expect(
+            paths.where((p) => p == '/GetWirelessInfoListV2'),
+            hasLength(1),
+          );
+          expect(store.meshIds, {'mesh1'});
+        });
+      },
+    );
+
+    test('the V1-only verdict survives a new session', () {
+      fakeAsync((async) {
+        final factory = FakeTransportFactory()
+          ..responder = (path, data) => path == '/GetWirelessInfoList'
+              ? {'ErrorCode': 0, 'Data': []}
+              : null;
+        final service = _service(factory, store: MemoryV1OnlyStore({'mesh1'}));
+        service.connect('mesh1', '10.0.0.1');
+        async.elapse(const Duration(milliseconds: 1));
+        service.getWirelessSettings();
+        async.elapse(const Duration(seconds: 1));
+        expect(factory.last.published.map((p) => p.topic.split(_appId).last), [
+          '/GetWirelessInfoList',
+        ]);
+      });
+    });
+
+    test('a router error reply to V2 does not mark the router V1-only', () {
+      fakeAsync((async) {
+        final factory = FakeTransportFactory()
+          ..responder = (path, data) => path == '/GetWirelessInfoListV2'
+              ? {'ErrorCode': 1}
+              : {'ErrorCode': 0, 'Data': []};
+        final store = MemoryV1OnlyStore();
+        final service = _service(factory, store: store);
+        service.connect('mesh1', '10.0.0.1');
+        async.elapse(const Duration(milliseconds: 1));
+        service.getWirelessSettings();
+        async.elapse(const Duration(seconds: 1));
+        expect(store.meshIds, isEmpty);
+      });
+    });
+
+    test('telemetry waits for slow but valid router replies', () {
+      fakeAsync((async) {
+        final factory = FakeTransportFactory();
+        final service = _service(factory);
+        service.connect('mesh1', '10.0.0.1');
+        async.elapse(const Duration(milliseconds: 1));
+        Map<String, dynamic>? reply;
+        service.getSystemConnectionInfo().then((r) => reply = r);
+        async.elapse(const Duration(milliseconds: 4800));
+        factory.last.deliver(
+          '$_appId/GetSysConnectInfo',
+          '{"ErrorCode":0,"Data":{"Internet":1}}',
+        );
+        async.flushMicrotasks();
+        expect(reply?['ErrorCode'], 0);
+      });
+    });
+
+    test('two app instances keep separate client identities and replies', () {
+      fakeAsync((async) {
+        final foldFactory = FakeTransportFactory();
+        final onePlusFactory = FakeTransportFactory();
+        final fold = _service(foldFactory, appId: 'fold4id');
+        final onePlus = _service(onePlusFactory, appId: 'oneplusid');
+        fold.connect('mesh1', '10.0.0.1');
+        onePlus.connect('mesh1', '10.0.0.1');
+        async.elapse(const Duration(milliseconds: 1));
+
+        final a = foldFactory.last, b = onePlusFactory.last;
+        expect(a.clientId, 'fold4id');
+        expect(b.clientId, 'oneplusid');
+        expect(a.username, b.username); // same router credentials
+        expect(a.subscriptions, ['fold4id/+']);
+        expect(b.subscriptions, ['oneplusid/+']);
+
+        Map<String, dynamic>? foldReply, onePlusReply;
+        fold.getSystemConnectionInfo().then((r) => foldReply = r);
+        onePlus.getSystemConnectionInfo().then((r) => onePlusReply = r);
+        async.elapse(const Duration(milliseconds: 10));
+        expect(a.published.single.topic, 'mesh1/fold4id/GetSysConnectInfo');
+        expect(b.published.single.topic, 'mesh1/oneplusid/GetSysConnectInfo');
+
+        // A reply for one phone never completes the other phone's request.
+        a.deliver('fold4id/GetSysConnectInfo', '{"ErrorCode":0,"Data":{}}');
+        async.flushMicrotasks();
+        expect(foldReply, isNotNull);
+        expect(onePlusReply, isNull);
+        b.deliver('oneplusid/GetSysConnectInfo', '{"ErrorCode":0,"Data":{}}');
+        async.flushMicrotasks();
+        expect(onePlusReply, isNotNull);
+        expect(fold.isConnected && onePlus.isConnected, isTrue);
       });
     });
 

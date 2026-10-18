@@ -114,22 +114,46 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: [
                   SafeArea(
                     right: false,
-                    child: NavigationRail(
-                      selectedIndex: _tab.index,
-                      onDestinationSelected: (i) => _select(HomeTab.values[i]),
-                      groupAlignment: -0.85,
-                      leading: const Padding(
-                        padding: EdgeInsets.only(bottom: Space.lg),
-                        child: IconBadge(Icons.router_rounded),
-                      ),
-                      destinations: [
-                        for (final tab in HomeTab.values)
-                          NavigationRailDestination(
-                            icon: Icon(tab.icon),
-                            selectedIcon: Icon(tab.selectedIcon),
-                            label: Text(tab.label),
+                    // A phone in landscape is wide but short: the rail must
+                    // scroll instead of overflowing its six destinations.
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final short = constraints.maxHeight < 560;
+                        return SingleChildScrollView(
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(
+                              minHeight: constraints.maxHeight,
+                            ),
+                            child: IntrinsicHeight(
+                              child: NavigationRail(
+                                selectedIndex: _tab.index,
+                                onDestinationSelected: (i) =>
+                                    _select(HomeTab.values[i]),
+                                groupAlignment: short ? -1 : -0.85,
+                                labelType: short
+                                    ? NavigationRailLabelType.selected
+                                    : null,
+                                leading: short
+                                    ? null
+                                    : const Padding(
+                                        padding: EdgeInsets.only(
+                                          bottom: Space.lg,
+                                        ),
+                                        child: IconBadge(Icons.router_rounded),
+                                      ),
+                                destinations: [
+                                  for (final tab in HomeTab.values)
+                                    NavigationRailDestination(
+                                      icon: Icon(tab.icon),
+                                      selectedIcon: Icon(tab.selectedIcon),
+                                      label: Text(tab.label),
+                                    ),
+                                ],
+                              ),
+                            ),
                           ),
-                      ],
+                        );
+                      },
                     ),
                   ),
                   const VerticalDivider(width: 1),

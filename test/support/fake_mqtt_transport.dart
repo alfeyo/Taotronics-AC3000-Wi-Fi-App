@@ -14,6 +14,7 @@ class FakeMqttTransport implements MqttTransport {
   final _messages = StreamController<MqttInbound>.broadcast(sync: true);
   final published = <({String topic, Map<String, dynamic> payload})>[];
   final subscriptions = <String>[];
+  String? clientId;
   VoidCallback? _onDisconnected;
 
   bool connected = false;
@@ -38,6 +39,7 @@ class FakeMqttTransport implements MqttTransport {
     required String username,
     required String password,
   }) async {
+    this.clientId = clientId;
     this.username = username;
     this.password = password;
     await Future<void>.delayed(connectDelay);

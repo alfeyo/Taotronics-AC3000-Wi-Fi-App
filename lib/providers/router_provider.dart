@@ -144,9 +144,9 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
   int _telemetryMisses = 0;
 
   /// Consecutive unanswered telemetry batches before live polling stops
-  /// asking for telemetry (the full refresh keeps retrying). The router
-  /// occasionally answers a few hundred ms after the 4 s timeout, so a single
-  /// miss must not switch the dashboard to stale values.
+  /// asking for telemetry (the full refresh keeps retrying). Router replies
+  /// can take ~4-5 s while other commands or phones are queued ahead, so a
+  /// single miss must not switch the dashboard to stale values.
   static const telemetryMissesBeforeBackoff = 3;
   bool _reconnectInProgress = false;
   bool _allowReconnect = true;
@@ -852,7 +852,8 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
       if (_liveTelemetryResponsive) {
         liveWork.add(refreshLiveTelemetry());
       }
-      await Future.wait(liveWork).timeout(const Duration(seconds: 5));
+      // Above the telemetry timeout, so a slow router reply is not discarded.
+      await Future.wait(liveWork).timeout(const Duration(seconds: 10));
     } catch (_) {
     } finally {
       _liveRefreshing = false;

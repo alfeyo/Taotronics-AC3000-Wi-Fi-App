@@ -168,18 +168,18 @@ void main() {
       async.elapse(const Duration(milliseconds: 10));
 
       h.provider.refreshLiveTelemetry();
-      async.elapse(const Duration(seconds: 5));
+      async.elapse(const Duration(seconds: 9));
       expect(h.provider.liveTelemetrySupported, isTrue);
 
       answer = true;
       h.provider.refreshLiveTelemetry();
-      async.elapse(const Duration(seconds: 5));
+      async.elapse(const Duration(seconds: 9));
       expect(h.provider.internetConnected, isTrue);
 
       answer = false;
       for (var i = 0; i < 3; i++) {
         h.provider.refreshLiveTelemetry();
-        async.elapse(const Duration(seconds: 5));
+        async.elapse(const Duration(seconds: 9));
       }
       expect(h.provider.liveTelemetrySupported, isFalse);
       h.provider.dispose();
