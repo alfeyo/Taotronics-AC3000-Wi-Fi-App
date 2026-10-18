@@ -79,9 +79,13 @@ Map<String, dynamic>? _router(String path, dynamic data) => switch (path) {
   _ => {'ErrorCode': 0, 'Data': []},
 };
 
-Future<RouterProvider> _connectedProvider(WidgetTester tester) async {
+Future<RouterProvider> _connectedProvider(
+  WidgetTester tester, {
+  bool refused = false,
+}) async {
   SharedPreferences.setMockInitialValues({});
-  final factory = FakeTransportFactory()..responder = _router;
+  final factory = FakeTransportFactory()
+    ..responder = refused ? (path, data) => {'ErrorCode': 5} : _router;
   final provider = RouterProvider(
     mqtt: MqttService(
       transportFactory: factory.call,
@@ -135,6 +139,28 @@ void main() {
       '192.168.10.152',
       '192.168.10.153',
     ]);
+  });
+
+  testWidgets('a phone refused by the router shows waiting, never zero', (
+    tester,
+  ) async {
+    await _setSize(tester, const Size(344, 780));
+    final provider = await _connectedProvider(tester, refused: true);
+    expect(provider.managedElsewhere, isTrue);
+    expect(provider.knownOnlineDeviceCount, isNull);
+
+    await tester.pumpWidget(_app(provider, const HomeScreen()));
+    await tester.pump();
+    expect(find.text('Another phone is managing the router'), findsOneWidget);
+    expect(find.text('Devices: waiting'), findsOneWidget);
+    expect(find.text('0 devices'), findsNothing);
+
+    await tester.pumpWidget(_app(provider, const DevicesScreen()));
+    await tester.pump();
+    expect(find.text('Waiting for router access'), findsWidgets);
+    expect(find.text('0'), findsNothing);
+    expect(tester.takeException(), isNull);
+    await tester.runAsync(() async => provider.dispose());
   });
 
   for (final (name, size) in [

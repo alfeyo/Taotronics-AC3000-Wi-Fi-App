@@ -150,10 +150,16 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
   StreamSubscription<bool>? _managementSubscription;
   int _refusedTicks = 0;
 
+  /// Live polling cadence. Each tick sends four commands (device list and
+  /// three telemetry reads) to a router that serves one command at a time at
+  /// ~0.9 s average round trip: 3 s ticks kept it >100% busy (replies grew to
+  /// 4-5 s); 5 s leaves headroom for writes and the other phone.
+  static const liveInterval = Duration(seconds: 5);
+
   /// While another phone manages the router, one light read every this many
-  /// 3 s live ticks (~21 s) detects when access frees up, without loading the
+  /// live ticks (~20 s) detects when access frees up, without loading the
   /// router's single command queue.
-  static const refusedProbeEveryTicks = 7;
+  static const refusedProbeEveryTicks = 4;
 
   /// The router currently serves another phone and refuses this one.
   bool get managedElsewhere => isConnected && _mqtt.managedElsewhere;
@@ -311,6 +317,15 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
   int get onlineNodeCount => _nodes.where((n) => n.isOnline).length;
   int get reportedOnlineDeviceCount =>
       _connectionInt('OnlineDev', onlineDeviceCount);
+
+  /// The router has reported its clients at least once this session. Until
+  /// then counts are unknown and must not be shown as 0 (e.g. on a phone the
+  /// router refuses because another phone manages it).
+  bool get devicesKnown => _devicesUpdatedAt != null || _connectionInfo != null;
+
+  /// [reportedOnlineDeviceCount], or null while the router has never answered.
+  int? get knownOnlineDeviceCount =>
+      devicesKnown ? reportedOnlineDeviceCount : null;
   int get reportedGuestDeviceCount => _connectionInt('OnlineGuestDev', 0);
   int get reportedOnlineNodeCount =>
       _connectionInt('OnlineNodeCount', onlineNodeCount);
@@ -755,7 +770,7 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
       if (!isLivePaused) refreshAll();
     });
     _liveTimer?.cancel();
-    _liveTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+    _liveTimer = Timer.periodic(liveInterval, (_) {
       _liveRefresh();
     });
   }

@@ -652,10 +652,16 @@ class _NetworkTiles extends StatelessWidget {
         StatTile(
           icon: Icons.devices_other_rounded,
           tone: Tone.brand,
-          value: connected ? '${provider.reportedOnlineDeviceCount}' : null,
-          label: connected && provider.devicesUpdatedAt != null
-              ? 'Devices online · router, ${formatAge(provider.devicesUpdatedAt)}'
-              : 'Devices online · router',
+          value: connected && provider.knownOnlineDeviceCount != null
+              ? '${provider.knownOnlineDeviceCount}'
+              : null,
+          label: !connected || provider.devicesUpdatedAt == null
+              ? (provider.managedElsewhere
+                    ? 'Devices online · waiting for router access'
+                    : 'Devices online · router')
+              : provider.managedElsewhere
+              ? 'Devices online · last read ${formatAge(provider.devicesUpdatedAt)}'
+              : 'Devices online · router, ${formatAge(provider.devicesUpdatedAt)}',
           onTap: () => select(HomeTab.devices),
         ),
         StatTile(

@@ -156,9 +156,13 @@ class _DevicesScreenState extends State<DevicesScreen> {
                         PageHeader(
                           kicker: 'Network clients',
                           title: 'Devices',
-                          subtitle: provider.isConnected
-                              ? 'Updated ${formatAge(provider.devicesUpdatedAt)}'
-                              : 'Connect to the router to see devices',
+                          subtitle: !provider.isConnected
+                              ? 'Connect to the router to see devices'
+                              : provider.managedElsewhere
+                              ? (provider.devicesUpdatedAt == null
+                                    ? 'Waiting for router access'
+                                    : 'Last read ${formatAge(provider.devicesUpdatedAt)} · not live')
+                              : 'Updated ${formatAge(provider.devicesUpdatedAt)}',
                           trailing: IconButton(
                             tooltip: 'Refresh',
                             icon: const Icon(Icons.refresh_rounded),
@@ -170,9 +174,16 @@ class _DevicesScreenState extends State<DevicesScreen> {
                         const SizedBox(height: Space.lg),
                         const ConnectionStatusBanners(),
                         _Summary(
-                          total: all.length,
-                          online: online,
-                          active: active,
+                          // Unknown, not zero, until the router answers once.
+                          total: provider.devicesUpdatedAt == null
+                              ? null
+                              : all.length,
+                          online: provider.devicesUpdatedAt == null
+                              ? null
+                              : online,
+                          active: provider.devicesUpdatedAt == null
+                              ? null
+                              : active,
                         ),
                         const SizedBox(height: Space.md),
                         SearchBar(
@@ -252,12 +263,18 @@ class _DevicesScreenState extends State<DevicesScreen> {
                                   ? Icons.devices_other_rounded
                                   : Icons.search_off_rounded,
                               title: all.isEmpty
-                                  ? (provider.isConnected
-                                        ? 'No devices reported yet'
-                                        : 'Not connected')
+                                  ? (!provider.isConnected
+                                        ? 'Not connected'
+                                        : provider.managedElsewhere
+                                        ? 'Waiting for router access'
+                                        : 'No devices reported yet')
                                   : 'No devices match',
                               message: all.isEmpty
-                                  ? 'Pull down to refresh.'
+                                  ? (provider.managedElsewhere
+                                        ? 'Another phone is managing the router. '
+                                              'The device list appears here once '
+                                              'this phone gets access.'
+                                        : 'Pull down to refresh.')
                                   : 'Try another filter or search term.',
                             ),
                           )
@@ -327,9 +344,9 @@ class _Summary extends StatelessWidget {
     required this.active,
   });
 
-  final int total;
-  final int online;
-  final int active;
+  final int? total;
+  final int? online;
+  final int? active;
 
   @override
   Widget build(BuildContext context) {
@@ -385,11 +402,15 @@ class _Summary extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: Space.lg),
       child: Row(
         children: [
-          cell('$total', 'Total', null),
+          cell(total?.toString() ?? '—', 'Total', null),
           divider,
-          cell('$online', 'Online', context.tone(Tone.success).foreground),
+          cell(
+            online?.toString() ?? '—',
+            'Online',
+            context.tone(Tone.success).foreground,
+          ),
           divider,
-          cell('$active', 'Active', theme.colorScheme.primary),
+          cell(active?.toString() ?? '—', 'Active', theme.colorScheme.primary),
         ],
       ),
     );

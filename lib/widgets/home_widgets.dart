@@ -219,7 +219,14 @@ class _RouterHeroState extends State<RouterHero>
                 child: GestureDetector(
                   onTap: widget.onOpenDevices,
                   child: StatusPill(
-                    label: '${p.reportedOnlineDeviceCount} devices',
+                    label: p.knownOnlineDeviceCount == null
+                        ? (p.managedElsewhere
+                              ? 'Devices: waiting'
+                              : 'Reading devices')
+                        : p.managedElsewhere
+                        ? '${p.knownOnlineDeviceCount} devices · '
+                              '${formatAge(p.devicesUpdatedAt)}'
+                        : '${p.knownOnlineDeviceCount} devices',
                     tone: Tone.info,
                     icon: Icons.devices_other_rounded,
                   ),
