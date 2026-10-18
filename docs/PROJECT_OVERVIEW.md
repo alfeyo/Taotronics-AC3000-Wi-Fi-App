@@ -97,6 +97,16 @@ Preconditions: Stage 1–2 passed; Stage 0.3 loop guard in place. The user disab
 3. Verify read-back, client counts on `/devices`, app pairing (mesh ID based, unaffected by SSID).
 4. Rollback: rewrite SSID `Game labs` + previous password from the app, or re-enable Nokia radios.
 
+### Migration result (2026-10-18, completed)
+Stages 3 and 4 were carried out with the user. Final state and evidence are in
+[NETWORK_MIGRATION_OVERVIEW.md](NETWORK_MIGRATION_OVERVIEW.md):
+- The Nokia Beacon (inferred model 1.1) has its radios off and stays powered. Argon's wired WAN is a MikroTik (192.168.88.1), not a Nokia LAN port.
+- TaoTronics index 0 = `Nokia Wifi` on both bands (WPA/WPA2 AES-only). Index 1 `Game labs` is kept until its clients are known to have moved.
+- **Correction to §4:** router indexes are dual-band networks, not bands.
+- Argon's Nokia Wi-Fi WAN profiles were renamed out of the `Argon WAN WiFi` prefix (retired, credentials kept). `Argon WAN WiFi - OnePlus 8T` is the sole Wi-Fi fallback.
+- 17 of 20 known clients online; app, Pi and router counts agree.
+- Nokia ↔ TaoTronics mesh pairing: no mutually supported standard; closed.
+
 ## 6. Application status
 
 - **Flutter 1.5.0+8** (proven on device 2026-10-18): Pi board artwork with hardware model, Gateway connection (local network transport observed; Tailscale supported), Internet source `Nokia Wifi · wlan1`, VPN London, CPU/temperature/memory/throttling, household traffic labelled "Measured by Argon … (eth1)", device synchronization (6 clients shared), merged router + Argon notifications with source labels. Router MQTT with pinned CA, LED state and Wi-Fi read work. `flutter analyze` clean, 103/103 tests. Bluetooth monitoring fallback is implemented and unit-tested but was **not exercised live** this run.

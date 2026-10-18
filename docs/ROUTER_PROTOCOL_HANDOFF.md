@@ -200,8 +200,9 @@ parental controls. The app does not send any.
 - Try V2 once per router. If V2 gets **no reply** while V1 succeeds, mark
   the router as V1-only for the session. An unanswered V2 request blocks the
   router's serial command queue for about 10 s.
-- `Index` 0 is 2.4 GHz and `Index` 1 is 5 GHz ⚠️ (inferred from the
-  original app's labels). Further indexes are additional networks.
+- Each `Index` is a separate **dual-band** network (verified 2026-10-18 by radio
+  scan: index 0 and index 1 each broadcast on 2.4 GHz and 5 GHz). The original
+  app labelled index 0 "2.4 GHz" and index 1 "5 GHz"; that inference was wrong.
 - `Encrypt`: 0 none, 1 WEP, 2 WPA-PSK, 3 WPA2-PSK, 4 WPA/WPA2, 5 WPA3 ⚠️.
 - Enable or disable: V1 uses `Create` (1 means broadcasting). V2 also has
   `Disable` ⚠️.
