@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../providers/pi_provider.dart';
+import '../services/argon_device_key.dart';
 import '../services/argon_status.dart';
 import '../theme/app_theme.dart';
 import '../utils/format.dart';
@@ -29,33 +30,45 @@ class VpnCard extends StatelessWidget {
     return [?mode, ?state].join(' · ').ifEmpty('Not reported');
   }
 
+  /// Off: household traffic leaves directly via the ISP.
+  static const directLabel = 'Direct internet (VPN off)';
+
   Future<void> _request(BuildContext context, bool on) async {
-    if (pi.vpnInFlight) return;
+    if (pi.vpnInFlight || pi.vpnPrompting) return;
     if (!pi.vpnControlRoute) {
       // Explains Bluetooth / unreachable without asking for anything.
       await pi.setVpnMode(on);
       return;
     }
-    if (!pi.paired || !pi.vpnDeviceAllowed) {
-      await pi.refreshVpnPermission();
-      if (!context.mounted) return;
-      if (!pi.vpnDeviceAllowed) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'The Argon owner can allow VPN control for this phone in Devices.',
+    pi.setVpnPrompting(true);
+    try {
+      if (!pi.paired || !pi.vpnDeviceAllowed) {
+        await pi.refreshVpnPermission();
+        if (!context.mounted) return;
+        if (!pi.vpnDeviceAllowed) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                pi.vpnPermissionError ??
+                    (pi.paired
+                        ? pi.vpnNotGrantedMessage
+                        : 'Pair this phone once, then ask the Argon owner to allow VPN control.'),
+              ),
             ),
-          ),
-        );
-        return;
+          );
+          return;
+        }
       }
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => _ConfirmVpnDialog(on: on, vpn: pi.vpn),
+      );
+      if (confirmed != true) return;
+      pi.setVpnPrompting(false);
+      await pi.setVpnMode(on);
+    } finally {
+      pi.setVpnPrompting(false);
     }
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => _ConfirmVpnDialog(on: on, vpn: pi.vpn),
-    );
-    if (confirmed != true) return;
-    await pi.setVpnMode(on);
   }
 
   @override
@@ -92,7 +105,11 @@ class VpnCard extends StatelessWidget {
             ? Tone.warning
             : null,
       ),
-      ('Exit location', v(vpn?.location), null),
+      (
+        'Exit location',
+        v(vpn?.isOff == true ? directLabel : vpn?.location),
+        null,
+      ),
       (
         'Tunnel interface',
         v(
@@ -175,6 +192,8 @@ class VpnCard extends StatelessWidget {
                           ? (pi.vpnMessage ?? 'Changing…')
                           : vpn == null
                           ? v(null)
+                          : vpn.isOff
+                          ? directLabel
                           : [stateLabel(vpn), ?vpn.location].join(' · '),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
@@ -199,7 +218,8 @@ class VpnCard extends StatelessWidget {
                 child: Switch(
                   key: const ValueKey('vpn-toggle'),
                   value: switchValue,
-                  onChanged: busy || !known || vpn?.busy == true
+                  onChanged:
+                      busy || pi.vpnPrompting || !known || vpn?.busy == true
                       ? null
                       : (value) => _request(context, value),
                 ),
@@ -251,8 +271,13 @@ class VpnCard extends StatelessWidget {
           ),
           if (pi.vpnKeyFingerprint != null)
             Text(
-              'Phone key: ${pi.vpnKeyFingerprint!.substring(0, pi.vpnKeyFingerprint!.length.clamp(0, 16))}…',
+              'Phone key: ${ArgonDeviceKey.shortFingerprint(pi.vpnKeyFingerprint!)}',
               style: theme.textTheme.bodySmall,
+            ),
+          if (pi.vpnKeyHardwareLabel != null)
+            Text(
+              pi.vpnKeyHardwareLabel!,
+              style: theme.textTheme.bodySmall?.copyWith(color: muted),
             ),
           Align(
             alignment: Alignment.centerLeft,
@@ -305,6 +330,7 @@ class _Result extends StatelessWidget {
           tone:
               issue == VpnCommandIssue.busy ||
                   issue == VpnCommandIssue.unconfirmed ||
+                  issue == VpnCommandIssue.rateLimited ||
                   issue == VpnCommandIssue.bluetooth
               ? Tone.warning
               : Tone.danger,
@@ -314,7 +340,9 @@ class _Result extends StatelessWidget {
           onDismiss: pi.dismissVpnResult,
           action:
               issue == VpnCommandIssue.tokenInvalid ||
-                  issue == VpnCommandIssue.needsToken
+                  issue == VpnCommandIssue.needsToken ||
+                  issue == VpnCommandIssue.forbidden ||
+                  issue == VpnCommandIssue.keyChanged
               ? TextButton(
                   onPressed: pi.refreshVpnPermission,
                   child: const Text('Refresh permission'),

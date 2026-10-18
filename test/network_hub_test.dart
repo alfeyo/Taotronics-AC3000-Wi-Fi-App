@@ -172,6 +172,9 @@ class HubFake implements PiTransport, PiOperatorTransport {
 
   bool deviceAllowed = true;
   int postStatus = 200;
+  int keyDeleteStatus = 200;
+  List<String> log = [];
+  final keyDeleteTokens = <String?>[];
   Map<String, dynamic>? postReply;
 
   /// Number of /api/v1/vpn reads after which an accepted change shows.
@@ -224,9 +227,32 @@ class HubFake implements PiTransport, PiOperatorTransport {
     Map<String, dynamic> body, {
     String? token,
     Duration? timeout,
-  }) async => path == '/api/v1/pairing/key'
-      ? {'version': 1, 'ok': true, 'id': '11111111-2222-3333-4444-555555555555'}
-      : throw const PiApiException('not used');
+  }) async {
+    if (path == '/api/v1/pairing/key') {
+      if (enrollStatus != 200) {
+        throw PiApiException('enroll failed', status: enrollStatus);
+      }
+      return {
+        'version': 1,
+        'ok': true,
+        'id': _device,
+        'keyFingerprint': 'server-value-not-shown',
+      };
+    }
+    if (path == '/api/v1/pairing/complete') {
+      return {
+        'version': 1,
+        'ok': true,
+        'deviceId': _device,
+        'name': 'TT Router app',
+        'token': _companion,
+      };
+    }
+    throw const PiApiException('not used');
+  }
+
+  int enrollStatus = 200;
+  Completer<void>? keyDeleteGate;
 
   @override
   Future<PiRawResponse> sendRaw(
@@ -236,6 +262,12 @@ class HubFake implements PiTransport, PiOperatorTransport {
     required Map<String, String> headers,
     Duration? timeout,
   }) async {
+    if (method == 'DELETE' && path == '/api/v1/pairing/key') {
+      log.add('server.delete');
+      keyDeleteTokens.add(headers['Authorization']);
+      if (keyDeleteGate != null) await keyDeleteGate!.future;
+      return PiRawResponse(keyDeleteStatus, {'ok': keyDeleteStatus == 200});
+    }
     if (path == '/api/v1/vpn/authorize') {
       return PiRawResponse(deviceAllowed ? 200 : 403, {
         'ok': deviceAllowed,
@@ -284,12 +316,52 @@ class _BtOnly implements PiTransport {
   }) async => throw const PiApiException('Not available over Bluetooth.');
 }
 
+/// Fixed P-256 SPKI (DER, base64) and its SHA-256 as Argon formats it
+/// (Node: createHash('sha256').update(spkiDer).digest('hex')).
+const _spki =
+    'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEPw44/8LBYZg5BUGlYFYJ+QJcgc1m63lg9AdB2l1Ew9vVaSy055dvRYDx3ioW29H13xnfBUiPKXADZ95TSyNn+g==';
+const _spkiFingerprint =
+    '5a7925a3d20e3b54cc0b8a191a2a86d6b9a161bca8828cce70c957fd630d99a4';
+const _notGranted =
+    'Ask the Argon owner to allow VPN control for this phone in Devices → '
+    'Phone synchronization (key fingerprint: 5a7925a3d20e3b54…)';
+const _instance = '11111111-2222-3333-4444-555555555555';
+const _device = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+
+/// In-memory Keystore: records every call in [log] (shared with the
+/// transport so ordering across both can be asserted).
 class _TestDeviceKey extends ArgonDeviceKey {
+  _TestDeviceKey({List<String>? log, Iterable<String> existing = const []})
+    : log = log ?? [],
+      keys = {...existing};
+  final List<String> log;
+  final Set<String> keys;
+  final signedWith = <String>[];
   @override
-  Future<String> publicKey(String instance) async => 'test-public-key';
+  Future<String> publicKey(String alias) async {
+    keys.add(alias);
+    return _spki;
+  }
+
   @override
-  Future<String> sign(String instance, String value) async =>
-      base64Encode(utf8.encode('test-signature'));
+  Future<String> sign(String alias, String value) async {
+    signedWith.add(alias);
+    return base64Encode(utf8.encode('test-signature'));
+  }
+
+  @override
+  Future<bool> exists(String alias) async => keys.contains(alias);
+  @override
+  Future<void> delete(String alias) async {
+    log.add('key.delete $alias');
+    keys.remove(alias);
+  }
+
+  @override
+  Future<List<String>> list() async => keys.toList();
+  @override
+  Future<DeviceKeyHardware?> hardware(String alias) async =>
+      DeviceKeyHardware.strongBox;
 }
 
 RouterProvider _router() => RouterProvider(
@@ -312,6 +384,8 @@ PiProvider _pi(
   _Clock? clock,
   int attempts = 10,
   bool bluetooth = false,
+  _TestDeviceKey? key,
+  Duration forgetTimeout = const Duration(seconds: 4),
 }) => PiProvider(
   router: _router(),
   autoStart: false,
@@ -322,7 +396,8 @@ PiProvider _pi(
   vpnVerifyInterval: Duration.zero,
   vpnVerifyAttempts: attempts,
   nonce: () => _nonce,
-  deviceKey: _TestDeviceKey(),
+  deviceKey: key ?? _TestDeviceKey(),
+  forgetServerTimeout: forgetTimeout,
 );
 
 class _Down implements PiTransport {
@@ -346,8 +421,12 @@ class _Down implements PiTransport {
   }) async => throw const PiApiException('down');
 }
 
-Future<PiProvider> _connected(PiTransport argon, {_Clock? clock}) async {
-  final pi = _pi(argon, clock: clock);
+Future<PiProvider> _connected(
+  PiTransport argon, {
+  _Clock? clock,
+  _TestDeviceKey? key,
+}) async {
+  final pi = _pi(argon, clock: clock, key: key);
   await pi.ready;
   await pi.discover();
   await pi.tick();
@@ -497,6 +576,7 @@ void main() {
       final pi = _pi(argon, attempts: 3);
       await pi.ready;
       await pi.discover();
+      await pumpEventQueue(); // background permission check settles
       expect(await pi.setVpnMode(false), false);
       expect(pi.vpnIssue, VpnCommandIssue.unconfirmed);
       expect(argon.vpnReads, 3);
@@ -509,15 +589,25 @@ void main() {
         VpnCommandIssue.tokenInvalid,
         'Phone authorization was rejected. Refresh permissions or pair again.',
       ),
-      (
-        403,
-        VpnCommandIssue.forbidden,
-        'VPN permission is not granted. Ask the Argon owner to allow this phone in Devices.',
-      ),
+      (403, VpnCommandIssue.forbidden, _notGranted),
       (409, VpnCommandIssue.busy, 'A change is already in progress.'),
+      (
+        409,
+        VpnCommandIssue.keyChanged,
+        'This phone\'s key no longer matches the one the Argon owner approved. '
+            'Ask the owner to allow VPN control again '
+            '(key fingerprint: 5a7925a3d20e3b54…)',
+      ),
+      (429, VpnCommandIssue.rateLimited, vpnRateLimitedMessage),
     ]) {
       test('$status is reported as ${issue.name}', () async {
         final argon = HubFake()..postStatus = status;
+        if (issue == VpnCommandIssue.keyChanged) {
+          argon.postReply = {
+            'ok': false,
+            'error': 'Phone key does not match the approved key.',
+          };
+        }
         final pi = await _connected(argon);
         expect(await pi.setVpnMode(false), false);
         expect(pi.vpnIssue, issue);
@@ -839,12 +929,9 @@ void main() {
         'Phone authorization was rejected. Refresh permissions or pair again.',
         'Refresh permission',
       ),
-      (
-        403,
-        'VPN permission is not granted. Ask the Argon owner to allow this phone in Devices.',
-        null,
-      ),
+      (403, _notGranted, 'Refresh permission'),
       (409, 'A change is already in progress.', null),
+      (429, vpnRateLimitedMessage, null),
       (502, 'WireGuard did not come up.', 'Argon restored the previous mode.'),
     ]) {
       testWidgets('response $status is shown', (tester) async {
@@ -876,5 +963,173 @@ void main() {
         pi.dispose();
       });
     }
+  });
+
+  group('Phone key', () {
+    final perPairing = 'argon.vpn.$_instance.$_device';
+    final legacy = 'argon.vpn.$_instance';
+
+    test('alias is derived from the paired device id', () {
+      expect(ArgonDeviceKey.aliasFor(_instance, _device), perPairing);
+      expect(ArgonDeviceKey.legacyAlias(_instance), legacy);
+      expect(
+        ArgonDeviceKey.aliasFor(
+          _instance,
+          'bbbbbbbb-bbbb-cccc-dddd-eeeeeeeeeeee',
+        ),
+        isNot(perPairing),
+      );
+      expect(
+        () => ArgonDeviceKey.aliasFor(_instance, '../x'),
+        throwsArgumentError,
+      );
+      expect(() => ArgonDeviceKey.aliasFor('A', _device), throwsArgumentError);
+    });
+
+    test('fingerprint is SHA-256 of the SPKI DER, formatted like Argon', () {
+      expect(ArgonDeviceKey.fingerprint(_spki), _spkiFingerprint);
+      expect(
+        ArgonDeviceKey.shortFingerprint(_spkiFingerprint),
+        '5a7925a3d20e3b54…',
+      );
+    });
+
+    test('a new pairing gets its own key; older keys are removed', () async {
+      final key = _TestDeviceKey(
+        existing: [
+          legacy,
+          'argon.vpn.$_instance.ffffffff-0000-0000-0000-000000000000',
+        ],
+      );
+      SharedPreferences.setMockInitialValues({'argon.v2.trustedId': _instance});
+      final argon = HubFake(kind: PiTransportKind.tailscale);
+      final pi = _pi(argon, key: key);
+      await pi.ready;
+      await pi.discover();
+      await pi.pair('123456');
+      await pumpEventQueue();
+      await pi.refreshVpnPermission();
+      expect(await pi.setVpnMode(false), true);
+      expect(key.signedWith.toSet(), {perPairing});
+      expect(key.keys, {perPairing});
+      expect(
+        pi.vpnKeyFingerprint,
+        _spkiFingerprint,
+        reason: 'computed locally',
+      );
+      expect(pi.vpnKeyHardwareLabel, 'Hardware key: StrongBox');
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('argon.v2.keyAlias'), perPairing);
+      expect(prefs.getString('argon.v2.deviceId'), _device);
+      pi.dispose();
+    });
+
+    test(
+      'an existing per-install key keeps working for the same pairing',
+      () async {
+        FlutterSecureStorage.setMockInitialValues({
+          PiProvider.companionKey: _companion,
+        });
+        final key = _TestDeviceKey(existing: [legacy]);
+        final argon = HubFake();
+        final pi = await _connected(argon, key: key);
+        expect(pi.vpnDeviceAllowed, true);
+        expect(await pi.setVpnMode(false), true);
+        expect(key.signedWith.toSet(), {legacy});
+        expect(key.log, isEmpty, reason: 'nothing deleted, no re-grant needed');
+        final prefs = await SharedPreferences.getInstance();
+        expect(prefs.getString('argon.v2.keyAlias'), legacy);
+        expect(prefs.getString('argon.v2.deviceId'), _device);
+        pi.dispose();
+      },
+    );
+
+    test(
+      'forget asks Argon to delete the key, then deletes it locally',
+      () async {
+        FlutterSecureStorage.setMockInitialValues({
+          PiProvider.companionKey: _companion,
+        });
+        SharedPreferences.setMockInitialValues({
+          'argon.v2.deviceId': _device,
+          'argon.v2.keyAlias': perPairing,
+        });
+        final log = <String>[];
+        final key = _TestDeviceKey(log: log, existing: [perPairing, legacy]);
+        final argon = HubFake(kind: PiTransportKind.tailscale)..log = log;
+        final pi = await _connected(argon, key: key);
+        expect(key.keys, {perPairing}, reason: 'orphaned key pruned at start');
+        log.clear();
+        await pi.forget();
+        expect(log.take(2), ['server.delete', 'key.delete $perPairing']);
+        expect(argon.keyDeleteTokens.single, 'Bearer $_companion');
+        expect(key.keys, isEmpty);
+        expect(pi.paired, false);
+        expect(pi.vpnKeyFingerprint, isNull);
+        final prefs = await SharedPreferences.getInstance();
+        expect(prefs.getString('argon.v2.keyAlias'), isNull);
+        pi.dispose();
+      },
+    );
+
+    test('forget never waits on an unresponsive Argon', () async {
+      FlutterSecureStorage.setMockInitialValues({
+        PiProvider.companionKey: _companion,
+      });
+      SharedPreferences.setMockInitialValues({
+        'argon.v2.deviceId': _device,
+        'argon.v2.keyAlias': perPairing,
+      });
+      final key = _TestDeviceKey(existing: [perPairing]);
+      final argon = HubFake(kind: PiTransportKind.tailscale)
+        ..keyDeleteGate = Completer<void>();
+      final pi = _pi(
+        argon,
+        key: key,
+        forgetTimeout: const Duration(milliseconds: 20),
+      );
+      await pi.ready;
+      await pi.discover();
+      await pi.forget();
+      expect(key.keys, isEmpty);
+      expect(pi.paired, false);
+      pi.dispose();
+    });
+
+    test(
+      'enrolling a key bound to another pairing (409) explains the fix',
+      () async {
+        FlutterSecureStorage.setMockInitialValues({
+          PiProvider.companionKey: _companion,
+        });
+        final argon = HubFake()..enrollStatus = 409;
+        final pi = await _connected(argon);
+        expect(pi.vpnDeviceAllowed, false);
+        expect(pi.vpnPermissionError, vpnKeyRegisteredElsewhereMessage);
+        expect(await pi.setVpnMode(false), false);
+        expect(pi.vpnIssue, VpnCommandIssue.keyChanged);
+        expect(pi.vpnMessage, vpnKeyRegisteredElsewhereMessage);
+        expect(argon.posts, isEmpty);
+        pi.dispose();
+      },
+    );
+
+    testWidgets('VPN off reads as direct internet; key status is shown', (
+      tester,
+    ) async {
+      _size(tester, const Size(904, 2316), 2.6);
+      FlutterSecureStorage.setMockInitialValues({
+        PiProvider.companionKey: _companion,
+      });
+      final pi = await _connectedInWidget(tester, HubFake(mode: 'off'));
+      await tester.pumpWidget(_app(pi, const NetworkHubScreen()));
+      await tester.pump();
+      expect(_text('Direct internet (VPN off)'), findsWidgets);
+      expect(_text('Phone key: 5a7925a3d20e3b54…'), findsOneWidget);
+      expect(_text('Hardware key: StrongBox'), findsOneWidget);
+      expect(find.byType(TextField), findsNothing, reason: 'no token entry');
+      await tester.pumpWidget(const SizedBox());
+      pi.dispose();
+    });
   });
 }

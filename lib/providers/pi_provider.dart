@@ -43,11 +43,22 @@ enum VpnCommandIssue {
   unreachable,
   unconfirmed,
   network,
+
+  /// The phone key differs from the one Argon enrolled or the owner approved.
+  keyChanged,
+  rateLimited,
 }
 
 /// Shown when the only route to Argon is the read-only Bluetooth bridge.
 const vpnNeedsIpRouteMessage =
-    'Connect over local network or Tailscale to change VPN mode';
+    'Connect over Tailscale or HTTPS to change VPN mode';
+
+const vpnRateLimitedMessage =
+    'Too many VPN requests. Wait a minute, then try again.';
+
+const vpnKeyRegisteredElsewhereMessage =
+    'This phone key is registered to a different pairing on Argon. Forget '
+    'Argon in Network Hub, pair again, then ask the owner to allow VPN control.';
 
 /// A Pi or link event shown in the notifications panel.
 class PiEvent {
@@ -93,6 +104,7 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
     this.vpnVerifyAttempts = 10,
     String Function()? nonce,
     ArgonDeviceKey? deviceKey,
+    this.forgetServerTimeout = const Duration(seconds: 4),
   }) : _deviceKey = deviceKey ?? ArgonDeviceKey(),
        _nonce = nonce ?? ArgonOperatorAuth.nonce,
        _storage = storage ?? const FlutterSecureStorage(),
@@ -137,7 +149,15 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
   final int vpnVerifyAttempts;
   final String Function() _nonce;
   final ArgonDeviceKey _deviceKey;
+
+  /// Upper bound on the best-effort server key removal during forget().
+  final Duration forgetServerTimeout;
   String? _deviceId;
+
+  /// Device id Argon assigned at pairing, and the Keystore alias of this
+  /// pairing's key. Neither is secret.
+  String? _pairedDeviceId;
+  String? _keyAlias;
   int _keyGeneration = -1;
   DateTime? _lastPermissionCheck;
   Future<void>? _permissionCheck;
@@ -156,6 +176,7 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
   String _token = '';
   bool vpnDeviceAllowed = false;
   String? vpnKeyFingerprint;
+  DeviceKeyHardware? vpnKeyHardware;
   PiTransport? _secureRoute;
   int _secureGeneration = -1;
   DateTime? _nextSecureAttempt;
@@ -203,6 +224,12 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
   String? vpnTarget;
   String? vpnMessage;
   String? vpnRecovery;
+
+  /// Why the last permission check could not complete, if it failed.
+  String? vpnPermissionError;
+
+  /// The VPN confirmation flow is open; further taps are ignored.
+  bool vpnPrompting = false;
 
   bool get paired => _token.isNotEmpty && !credentialRejected;
   bool get connected => state == PiLinkState.connected && transport != null;
@@ -333,6 +360,8 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
           prefs.getBool('argon.sharing.v1') ??
           true;
       bluetoothFallback = prefs.getBool('argon.v2.bluetoothFallback') ?? false;
+      _pairedDeviceId = prefs.getString('argon.v2.deviceId');
+      _keyAlias = prefs.getString('argon.v2.keyAlias');
       // A credential provisioned earlier (shared token or paired device) is
       // used automatically.
       _token = await _storage.read(key: companionKey) ?? '';
@@ -345,6 +374,7 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
       lastError = 'Saved Network Hub settings could not be read securely.';
     }
     _emit();
+    unawaited(_pruneKeys());
   }
 
   Uri? _tryEndpoint(String v) {
@@ -364,6 +394,8 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
     await put('argon.v2.endpoint', _lastEndpoint?.toString());
     await put('argon.v2.manual', manualEndpoint?.toString());
     await put('argon.v2.pairedName', pairedName);
+    await put('argon.v2.deviceId', _pairedDeviceId);
+    await put('argon.v2.keyAlias', _keyAlias);
     await prefs.setBool('argon.v2.sync', syncEnabled);
     await prefs.setBool('argon.v2.bluetoothFallback', bluetoothFallback);
   }
@@ -862,7 +894,18 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
     _invalidateConnection();
     _token = token;
     _deviceId = null;
+    final deviceId = r['deviceId'];
+    _pairedDeviceId = deviceId is String ? deviceId : null;
+    _keyAlias = null;
+    try {
+      if (_pairedDeviceId != null && trustedId != null) {
+        _keyAlias = ArgonDeviceKey.aliasFor(trustedId!, _pairedDeviceId!);
+      }
+    } on ArgumentError {
+      _pairedDeviceId = null;
+    }
     vpnKeyFingerprint = null;
+    vpnKeyHardware = null;
     _keyGeneration = -1;
     vpnDeviceAllowed = false;
     _lastPermissionCheck = null;
@@ -879,6 +922,7 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
     );
     _lastSync = null;
     _emit();
+    unawaited(_pruneKeys()); // keys of earlier pairings
     unawaited(tick());
   }
 
@@ -904,11 +948,28 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
     await reconnect();
   }
 
-  /// Removes this phone's credential and the trusted Argon identity.
+  /// Removes this phone's credential, its signing key and the trusted Argon
+  /// identity. Argon is first asked (best effort, bounded) to drop the
+  /// enrolled key and its grants; forgetting never waits on the network
+  /// longer than [forgetServerTimeout].
   Future<void> forget() async {
+    final token = _token;
+    final alias = _keyAlias;
+    if (token.isNotEmpty) await _deleteServerKey(token);
+    if (alias != null) {
+      try {
+        await _deviceKey.delete(alias);
+      } catch (_) {
+        // Pruned below or on the next start.
+      }
+    }
     _invalidateConnection();
     _deviceId = null;
+    _pairedDeviceId = null;
+    _keyAlias = null;
     vpnKeyFingerprint = null;
+    vpnKeyHardware = null;
+    vpnPermissionError = null;
     _keyGeneration = -1;
     vpnDeviceAllowed = false;
     await _storage.delete(key: companionKey);
@@ -921,8 +982,104 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
     sharedAt = null;
     syncError = null;
     await _savePrefs();
+    await _pruneKeys();
     await reconnect();
   }
+
+  Future<void> _deleteServerKey(String token) async {
+    Future<void> send() async {
+      final t = await _secureTransport();
+      if (t is! PiOperatorTransport) return;
+      await (t as PiOperatorTransport).sendRaw(
+        'DELETE',
+        '/api/v1/pairing/key',
+        body: const [],
+        headers: {'Authorization': 'Bearer $token'},
+        timeout: forgetServerTimeout,
+      );
+    }
+
+    try {
+      await send().timeout(forgetServerTimeout);
+    } catch (_) {
+      // Best effort: the owner can still revoke this phone on Argon.
+    }
+  }
+
+  /// Deletes Keystore keys that belong to no current pairing. While a legacy
+  /// pairing has not resolved its alias yet, nothing is deleted.
+  Future<void> _pruneKeys() async {
+    if (_token.isNotEmpty && _keyAlias == null) return;
+    try {
+      for (final alias in await _deviceKey.list()) {
+        if (alias.startsWith(ArgonDeviceKey.aliasPrefix) &&
+            (_token.isEmpty || alias != _keyAlias)) {
+          await _deviceKey.delete(alias);
+        }
+      }
+    } catch (_) {
+      // Keystore unavailable (or not Android): retried on the next start.
+    }
+  }
+
+  /// The Keystore alias for the current pairing. A pairing made before keys
+  /// were per pairing keeps its existing per-install key (and its grant).
+  Future<String> _currentKeyAlias() async {
+    final instance = trustedId!;
+    final current = _keyAlias;
+    if (current != null &&
+        current.startsWith('${ArgonDeviceKey.aliasPrefix}$instance')) {
+      return current;
+    }
+    final legacy = ArgonDeviceKey.legacyAlias(instance);
+    final id = _pairedDeviceId;
+    final alias = id == null || await _deviceKey.exists(legacy)
+        ? legacy
+        : ArgonDeviceKey.aliasFor(instance, id);
+    _keyAlias = alias;
+    await _savePrefs();
+    return alias;
+  }
+
+  /// Owner-facing guidance when this phone has no VPN grant.
+  String get vpnNotGrantedMessage {
+    final fp = vpnKeyFingerprint;
+    return 'Ask the Argon owner to allow VPN control for this phone in '
+        'Devices → Phone synchronization'
+        '${fp == null ? '.' : ' (key fingerprint: ${ArgonDeviceKey.shortFingerprint(fp)})'}';
+  }
+
+  String get vpnKeyChangedMessage {
+    final fp = vpnKeyFingerprint;
+    return 'This phone\'s key no longer matches the one the Argon owner '
+        'approved. Ask the owner to allow VPN control again'
+        '${fp == null ? '.' : ' (key fingerprint: ${ArgonDeviceKey.shortFingerprint(fp)})'}';
+  }
+
+  /// Non-secret label for where the signing key lives.
+  String? get vpnKeyHardwareLabel => switch (vpnKeyHardware) {
+    DeviceKeyHardware.strongBox => 'Hardware key: StrongBox',
+    DeviceKeyHardware.tee => 'Hardware key: Secure hardware (TEE)',
+    DeviceKeyHardware.software => 'Hardware key: Not hardware-backed',
+    null => null,
+  };
+
+  (VpnCommandIssue, String) _issueFor(PiApiException e) => switch (e) {
+    PiSecureRouteUnavailable() => (VpnCommandIssue.network, e.message),
+    PiApiException(status: 409) => (
+      VpnCommandIssue.keyChanged,
+      vpnKeyRegisteredElsewhereMessage,
+    ),
+    PiApiException(status: 429) => (
+      VpnCommandIssue.rateLimited,
+      vpnRateLimitedMessage,
+    ),
+    PiApiException(status: 401 || 403) => (
+      VpnCommandIssue.tokenInvalid,
+      'Phone authorization was rejected. Refresh permissions or pair again.',
+    ),
+    _ => (VpnCommandIssue.network, e.message),
+  };
 
   // ------------------------------------------------------------ VPN control
 
@@ -979,7 +1136,9 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
       throw const PiApiException('Pair this phone first.');
     }
     final generation = _generation;
-    final publicKey = await _deviceKey.publicKey(instance);
+    final alias = await _currentKeyAlias();
+    final publicKey = await _deviceKey.publicKey(alias);
+    final fingerprint = ArgonDeviceKey.fingerprint(publicKey);
     final r = await t.post('/api/v1/pairing/key', {
       'publicKey': publicKey,
     }, token: _token);
@@ -990,9 +1149,17 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
       throw const PiApiException('Phone key registration failed.');
     }
     _deviceId = r['id'] as String;
-    vpnKeyFingerprint = r['keyFingerprint'] is String
-        ? r['keyFingerprint'] as String
-        : null;
+    // Computed on the phone, so the owner can compare it with Argon's value.
+    vpnKeyFingerprint = fingerprint;
+    if (_pairedDeviceId == null) {
+      _pairedDeviceId = _deviceId;
+      await _savePrefs();
+    }
+    try {
+      vpnKeyHardware = await _deviceKey.hardware(alias);
+    } catch (_) {
+      vpnKeyHardware = null;
+    }
     _keyGeneration = generation;
   }
 
@@ -1040,6 +1207,7 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
       return;
     }
     final generation = _generation;
+    String? error;
     try {
       final t = await _secureTransport();
       await _enrollKey(t);
@@ -1054,7 +1222,7 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
           body: body,
           headers: {
             'Authorization': await _deviceKey.header(
-              instance: trustedId!,
+              alias: _keyAlias!,
               id: _deviceId!,
               method: 'POST',
               path: path,
@@ -1068,11 +1236,17 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
         allowed = proof.status == 200 && proof.data?['authorized'] == true;
       }
       _absorbVpn(r['vpn']);
+    } on PiApiException catch (e) {
+      if (e.status == null) _dropSecureRoute();
+      error = _issueFor(e).$2;
     } catch (_) {
       _dropSecureRoute();
+      error =
+          'Phone signing key is unavailable. Retry after unlocking the phone.';
     }
     if (generation != _generation || _disposed) return;
     vpnDeviceAllowed = allowed;
+    vpnPermissionError = error;
     _emit();
   }
 
@@ -1081,6 +1255,12 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
     vpnPhase = VpnCommandPhase.idle;
     vpnIssue = VpnCommandIssue.none;
     vpnMessage = vpnRecovery = vpnTarget = null;
+  }
+
+  void setVpnPrompting(bool value) {
+    if (vpnPrompting == value) return;
+    vpnPrompting = value;
+    _emit();
   }
 
   void dismissVpnResult() {
@@ -1149,7 +1329,7 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
         body: body,
         headers: {
           'Authorization': await _deviceKey.header(
-            instance: trustedId!,
+            alias: _keyAlias!,
             id: _deviceId!,
             method: 'POST',
             path: path,
@@ -1161,7 +1341,8 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
       );
     } on PiApiException catch (e) {
       if (e.status == null) _dropSecureRoute();
-      return _vpnFail(VpnCommandIssue.network, e.message);
+      final (issue, message) = _issueFor(e);
+      return _vpnFail(issue, message);
     } catch (_) {
       return _vpnFail(
         VpnCommandIssue.network,
@@ -1187,16 +1368,23 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
           'Phone authorization was rejected. Refresh permissions or pair again.',
         );
       case 403:
-        return _vpnFail(
-          VpnCommandIssue.forbidden,
-          'VPN permission is not granted. Ask the Argon owner to allow this phone in Devices.',
-        );
+        vpnDeviceAllowed = false;
+        return _vpnFail(VpnCommandIssue.forbidden, vpnNotGrantedMessage);
       case 409:
         _absorbVpn(data?['observed']);
+        final reason = '${data?['code'] ?? ''} ${data?['error'] ?? ''}'
+            .toLowerCase();
+        if (reason.contains('key')) {
+          vpnDeviceAllowed = false;
+          _keyGeneration = -1; // re-enroll on the next attempt
+          return _vpnFail(VpnCommandIssue.keyChanged, vpnKeyChangedMessage);
+        }
         return _vpnFail(
           VpnCommandIssue.busy,
           'A change is already in progress.',
         );
+      case 429:
+        return _vpnFail(VpnCommandIssue.rateLimited, vpnRateLimitedMessage);
       case 502:
         _absorbVpn(data?['observed']);
         return _vpnFail(
