@@ -195,6 +195,10 @@ class MqttService {
     }
     if (data == null) {
       debugPrint('MqttService: Non-object reply on ${message.topic} ignored');
+    } else if (data['ErrorCode'] != 0) {
+      // Sanitized: command path and router error code only, never the payload.
+      final path = message.topic.substring(message.topic.indexOf('/'));
+      debugPrint('MqttService: $path answered ErrorCode ${data['ErrorCode']}');
     }
     pending.complete(data);
   }

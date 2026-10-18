@@ -136,6 +136,12 @@ Stages 3 and 4 were carried out with the user. Final state and evidence are in
 - **Likely cause:** a supply dip from USB hot-plug (unproven).
 - **Suggestions (not applied):** a persistent journal and an official 5.1 V/3 A supply. No system changes were made.
 
+### 1.6.1+10: multi-phone and OnePlus investigation (2026-10-18)
+- **Two-phone cause A (fixed):** V2 wireless probes were repeated every 30 s whenever the V1 fallback timed out, and each one stalled the router's single command queue for all phones. The verdict is now recorded on no-reply and persisted, and the telemetry timeout is 8 s. On the OnePlus: 0 V2 probes and 0 timeouts after restart. See [MULTI_DEVICE_CONNECTION_REVIEW.md](MULTI_DEVICE_CONNECTION_REVIEW.md).
+- **Two-phone cause B (router limitation, open):** the router answers `ErrorCode 5` to every read from the OnePlus while it serves the Fold4. The selection rule still needs a controlled two-phone test.
+- **OnePlus taps:** with a debug-only pointer/route probe, every injected tap reached Flutter and navigated, including the full first-run discovery → Continue → Home path. The original failure couldn't be reproduced. A dump taken during it returned another app's overlay controls (an unproven lead). Fixed defects: landscape `NavigationRail` overflow (regression test at 800×330) and a location prompt on every discovery scan.
+- **Nokia and mesh:** [NOKIA_PROTOCOL_INVESTIGATION.md](NOKIA_PROTOCOL_INVESTIGATION.md) and [MESH_COMPATIBILITY.md](MESH_COMPATIBILITY.md). There is no shared mesh, and a bridged Nokia AP is the supported fallback. `Game Labs-2.4G` is a client-facing 2.4 GHz network on the TaoTronics radio.
+
 ## 7. Releases, branches and rollback
 
 - APKs in `artifacts/releases/` (git-ignored): `tt-router-1.3.1-*.apk`, `tt-router-1.4.0-argon.apk`, `tt-router-1.5.0-8.apk` (SHA-1 `60d81c27a1db4f9e48bab4efd828ecde32a82154`), `tt-router-1.6.0-9.apk` (SHA-1 `aa6dd9ab64912ce59a8dbe09db51160bbc45b177`; both signer SHA-256 `c5f7a819…00ab89`). Downgrade needs uninstall (loses pairing); prefer forward fixes.
