@@ -42,4 +42,4 @@ A dedicated pair needs appropriate placement and power; walls, distance and inte
 
 ## Nokia mesh and broadcast changes
 
-The owner has set the second unit aside and directed work to Beacon 1 only. No serial/model was supplied. Its association, backhaul medium/RSSI, internet and coverage remain unverified. The root is restored. Keep `NOKIA-E6C0` WPA2/AES until an explicit impact review/approval covers migration to `Nokia Wifi`. Distinct management names are separate from a shared SSID. No naming or SSID write was sent.
+The owner has set the second unit aside and directed work to Beacon 1 only. No serial/model was supplied. Its association, backhaul medium/RSSI, internet and coverage remain unverified. The root is restored. Following explicit owner approval, both primary bands now broadcast `Nokia Wifi` with the existing household password and WPA2/AES; authenticated read-back and Fold4 Wi-Fi-bound HTTPS passed on both Nokia radios. See [current validation](NOKIA_BRIDGE_VALIDATION.md). No management-name write was sent. Distinct management names remain separate from a shared SSID.

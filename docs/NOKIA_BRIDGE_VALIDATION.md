@@ -4,9 +4,23 @@ Verified 18 October 2026, Africa/Lusaka. This supersedes the earlier powered-off
 
 ## Current scope: Beacon 1 only
 
-The owner has directed work to Beacon 1 only. Second-Beacon activation, identity collection and enrollment are no longer pending actions for this phase. Keep the verified root Ethernet uplink and focus on its phone connectivity and configuration. A separate approval request covers changing the primary 2.4/5 GHz SSID to `Nokia Wifi`, retaining the existing household password and WPA2/AES; no broadcast write is authorized until approval arrives.
+The owner has directed work to Beacon 1 only. Second-Beacon activation, identity collection and enrollment are no longer pending actions for this phase. Keep the verified root Ethernet uplink and focus on its phone connectivity and configuration. The owner subsequently approved the Beacon 1 Wi-Fi change; it is now applied and verified as recorded below.
 
-## Latest: root cable-disconnection test
+## Latest: Beacon 1 household Wi-Fi applied and verified
+
+At approximately 19:35–19:37 local time on 18 October 2026, after explicit owner approval, both primary radios were changed from `NOKIA-E6C0` to **`Nokia Wifi`**, using the existing household password and **WPA2-PSK/AES**. The password was obtained from three agreeing existing household profiles using read-only access; it is excluded from logs and repository evidence. Argon configuration was not changed.
+
+- Used the exact save format and encrypted CSRF envelope from this firmware's vendor WebGUI code, with current fields preserved. The 2.4 GHz response timed out; a fresh authenticated read proved it had applied before the next write. The 5 GHz response returned success, followed by matching authenticated read-back. Both decrypted key values matched the household key without printing them.
+- Root remains `192.168.10.97`, serial `ALCLB4392160`, `AP_Bridge`, with Ethernet retained and `gwwanup=1`. Automatic channel selection, 20/80 MHz widths, power, WMM/MU-MIMO, WPS, routing domains, SSID isolation and other SSIDs' names/enable/security/broadcast settings were preserved.
+- Fold4 on Nokia **5 GHz BSSID `b4:63:6f:db:e6:cd`**, SSID `Nokia Wifi`, client signal −41 dBm: address `192.168.10.69`, DHCP/gateway `192.168.10.1`, matching root API and Wi-Fi-bound HTTPS **passed**.
+- Fold4 on Nokia **2.4 GHz BSSID `b4:63:6f:db:e6:c9`**, 2412 MHz, client signal −46 dBm: the same address/DHCP/gateway and Wi-Fi-bound HTTPS **passed**. Temporary phone BSSID selection was removed afterward.
+- TT Router 1.9.2+19 successfully reconnected to the saved root after the rename and displayed the new SSID and actual BSSID in diagnostics. No app rebuild was required for this configuration change.
+- Argon API remains healthy with online `eth0` and VPN off. TaoTronics routing/DHCP and Wi-Fi configuration were not written. A separate direct MQTT read was denied for its unpaired client (ErrorCode 5); it sent no configuration writes.
+- These are measurements at the phone's current location, not a whole-house coverage survey or seamless roaming test. The root Ethernet cable remains required. Work on Beacon 2 is outside the current scope.
+
+[Sanitized read-back and client evidence](evidence/nokia-beacon1-household-wifi-2026-10-18.json).
+
+## Earlier: root cable-disconnection test
 
 At approximately 19:15 local time, the uncabled root still accepted a Fold4 Wi-Fi association, but the phone obtained no IPv4 address and subsequently disconnected. The phone returned to TaoTronics; its internet there is not Nokia uplink evidence. Root API `192.168.10.97` timed out from the household LAN. A changed root address and root-to-gateway reachability are unknown. Argon remained healthy on Ethernet with VPN off. The owner reconnected the original root cable. Restoration is now verified: the same root replied at `192.168.10.97` in AP bridge mode; Fold4 regained `192.168.10.217`, TaoTronics DHCP/gateway `192.168.10.1`, and passed Wi-Fi-bound HTTPS on Nokia BSSID `b4:63:6f:db:e6:cd` (−42 dBm). Both the new diagnostics and the separate client-path verification passed. Root inventory still reports no enrolled extenders. See [failure evidence, recovery and dedicated bridge options](NOKIA_WIRELESS_UPLINK_OPTIONS.md). Earlier successful checks below describe the wired baseline.
 

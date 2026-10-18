@@ -1,0 +1,90 @@
+{
+  "date": "2026-10-18",
+  "timezone": "Africa/Lusaka",
+  "scope": "Beacon 1 only",
+  "ownerApproval": "Approve Beacon 1 Wi-Fi change",
+  "root": {
+    "serial": "ALCLB4392160",
+    "management": "192.168.10.97",
+    "mode": "AP_Bridge",
+    "firmware": "3FE49334IJJJ09",
+    "uplink": "Existing Ethernet to TaoTronics retained",
+    "gwwanup": 1
+  },
+  "radios": [
+    {
+      "band": "2.4GHz",
+      "ssid": "Nokia Wifi",
+      "bssid": "b4:63:6f:db:e6:c9",
+      "security": "WPA2-PSK/AES",
+      "householdPasswordReadbackMatches": true,
+      "channelSelection": "Auto",
+      "observedChannel": 1,
+      "widthMHz": 20
+    },
+    {
+      "band": "5GHz",
+      "ssid": "Nokia Wifi",
+      "bssid": "b4:63:6f:db:e6:cd",
+      "security": "WPA2-PSK/AES",
+      "householdPasswordReadbackMatches": true,
+      "channelSelection": "Auto",
+      "observedChannel": 112,
+      "widthMHz": 80
+    }
+  ],
+  "configurationPreserved": [
+    "AP bridge mode",
+    "SSID radio enable and broadcast flags",
+    "channel selection and widths",
+    "transmit power",
+    "WMM and MU-MIMO",
+    "WPS",
+    "SSID isolation and MAC control",
+    "routing domains",
+    "other SSID names/enable/security/broadcast"
+  ],
+  "writeObservation": "2.4GHz save acknowledgment timed out; subsequent fresh authenticated read-back confirmed success before any other write. 5GHz acknowledged result=0,reason=0 and read-back passed.",
+  "passwordSource": "Three matching existing household NetworkManager profiles, read-only; secret omitted.",
+  "client5GHz": {
+    "device": "Fold4",
+    "ssid": "Nokia Wifi",
+    "bssid": "b4:63:6f:db:e6:cd",
+    "ip": "192.168.10.69",
+    "dhcp": "192.168.10.1",
+    "gateway": "192.168.10.1",
+    "rssiDbm": -41,
+    "wifiBoundHttps": "Passed",
+    "rootApi": "Matching root replied"
+  },
+  "argon": {
+    "apiOk": true,
+    "upstream": "eth0",
+    "online": true,
+    "vpn": "off",
+    "configurationChanged": false
+  },
+  "limitations": [
+    "No second Beacon work",
+    "No whole-house walk test or inter-router roaming continuity test",
+    "Root Ethernet remains required"
+  ],
+  "client2_4GHz": {
+    "device": "Fold4",
+    "ssid": "Nokia Wifi",
+    "bssid": "b4:63:6f:db:e6:c9",
+    "frequencyMHz": 2412,
+    "ip": "192.168.10.69",
+    "dhcp": "192.168.10.1",
+    "gateway": "192.168.10.1",
+    "rssiDbm": -46,
+    "wifiBoundHttps": "Passed",
+    "rootApi": "Matching root replied"
+  },
+  "phoneAutomaticSelection": {
+    "configuredBssid": null,
+    "finalObservedBssid": "b4:63:6f:db:e6:cd",
+    "note": "Temporary BSSID pin removed; Android selected the Nokia 5 GHz radio."
+  },
+  "temporarySecretsRemoved": true
+}

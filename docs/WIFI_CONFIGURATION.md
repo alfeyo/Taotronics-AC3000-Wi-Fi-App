@@ -13,3 +13,7 @@ The Wi-Fi screen presents **Nokia Wifi — Main Household Network** while retain
 - Android scan observations over 120 seconds old are excluded. Precise-location denial is explained. SSID/MAC-prefix similarity alone does not prove a Nokia identity.
 
 Nokia radios are shown separately from TaoTronics configuration. Root Beacon 2 reports 2.4 and 5 GHz profiles under different WebGUI keys. SSID, radio enable, BSSID, channel, standard and security come from those responses. Nokia radio/guest/channel setters remain unavailable until their full field-preservation and read-back behavior is validated. Joining a household SSID with the Nokia radios is a separate, potentially disruptive change requiring owner approval.
+
+## Beacon 1 approved household migration — 18 October 2026
+
+Both primary Nokia bands now use `Nokia Wifi`, the existing household key and WPA2/AES, with authenticated read-back and Fold4 internet verification on each BSSID. This operator migration used the firmware's full encrypted WebGUI save format; no general Nokia radio setter was added to Flutter. Existing channels, widths, bridge mode and other profiles were preserved. [Evidence and limits](NOKIA_BRIDGE_VALIDATION.md).
