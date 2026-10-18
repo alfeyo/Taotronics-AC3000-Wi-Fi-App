@@ -106,3 +106,19 @@ Topology:
 8. **Rollback:** switch the Beacon's radios off, or unplug its Ethernet. Bridge mode can be reversed in the Nokia app (`brEnable=0`).
 
 The shared SSID gives the same network name and password everywhere. It **does not** create a cross-vendor mesh.
+
+## Wi-Fi security mode and DNS stability (2026-10-18, 16:30–16:45)
+
+**macOS "Weak Security".**
+- **Cause:** every TaoTronics BSS advertises a WPA1 element next to RSN (`[WPA-PSK-CCMP][WPA2-PSK-CCMP]`). Pairwise and group ciphers are CCMP/AES only, so TKIP is already off. The router is set to WPA2-PSK (`Encrypt=3`), yet the firmware still adds the WPA1 element, so re-saving WPA2 doesn't remove it.
+- **WPA3 test (approved), on index 2, which was switched off:** writing `Encrypt=5` read back as **`secured:false`, no password**. The router doesn't implement WPA2/WPA3 transition; it produced an open network. The test network was **not** switched on (no open broadcast), and the household networks were **not** changed. A post-test scan showed all household BSSIDs unchanged.
+- **App:** 1.7.2+15 removes the WPA3 option. The selector offers only WPA2 (AES) and WPA/WPA2 mixed, and the read-back confirmation now also checks `Encrypt`.
+- **Follow-up for the owner:** index 2 is currently named `Argon-WPA3-Test`, **off and unsecured**. Before ever switching it on, restore it in TT Router (Wi-Fi → Edit → Security WPA2 (AES) with a new password, and optionally rename it back to `TT-35A0`).
+- **Result:** with this firmware the macOS label can't be removed. Protection is AES-only WPA2. A device that supports WPA3 transition mode (for example Nokia Beacons in bridge mode) would be needed to lose the warning.
+
+**DNS (`ERR_NAME_NOT_RESOLVED`).**
+- **No interception found:** there's no blackhole, interception or duplicate DNS rule. The DNS guard only constrains Argon's own queries to the Surfshark resolvers.
+- **Root cause:** dnsmasq's Netflix `nftset` hook could fail during firewall contention and make dnsmasq exit. NetworkManager then failed `eth1-share` and briefly removed 192.168.50.1 (a household DNS/DHCP/routing blip).
+- **Fix (approved):** `20-netflix-nftset.conf` was moved to `/etc/argon/disabled/` (timestamped backup kept) and `eth1-share` was re-activated (0.49 s). dnsmasq restarted with no nftset entries.
+- **Verified:** 40/40 mixed and 60/60 Netflix lookups succeeded with no dnsmasq exit. Netflix classification continues via the daily prefix sets.
+- **Rollback:** move the file back, then `nmcli connection up eth1-share`. `argon-netflix-refresh` would regenerate the file if run again.
