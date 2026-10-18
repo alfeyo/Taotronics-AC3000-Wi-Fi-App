@@ -1,6 +1,6 @@
 # Nokia uplink recovery and dedicated wireless bridge options
 
-18 October 2026, Africa/Lusaka. Preserve Argon production interfaces, routing, VPN, DHCP, Tailscale and OnePlus backup. No hardware purchase or new network configuration was performed.
+18 October 2026, Africa/Lusaka. **Current owner scope: Beacon 1 only; second-Beacon enrollment is set aside.** Preserve Argon production interfaces, routing, VPN, DHCP, Tailscale and OnePlus backup. No hardware purchase or new network configuration was performed.
 
 ## Cable-disconnection observation
 
@@ -19,7 +19,7 @@ At approximately 19:15 local time, after the owner reported disconnecting the ro
 
 | Architecture | Assessment | Required hardware / status |
 |---|---|---|
-| A: TaoTronics LAN → Ethernet → Nokia root → wireless Nokia extender | Preferred. Wired root and phone internet were previously hardware-verified. Nokia-to-Nokia backhaul is supported, but this second unit is not enrolled/tested. | Root restored and phone internet reverified. Second unit activation, model and serial requested; enrollment remains pending. |
+| A: TaoTronics LAN → Ethernet → Nokia root → wireless Nokia extender | Preferred. Wired root and phone internet were previously hardware-verified. Nokia-to-Nokia backhaul is supported, but this second unit is not enrolled/tested. | Root restored and phone internet reverified. Second-unit enrollment is outside the current owner-directed scope. |
 | B: existing TaoTronics Wi-Fi → one client bridge → Nokia WAN | No specific device has been verified to meet transparent multi-MAC/DHCP requirements with TaoTronics. Do not deploy based on “client mode” marketing alone. | Owner confirms no spare bridge hardware. Additional hardware would be required; no compatible single-client model has been qualified. |
 | B variant: TaoTronics LAN → short cable → bridge A ⇄ bridge B → short cable → Nokia WAN | A dedicated matched bridge link avoids requiring TaoTronics to implement a compatible wireless bridge protocol. It replaces the long cable, not all Ethernet. Hardware and placement remain untested here. | Matching bridge pair, approved power supplies/injectors, two short cables and a viable radio path. Keep production Argon separate. |
 
@@ -42,4 +42,4 @@ A dedicated pair needs appropriate placement and power; walls, distance and inte
 
 ## Nokia mesh and broadcast changes
 
-The second unit was last reported not ready/powered near the root; no serial/model was supplied. Its association, backhaul medium/RSSI, internet and coverage remain unverified. The root is restored. Keep `NOKIA-E6C0` WPA2/AES until an explicit impact review/approval covers migration to `Nokia Wifi`. Distinct management names are separate from a shared SSID. No naming or SSID write was sent.
+The owner has set the second unit aside and directed work to Beacon 1 only. No serial/model was supplied. Its association, backhaul medium/RSSI, internet and coverage remain unverified. The root is restored. Keep `NOKIA-E6C0` WPA2/AES until an explicit impact review/approval covers migration to `Nokia Wifi`. Distinct management names are separate from a shared SSID. No naming or SSID write was sent.

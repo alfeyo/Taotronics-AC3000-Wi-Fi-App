@@ -2,6 +2,10 @@
 
 Verified 18 October 2026, Africa/Lusaka. This supersedes the earlier powered-off / official-app-only preparation notes.
 
+## Current scope: Beacon 1 only
+
+The owner has directed work to Beacon 1 only. Second-Beacon activation, identity collection and enrollment are no longer pending actions for this phase. Keep the verified root Ethernet uplink and focus on its phone connectivity and configuration. A separate approval request covers changing the primary 2.4/5 GHz SSID to `Nokia Wifi`, retaining the existing household password and WPA2/AES; no broadcast write is authorized until approval arrives.
+
 ## Latest: root cable-disconnection test
 
 At approximately 19:15 local time, the uncabled root still accepted a Fold4 Wi-Fi association, but the phone obtained no IPv4 address and subsequently disconnected. The phone returned to TaoTronics; its internet there is not Nokia uplink evidence. Root API `192.168.10.97` timed out from the household LAN. A changed root address and root-to-gateway reachability are unknown. Argon remained healthy on Ethernet with VPN off. The owner reconnected the original root cable. Restoration is now verified: the same root replied at `192.168.10.97` in AP bridge mode; Fold4 regained `192.168.10.217`, TaoTronics DHCP/gateway `192.168.10.1`, and passed Wi-Fi-bound HTTPS on Nokia BSSID `b4:63:6f:db:e6:cd` (−42 dBm). Both the new diagnostics and the separate client-path verification passed. Root inventory still reports no enrolled extenders. See [failure evidence, recovery and dedicated bridge options](NOKIA_WIRELESS_UPLINK_OPTIONS.md). Earlier successful checks below describe the wired baseline.
