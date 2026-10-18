@@ -152,6 +152,39 @@ void main() {
   );
   setUp(() => FlutterSecureStorage.setMockInitialValues({}));
   test(
+    'wired-root finding is firmware scoped and stale WAN is not online',
+    () async {
+      final t = Transport()..web = true;
+      final n = NokiaProvider(
+        service: NokiaService(transport: t),
+        scanner: Scanner(),
+      );
+      addTearDown(n.dispose);
+      await n.service.select(Uri.parse('http://192.168.10.97'));
+      n.device = {
+        'ModelName': 'Nokia WiFi Beacon 2',
+        'SoftwareVersion': '3FE49334IJJJ09',
+      };
+      n.wan = {'gwwanup': 1};
+      expect(n.requiresWiredRoot, isTrue);
+      expect(n.uplinkHealth, 'Unknown · refresh Nokia');
+      n.observedAt = DateTime.now();
+      expect(n.uplinkHealth, 'Nokia reports uplink online');
+      n.wan = {'gwwanup': 0};
+      expect(n.uplinkHealth, 'Nokia reports uplink offline');
+      n.wan = {};
+      expect(n.uplinkHealth, 'Not reported');
+      n.wan = {'gwwanup': 1};
+      n.observedAt = DateTime.now().subtract(const Duration(seconds: 91));
+      expect(n.uplinkHealth, 'Unknown · refresh Nokia');
+      n.observedAt = DateTime.now();
+      n.error = 'Root unreachable';
+      expect(n.uplinkHealth, 'Unknown · refresh Nokia');
+      n.device!['SoftwareVersion'] = 'unreviewed firmware';
+      expect(n.requiresWiredRoot, isFalse);
+    },
+  );
+  test(
     'mesh enrollment requires bridge, capacity, distinct serial and CSRF',
     () async {
       final t = Transport()..web = true;

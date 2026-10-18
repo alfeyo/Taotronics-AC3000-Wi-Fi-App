@@ -7,11 +7,11 @@ Determination date: 2026-10-18. Inputs: TaoTronics protocol handoff and live rou
 
 ## Determination
 
-**There is no genuine shared mesh, and none can be built with supported mechanisms.** TaoTronics stays the primary standalone mesh. If coverage is needed, the Nokia Beacon can be added as an **independently managed bridged access point** on the TaoTronics LAN. That is not a unified cross-vendor mesh.
+**No supported shared Nokia–TaoTronics mesh or wireless root uplink has been established for the installed firmware. Requires wired root uplink.** Retain the verified Ethernet-fed Nokia AP bridge and use supported Nokia-to-Nokia wireless backhaul for the second unit after enrollment. Wi-Fi client/station, universal repeater, WISP, interoperable WDS and a compatible TaoTronics EasyMesh controller were not exposed by the reviewed interfaces. See [authenticated capability evidence and recovery](NOKIA_BRIDGE_VALIDATION.md). No experimental uplink configuration was sent.
 
 | Capability | TaoTronics TT-ND001 | Nokia Beacon 2 (identified from the device) | Shared? |
 |---|---|---|---|
-| EasyMesh controller | No evidence. Local MQTT protocol has no controller/agent, onboarding or 1905.1 commands; no vendor claim found | Nokia documents EasyMesh for Beacon 1.1. The Nokia app contains **no** EasyMesh/1905.1/Multi-AP strings, so it manages mesh through Nokia's own APIs | **No** (TaoTronics side unsupported) |
+| EasyMesh controller | No evidence. Local MQTT protocol has no controller/agent, onboarding or 1905.1 commands; no vendor claim found | [Beacon 2 guide](https://www.nokia.com/asset/i/215103/) documents EasyMesh; local management is through Nokia APIs. This does not establish cross-vendor role interoperability | **Not established** (TaoTronics side unsupported) |
 | EasyMesh agent | No evidence | Documented by Nokia (role details not verified) | No |
 | Proprietary mesh enrollment | TaoTronics app/BLE flow (`TTBT*` setup, `SetMeshInitByBt`), TaoTronics nodes only | `whw_zerotouchonb_app.cgi act=AddBeacon` by **Nokia serial number** | No: each enrolls only its own vendor's nodes |
 | Wireless backhaul | Hidden BSS `80:C5:48:50:35:AC` on 5 GHz ch 149 (inferred backhaul; 1 node, so unused) | Nokia mesh links (`MeshLinks` events) | No |

@@ -1,0 +1,145 @@
+{
+  "/device_status_web_app.cgi": {
+    "ModelName": "Nokia WiFi Beacon 2",
+    "SerialNumber": "ALCLB4392160",
+    "HardwareVersion": "3FE49294BAAA",
+    "SoftwareVersion": "3FE49334IJJJ09",
+    "UpTime": 1524
+  },
+  "/main_web_app.cgi": {
+    "schema": {
+      "gwmodel": "str",
+      "g_operatorId": "str",
+      "g_curr_weblang": "str",
+      "g_en_weblang_dropdown": "int",
+      "can_end_user_config_wifi_port_mode": "int",
+      "g_has_10g_port": "int",
+      "g_has_xlink_sync_switch": "int",
+      "g_has_bridge_wan_set": "int",
+      "g_has_connection_mode": "int",
+      "g_has_L2isolation_meshsupport": "int",
+      "HAS_WIFI_PORT_MODE": "int",
+      "HAS_PORT_MODE": "int",
+      "HAS_DONGLE_SUPPORT": "int",
+      "HIDE_PORT_MODE": "int",
+      "HAS_VOICE_CFG_SUPPORT": "int",
+      "IS_VEIP_MODE": "int",
+      "IS_AP_BRIDGE_MODE": "int",
+      "IS_SUPPORT_TR181": "int"
+    },
+    "capabilities": {
+      "gwmodel": "Beacon 2",
+      "can_end_user_config_wifi_port_mode": 0,
+      "g_has_bridge_wan_set": 0,
+      "g_has_connection_mode": 1,
+      "g_has_L2isolation_meshsupport": 0,
+      "HAS_WIFI_PORT_MODE": 0,
+      "HAS_PORT_MODE": 0,
+      "HIDE_PORT_MODE": 0,
+      "IS_VEIP_MODE": 0,
+      "IS_AP_BRIDGE_MODE": 1
+    }
+  },
+  "/whw_beacon_mode_app_status_web_app.cgi?getWorkMode": {
+    "result": 0,
+    "reason": 0,
+    "workMode": "AP_Bridge"
+  },
+  "/mesh_status_web_app.cgi": {
+    "beacon_detail": [],
+    "is_rgwSerialNo": [
+      {
+        "SerialNumber": "ALCLB4392160"
+      }
+    ],
+    "beaconEntries": [
+      {
+        "BeaconNumberofEntries": 0,
+        "MaxNumberOfBeacons": 6
+      }
+    ],
+    "root_info": [
+      {
+        "RootMacAddress": "b4:63:6f:db:e6:c0",
+        "OnboardStatus": "ROOT",
+        "HostName": "Bridge"
+      }
+    ]
+  },
+  "/wan_config_glb_status_web_app.cgi": {
+    "schema": {
+      "wan_conns": [
+        "wan_num",
+        "_oid",
+        "WANCommonInterfaceConfig",
+        "WANIPConnectionNumberOfEntries",
+        "WANPPPConnectionNumberOfEntries",
+        "xponLinkCfg",
+        "ipConns",
+        "pppConns"
+      ],
+      "lan_ether": [
+        "X_CT_COM_VLAN"
+      ],
+      "ipv4_route": [
+        "_oid",
+        "X_ASB_COM_PhyType",
+        "isTr069Domain"
+      ],
+      "wlan_route": [
+        "_oid",
+        "SSID",
+        "X_ASB_COM_routeMode"
+      ],
+      "SSID": [
+        "SSID_num",
+        "SSID"
+      ],
+      "link_type": "str",
+      "community_wifi": [
+        "SSIDInterface",
+        "SSID5Interface",
+        "EAPSSIDInterface",
+        "EAPSSID5Interface"
+      ],
+      "is_access_type_visible_enable": "int",
+      "isgeneric": "int",
+      "is_gfast": "int",
+      "is_btgf": "int",
+      "is_f240": "int",
+      "has_wifi": "int",
+      "voipCfgtypeObj": "str",
+      "keep_alive_support": "str",
+      "iptv_support": "str",
+      "ipv6_cfg": [
+        "Mode"
+      ],
+      "MeshandGuestList": "list",
+      "voip_support": "str",
+      "support_DHCPv6_PD_NA": "str",
+      "mesh_enable": [
+        "Enable"
+      ],
+      "sourceinterface": "str",
+      "pppoe_account_support": "str",
+      "create_newwan_support": "str"
+    },
+    "capabilities": {}
+  },
+  "/wan_internet_status_web_app.cgi": {
+    "gwwanup": 1,
+    "ExternalIPAddress": ""
+  },
+  "/lan_status_web_app.cgi?lan": {
+    "lan_ether": [
+      {
+        "Enable": 1,
+        "Status": "NoLink",
+        "MACAddress": "b4:63:6f:db:e6:c0",
+        "MaxBitRate": "Auto",
+        "X_ALU_COM_CurMaxBitRate": "Auto",
+        "X_ASB_COM_IfName": ""
+      }
+    ]
+  }
+}

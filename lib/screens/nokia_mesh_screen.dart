@@ -210,7 +210,7 @@ class _NokiaMeshScreenState extends State<NokiaMeshScreen>
                                         ? 'AP bridge read-back verified'
                                         : id != null
                                         ? 'Identity verified · ${logged ? 'owner session active' : 'owner login needed'}'
-                                        : 'Root connected by Ethernet · awaiting local identity',
+                                        : 'Wired root setup · awaiting local identity',
                                     style: const TextStyle(
                                       color: Color(0xffc0c3cc),
                                     ),
@@ -230,7 +230,7 @@ class _NokiaMeshScreenState extends State<NokiaMeshScreen>
                         ),
                         const SizedBox(height: 6),
                         const Text(
-                          'Ethernet uplinks • Argon measures household traffic\nTaoTronics LAN → Nokia root → Nokia extender (pending)',
+                          'Planned connections: TaoTronics LAN → Ethernet → Nokia root\nNokia root → Wi-Fi or Ethernet → Nokia extender\nArgon measures household traffic',
                           style: TextStyle(
                             color: Color(0xffc0c3cc),
                             height: 1.7,
@@ -299,6 +299,53 @@ class _NokiaMeshScreenState extends State<NokiaMeshScreen>
                       ),
                     ),
                   const SizedBox(height: Space.lg),
+                  if (id != null) ...[
+                    PanelCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            n.requiresWiredRoot
+                                ? 'Requires wired root uplink'
+                                : 'Root uplink capability not verified',
+                            style: theme.textTheme.titleMedium,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            n.requiresWiredRoot
+                                ? 'This Beacon 2 firmware has no supported wireless uplink to TaoTronics. Keep TaoTronics LAN connected to the root WAN port. Nokia-to-Nokia wireless backhaul is a separate connection.'
+                                : 'Keep the working root Ethernet connection. Wireless uplink to TaoTronics has not been established for this firmware.',
+                          ),
+                          const SizedBox(height: 12),
+                          KvRow(
+                            'Root connection',
+                            'Ethernet required for this setup',
+                          ),
+                          KvRow(
+                            'Live link type',
+                            'Not reported by the local API',
+                          ),
+                          KvRow('Uplink health', n.uplinkHealth),
+                          const KvRow(
+                            'Nokia extender methods',
+                            'Wi-Fi or Ethernet; enrollment required',
+                          ),
+                          KvRow(
+                            'Client internet / DHCP',
+                            n.clientVerified
+                                ? 'Verified on this phone'
+                                : 'Not currently verified',
+                            last: true,
+                          ),
+                          const SizedBox(height: 8),
+                          const Text(
+                            'Recovery: retain the root Ethernet cable. Rejoin its Wi-Fi and refresh the saved root; its management address may change.',
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: Space.lg),
+                  ],
                   Text('Root setup', style: theme.textTheme.titleLarge),
                   const SizedBox(height: 8),
                   _Step(
@@ -480,7 +527,7 @@ class _NokiaMeshScreenState extends State<NokiaMeshScreen>
                     number: 7,
                     title: 'Add the second Beacon',
                     detail:
-                        'Keep the second unit outside provisioning until root bridge and client internet checks pass. Activation requires your approval.',
+                        'After root bridge and client checks pass, power the second Beacon near the root, leave its Ethernet disconnected for wireless enrollment, and enter its printed serial.',
                     done: false,
                   ),
                   if (n.clientVerified && n.service.usesWeb)
@@ -533,6 +580,11 @@ class _NokiaMeshScreenState extends State<NokiaMeshScreen>
                     Text(
                       'Nokia mesh inventory',
                       style: theme.textTheme.titleLarge,
+                    ),
+                    Text(
+                      n.current
+                          ? 'Current root report'
+                          : 'Stale inventory · refresh Nokia before assessing backhaul',
                     ),
                     if (n.extenders?['beacon_detail'] is List &&
                         n.meshNodes.isEmpty)
@@ -654,11 +706,7 @@ class _NokiaMeshScreenState extends State<NokiaMeshScreen>
                           ),
                           KvRow(
                             'Internet',
-                            n.wan?['gwwanup'] == 1
-                                ? 'Nokia reports uplink online; client check separate'
-                                : n.wan?['gwwanup'] == 0
-                                ? 'Nokia reports uplink offline'
-                                : 'Not reported',
+                            '${n.uplinkHealth}; client check separate',
                             last: true,
                           ),
                         ],

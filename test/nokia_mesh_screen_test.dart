@@ -29,7 +29,7 @@ void main() {
         n.observedAt = DateTime.now();
         n.device = {
           'ModelName': 'Nokia WiFi Beacon 2',
-          'SoftwareVersion': 'test',
+          'SoftwareVersion': '3FE49334IJJJ09',
           'UpTime': 12,
         };
         n.extenders = {'beacon_detail': []};
@@ -58,6 +58,8 @@ void main() {
           MaterialApp(home: NokiaMeshScreen(controller: n)),
         );
         expect(find.text('AP bridge read-back verified'), findsOneWidget);
+        expect(find.text('Requires wired root uplink'), findsOneWidget);
+        expect(find.text('Not reported by the local API'), findsOneWidget);
         expect(tester.takeException(), isNull);
         for (var i = 0; i < 10; i++) {
           await tester.drag(find.byType(ListView).first, const Offset(0, -500));

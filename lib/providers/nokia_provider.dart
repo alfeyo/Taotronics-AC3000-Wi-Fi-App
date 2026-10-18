@@ -37,6 +37,19 @@ class NokiaProvider extends ChangeNotifier {
       error == null;
   bool get bridgeVerified => current && mode == 'AP_BRIDGE';
   NokiaIdentity? get identity => service.identity;
+  // Capability review is specific to this observed firmware, not all Beacons.
+  // Freshness governs live status independently of the recorded limitation.
+  bool get requiresWiredRoot =>
+      service.usesWeb &&
+      device?['ModelName'] == 'Nokia WiFi Beacon 2' &&
+      device?['SoftwareVersion'] == '3FE49334IJJJ09';
+  String get uplinkHealth => !current
+      ? 'Unknown · refresh Nokia'
+      : wan?['gwwanup'] == 1
+      ? 'Nokia reports uplink online'
+      : wan?['gwwanup'] == 0
+      ? 'Nokia reports uplink offline'
+      : 'Not reported';
   static const storageKey = 'nokia.local.owner.v1';
   void _emit() {
     if (!_disposed) notifyListeners();

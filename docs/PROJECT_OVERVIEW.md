@@ -2,7 +2,9 @@
 
 > Current update, 18 October 2026: TT Router provisions the root **Nokia WiFi Beacon 2** directly through its owner-authorized local WebGUI API. Firmware `3FE49334IJJJ09`, root `ALCLB4392160`, MAC `b4:63:6f:db:e6:c0`. The root now reports **AP_Bridge** at `192.168.10.97`; Fold4 received a TaoTronics DHCP lease/gateway and reached HTTPS internet through its Nokia radio. Factory SSID `NOKIA-E6C0` is retained. The second Beacon awaits owner activation/serial; no mesh-backhaul success is claimed. See [current bridge evidence](NOKIA_BRIDGE_VALIDATION.md). Earlier snapshots below are historical and are superseded where they conflict with this update.
 
-## Current mobile release: 1.9.0+17
+## Current mobile release: 1.9.1+18
+
+The root wireless-uplink investigation is closed: installed Beacon 2 firmware `3FE49334IJJJ09` exposes no supported third-party wireless uplink to TaoTronics. Keep **TaoTronics LAN → Ethernet → Nokia root WAN**, with wireless Nokia-to-Nokia backhaul preferred for the second unit. TT Router now shows **Requires wired root uplink**, distinguishes root and extender connection methods, and marks expired WAN/mesh observations as unknown/stale. The local API does not identify the root's current link medium, so the UI does not infer Ethernet from AP mode or WAN-up status. See [capability evidence](NOKIA_BRIDGE_VALIDATION.md). The second Beacon is not enrolled; model, serial and physical activation remain required.
 
 Direct owner-authorized Nokia provisioning, root bridge read-back, phone-bound DHCP/internet checks, secure saved identity with RSA-key pinning, client/radio/mesh inventory, guarded local extender enrollment/removal, and the advanced TaoTronics Wi-Fi interface are implemented. The root and Fold4 client path are verified; extender activation/serial and OnePlus hardware testing remain pending. Nokia radio/guest/channel writes are intentionally unavailable until the complete payload and read-back are validated.
 
