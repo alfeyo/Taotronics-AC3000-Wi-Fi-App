@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tt_router_flutter/models/mesh_entity.dart';
+import 'package:tt_router_flutter/models/wireless_network.dart';
 import 'package:tt_router_flutter/providers/router_provider.dart';
 import 'package:tt_router_flutter/screens/wifi_screen.dart';
 import 'package:tt_router_flutter/services/auth_pairing_service.dart';
@@ -133,4 +134,54 @@ void main() {
 
     await tester.runAsync(() async => provider.dispose());
   });
+
+  testWidgets(
+    'security selector writes only Encrypt and never offers weak modes',
+    (tester) async {
+      final network = WirelessNetwork.fromJson({
+        'Ssid': 'TT-35A0',
+        'Encrypt': 3,
+        'Password': 'p' * 10,
+        'Vlanid': 0,
+        'VlanEnable': 0,
+        'SsidIsolate': 0,
+        'StaIsolate': 0,
+        'Index': 2,
+        'Create': 0,
+      });
+      WirelessNetwork? result;
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.dark(),
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: TextButton(
+                onPressed: () async => result = await showModalBottomSheet(
+                  context: context,
+                  isScrollControlled: true,
+                  builder: (_) => WifiEditSheet(network: network),
+                ),
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('WPA2 (AES)'));
+      await tester.pumpAndSettle();
+      expect(find.text('WEP'), findsNothing);
+      expect(find.text('None'), findsNothing);
+      await tester.tap(find.text('WPA3 (router option)').last);
+      await tester.pumpAndSettle();
+      expect(find.textContaining('may not support WPA3'), findsOneWidget);
+      await tester.tap(find.text('Continue'));
+      await tester.pumpAndSettle();
+      final payload = result!.toRouterPayload();
+      expect(payload['Encrypt'], 5);
+      expect(payload['Ssid'], 'TT-35A0');
+      expect(payload['Password'], 'p' * 10);
+    },
+  );
 }

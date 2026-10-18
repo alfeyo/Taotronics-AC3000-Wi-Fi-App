@@ -611,6 +611,17 @@ class _WifiEditSheetState extends State<WifiEditSheet> {
   );
   bool _showPassword = false;
 
+  /// Router `Encrypt` modes offered for a secured network. Weaker modes
+  /// (none, WEP, WPA-only) are never offered. 5 is the router's "WPA3"
+  /// option; whether it is SAE-only or WPA2/WPA3 transition depends on the
+  /// firmware, so the beacon must be checked after applying it.
+  static const securityModes = <int, String>{
+    3: 'WPA2 (AES)',
+    4: 'WPA/WPA2 mixed',
+    5: 'WPA3 (router option)',
+  };
+  late int _encrypt = widget.network.encrypt;
+
   @override
   void dispose() {
     _ssid.dispose();
@@ -624,6 +635,7 @@ class _WifiEditSheetState extends State<WifiEditSheet> {
     final updated = n.copyWith(
       ssid: _ssid.text.trim(),
       password: _password.text,
+      encrypt: securityModes.containsKey(_encrypt) ? _encrypt : null,
     );
     Navigator.pop(context, updated.hasEdits ? updated : null);
   }
@@ -701,6 +713,32 @@ class _WifiEditSheetState extends State<WifiEditSheet> {
                 ),
                 validator: (v) => Validators.wifiPassword(v, secured: secured),
               ),
+              if (secured && securityModes.containsKey(n.encrypt)) ...[
+                const SizedBox(height: Space.sm),
+                DropdownButtonFormField<int>(
+                  initialValue: _encrypt,
+                  decoration: const InputDecoration(
+                    labelText: 'Security',
+                    prefixIcon: Icon(Icons.shield_outlined),
+                  ),
+                  items: [
+                    for (final e in securityModes.entries)
+                      DropdownMenuItem(value: e.key, child: Text(e.value)),
+                  ],
+                  onChanged: (v) => setState(() => _encrypt = v ?? _encrypt),
+                ),
+                if (_encrypt == 5 && n.encrypt != 5)
+                  Padding(
+                    padding: const EdgeInsets.only(top: Space.xs),
+                    child: Text(
+                      'Older or smart-home devices may not support WPA3. Test '
+                      'on an unused network first.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.error,
+                      ),
+                    ),
+                  ),
+              ],
               const SizedBox(height: Space.lg),
               InfoBanner(
                 tone: Tone.warning,

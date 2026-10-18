@@ -1214,6 +1214,8 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
     final keys = [
       'Ssid',
       'Password',
+      // A security change is confirmed only when the router stores it.
+      'Encrypt',
       'Create',
       if (payload.any((n) => n.containsKey('Disable'))) 'Disable',
     ];
