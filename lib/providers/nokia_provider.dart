@@ -50,6 +50,88 @@ class NokiaProvider extends ChangeNotifier {
       : wan?['gwwanup'] == 0
       ? 'Nokia reports uplink offline'
       : 'Not reported';
+  DateTime? diagnosticAt;
+  Map<String, dynamic> diagnosticPhone = {};
+  String diagnosticRoot = 'Not checked', diagnosticInternet = 'Not checked';
+  bool diagnosticNokiaRadio = false, diagnosticStable = false;
+  bool get diagnosticsCurrent =>
+      diagnosticAt != null &&
+      DateTime.now().difference(diagnosticAt!) < const Duration(seconds: 90);
+  String? get connectionWarning {
+    if (current && wan?['gwwanup'] == 0) {
+      return 'Nokia reports its uplink offline. Restore the TaoTronics LAN → Nokia WAN Ethernet cable. No wireless alternative has been verified.';
+    }
+    if (diagnosticsCurrent &&
+        (diagnosticRoot == 'Unreachable at saved address' ||
+            diagnosticNokiaRadio &&
+                (diagnosticPhone['ip'] == null ||
+                    diagnosticInternet != 'Passed'))) {
+      return 'Nokia uplink is not verified. A broadcasting SSID does not prove internet access. Restore the root Ethernet cable, then reconnect and check again. An unreachable address may also have changed.';
+    }
+    return null;
+  }
+
+  /// Independent, read-only diagnostics remain usable when owner management
+  /// and DHCP fail. Internet is always bound to Wi-Fi by the native transport.
+  Future<void> diagnoseConnection() => run(() async {
+    diagnosticAt = null;
+    clientVerifiedAt = null;
+    diagnosticPhone = {};
+    diagnosticRoot = diagnosticInternet = 'Not checked';
+    diagnosticNokiaRadio = diagnosticStable = false;
+    final before = await service.transport.context();
+    diagnosticPhone = before;
+    final address =
+        identity?.address ??
+        (savedAddress == null ? null : Uri.tryParse(savedAddress!));
+    final expectedMac = identity?.mac ?? savedMac;
+    final expectedSerial = identity?.serial ?? savedSerial;
+    if (address != null) {
+      try {
+        final found = await service.identify(address);
+        diagnosticRoot =
+            found.mac == expectedMac && found.serial == expectedSerial
+            ? 'Matching root replied'
+            : 'Different or untrusted identity';
+      } catch (_) {
+        diagnosticRoot = 'Unreachable at saved address';
+      }
+    }
+    Map<String, dynamic>? internet;
+    if (before['ip'] == null || before['network'] == null) {
+      diagnosticInternet = 'No Wi-Fi address / network';
+    } else {
+      try {
+        internet = await service.transport.internet();
+        diagnosticInternet = internet['ok'] == true ? 'Passed' : 'Failed';
+      } catch (_) {
+        diagnosticInternet = 'Failed';
+      }
+    }
+    final after = await service.transport.context();
+    diagnosticStable = [
+      'network',
+      'bssid',
+      'ip',
+      'gateway',
+      'dhcpServer',
+    ].every((key) => before[key] == after[key]);
+    if (!diagnosticStable ||
+        internet != null && internet['network'] != before['network']) {
+      diagnosticInternet = 'Network changed during check';
+      diagnosticStable = false;
+    }
+    diagnosticNokiaRadio =
+        diagnosticStable &&
+        wirelessProfiles.any(
+          (r) =>
+              r['Enable'] == 1 &&
+              r['BSSID'] is String &&
+              (r['BSSID'] as String).toLowerCase() ==
+                  '${before['bssid']}'.toLowerCase(),
+        );
+    diagnosticAt = DateTime.now();
+  });
   static const storageKey = 'nokia.local.owner.v1';
   void _emit() {
     if (!_disposed) notifyListeners();

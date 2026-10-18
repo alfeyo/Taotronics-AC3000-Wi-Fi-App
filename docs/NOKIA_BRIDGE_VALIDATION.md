@@ -2,7 +2,21 @@
 
 Verified 18 October 2026, Africa/Lusaka. This supersedes the earlier powered-off / official-app-only preparation notes.
 
-## Follow-up: first-phone connection verified
+## Latest: root cable-disconnection test
+
+At approximately 19:15 local time, the uncabled root still accepted a Fold4 Wi-Fi association, but the phone obtained no IPv4 address and subsequently disconnected. The phone returned to TaoTronics; its internet there is not Nokia uplink evidence. Root API `192.168.10.97` timed out from the household LAN. A changed root address and root-to-gateway reachability are unknown. Argon remained healthy on Ethernet with VPN off. The owner reconnected the original root cable. Restoration is now verified: the same root replied at `192.168.10.97` in AP bridge mode; Fold4 regained `192.168.10.217`, TaoTronics DHCP/gateway `192.168.10.1`, and passed Wi-Fi-bound HTTPS on Nokia BSSID `b4:63:6f:db:e6:cd` (−42 dBm). Both the new diagnostics and the separate client-path verification passed. Root inventory still reports no enrolled extenders. See [failure evidence, recovery and dedicated bridge options](NOKIA_WIRELESS_UPLINK_OPTIONS.md). Earlier successful checks below describe the wired baseline.
+
+TT Router 1.9.2+19 adds a manual connection-diagnostics panel available without an owner session: actual phone SSID/BSSID, client RSSI (explicitly not backhaul RSSI), IP, DHCP, gateway, root identity reachability and Wi-Fi-bound HTTPS. A different Wi-Fi radio cannot verify Nokia internet merely by sharing its SSID. A network change during checking invalidates the result. Failed root reachability or reported WAN-down status prompts restoration of the known wired path; address uncertainty remains explicit. Observations expire after 90 seconds. No unsupported wireless controls were added.
+
+### TT Router 1.9.2+19 validation
+
+- All **221 Flutter tests passed**; `flutter analyze --no-pub` reported no issues. Release APK built, installed in place, and Android confirmed version 1.9.2 / build 19. Existing app data and secure credentials were preserved.
+- The physical Fold4 displayed the diagnostic values above, then separately verified the Nokia client path. The root listed the Fold4 as an active wireless client and zero extenders. Argon and TaoTronics remained healthy.
+- CodeRabbit reviewed seven tracked changed files and returned two minor findings. The contradictory historical cable-test statement was corrected. The proposed removal of diagnostic invalidation of `clientVerifiedAt` was not applied: the diagnostic intentionally requires a new full client-path check before provisioning, and does not establish fresh authenticated bridge state itself. This conservative behavior is retained; checking diagnostics never grants provisioning eligibility.
+- APK: `artifacts/releases/tt-router-1.9.2-19.apk`; SHA-256 `0c7dc727a882e975daf9eb9bbfe3ee8ddaf3e6bd7a2fe53e5d2cfdb15fc58d24`. Version 1.9.1 rollback APK remains available. Existing Android plugin KGP migration warnings remain; build succeeded.
+- Owner confirms no spare bridge hardware. Second Beacon activation and exact printed model/serial have been requested; no enrollment, naming or broadcast change has been sent.
+
+## Earlier wired baseline: first-phone connection verified
 
 The second Beacon is not powered on near the root for enrollment; its printed model/serial have not been provided. Enrollment, extender coverage and roaming remain untested. The immediate verification therefore covers the Fold4 and existing root only.
 
@@ -16,7 +30,7 @@ Telemetry preparation: the source-documented local socket on port 8099 accepted 
 
 ## Wireless-root determination: requires wired root uplink
 
-**Root-to-TaoTronics wireless uplink is unsupported in the verified setup.** Retain TaoTronics LAN → Ethernet → root Beacon WAN, with Nokia-to-Nokia wireless backhaul preferred for the second unit. No cable-disconnection test or root mode change is warranted: no supported reversible third-party station/uplink procedure was established for Beacon 2 hardware `3FE49294BAAA`, firmware `3FE49334IJJJ09`, CGI 5.5. This is a finding about this firmware and router combination, not a claim that every Nokia/EasyMesh implementation lacks wireless agent operation.
+**Root-to-TaoTronics wireless uplink is unsupported in the verified setup.** Retain TaoTronics LAN → Ethernet → root Beacon WAN, with Nokia-to-Nokia wireless backhaul preferred for the second unit. The owner-requested cable-disconnection test produced no usable wireless uplink; the restored wired requirement stands. No further speculative mode change is warranted because no supported reversible third-party station/uplink procedure was established for Beacon 2 hardware `3FE49294BAAA`, firmware `3FE49334IJJJ09`, CGI 5.5. This is a finding about this firmware and router combination, not a claim that every Nokia/EasyMesh implementation lacks wireless agent operation.
 
 ### Evidence and limits
 

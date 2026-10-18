@@ -7,6 +7,8 @@ Determination date: 2026-10-18. Inputs: TaoTronics protocol handoff and live rou
 
 ## Determination
 
+The owner's root-cable removal test produced Nokia Wi-Fi association without a client IPv4 lease, followed by phone disconnection. No functioning root wireless upstream was established. Restore the original cable before enrollment. A single third-party Wi-Fi client adapter is not automatically a transparent multi-MAC bridge; a matched dedicated bridge pair is a stronger candidate for replacing a long cable, subject to actual DHCP/MAC/radio validation. See [hardware assessment and recovery](NOKIA_WIRELESS_UPLINK_OPTIONS.md).
+
 **No supported shared Nokia–TaoTronics mesh or wireless root uplink has been established for the installed firmware. Requires wired root uplink.** Retain the verified Ethernet-fed Nokia AP bridge and use supported Nokia-to-Nokia wireless backhaul for the second unit after enrollment. Wi-Fi client/station, universal repeater, WISP, interoperable WDS and a compatible TaoTronics EasyMesh controller were not exposed by the reviewed interfaces. See [authenticated capability evidence and recovery](NOKIA_BRIDGE_VALIDATION.md). No experimental uplink configuration was sent.
 
 | Capability | TaoTronics TT-ND001 | Nokia Beacon 2 (identified from the device) | Shared? |

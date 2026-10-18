@@ -22,9 +22,11 @@ class NokiaLocal(private val context: Context) {
     private val resolverExecutor = Executors.newFixedThreadPool(2)
     private val main = Handler(Looper.getMainLooper())
     private val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-    private fun wifi() = cm.allNetworks.firstOrNull {
+    private fun wifiOrNull() = cm.allNetworks.firstOrNull {
         cm.getNetworkCapabilities(it)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
-    } ?: throw IllegalStateException("Join the Beacon setup Wi-Fi or its household LAN first.")
+    }
+    private fun wifi() = wifiOrNull()
+        ?: throw IllegalStateException("Join the Beacon setup Wi-Fi or its household LAN first.")
 
     fun handle(call: MethodCall, result: MethodChannel.Result) {
         if (call.method == "openWifi") {
@@ -36,7 +38,11 @@ class NokiaLocal(private val context: Context) {
         val worker = if (call.method == "resolve") resolverExecutor else executor
         worker.execute {
             try {
-                val network = if (call.method == "encryptForm") null else wifi()
+                val network = when (call.method) {
+                    "encryptForm" -> null
+                    "context" -> wifiOrNull()
+                    else -> wifi()
+                }
                 val value: Any? = when (call.method) {
                     "encryptForm" -> {
                         val pem = call.argument<String>("publicKey").orEmpty()
@@ -64,17 +70,18 @@ class NokiaLocal(private val context: Context) {
                         } finally { c.disconnect() }
                     }
                     "context" -> {
-                        val links = cm.getLinkProperties(network)
+                        val links = network?.let { cm.getLinkProperties(it) }
                         val manager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
                         @Suppress("DEPRECATION") val info = manager.connectionInfo
                         @Suppress("DEPRECATION") val dhcp = manager.dhcpInfo
                         fun ipv4(v: Int?): String? = if(v == null || v == 0) null else (0..3).joinToString(".") { i -> ((v ushr (i*8)) and 255).toString() }
                         mapOf("ssid" to info?.ssid?.trim('"'), "bssid" to info?.bssid,
-                            "dhcpServer" to ipv4(dhcp?.serverAddress),
+                            "rssi" to info?.rssi, "frequency" to info?.frequency,
+                            "dhcpServer" to (if (links != null) ipv4(dhcp?.serverAddress) else null),
                             "prefixLength" to links?.linkAddresses?.firstOrNull { it.address is Inet4Address }?.prefixLength,
                             "ip" to links?.linkAddresses?.firstOrNull { it.address is Inet4Address }?.address?.hostAddress,
                             "gateway" to links?.routes?.firstOrNull { it.isDefaultRoute && it.gateway is Inet4Address }?.gateway?.hostAddress,
-                            "network" to network.toString())
+                            "network" to network?.toString())
                     }
                     "resolve" -> {
                         val host = call.argument<String>("host").orEmpty()

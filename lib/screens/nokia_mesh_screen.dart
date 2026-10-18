@@ -256,6 +256,84 @@ class _NokiaMeshScreenState extends State<NokiaMeshScreen>
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       child: Text(n.message!),
                     ),
+                  PanelCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Connection diagnostics',
+                          style: theme.textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Checks this phone’s Wi-Fi path. Matching SSID names alone do not identify a Nokia radio.',
+                        ),
+                        if (n.connectionWarning != null) ...[
+                          const SizedBox(height: 12),
+                          InfoBanner(
+                            tone: Tone.warning,
+                            icon: Icons.link_off,
+                            title: 'Check the root uplink',
+                            message: n.connectionWarning!,
+                          ),
+                        ],
+                        if (n.diagnosticAt != null) ...[
+                          const SizedBox(height: 12),
+                          KvRow(
+                            'Observation',
+                            '${formatAge(n.diagnosticAt)} · ${n.diagnosticsCurrent ? 'current' : 'stale; check again'}',
+                          ),
+                          KvRow(
+                            'Phone Wi-Fi',
+                            '${n.diagnosticPhone['ssid'] ?? 'Not connected / unavailable'}',
+                          ),
+                          KvRow(
+                            'Phone BSSID',
+                            '${n.diagnosticPhone['bssid'] ?? 'Not reported'}',
+                          ),
+                          KvRow(
+                            'Radio identity',
+                            n.diagnosticNokiaRadio
+                                ? 'Matches a root-reported Nokia BSSID'
+                                : 'Nokia radio not verified',
+                          ),
+                          KvRow(
+                            'Phone signal',
+                            n.diagnosticPhone['rssi'] is num &&
+                                    (n.diagnosticPhone['rssi'] as num) > -127 &&
+                                    (n.diagnosticPhone['rssi'] as num) < 0
+                                ? '${n.diagnosticPhone['rssi']} dBm · client signal, not backhaul'
+                                : 'Not reported',
+                          ),
+                          KvRow(
+                            'Phone IPv4',
+                            '${n.diagnosticPhone['ip'] ?? 'No Wi-Fi address'}',
+                          ),
+                          KvRow(
+                            'DHCP server',
+                            '${n.diagnosticPhone['dhcpServer'] ?? 'Not reported'}',
+                          ),
+                          KvRow(
+                            'Gateway',
+                            '${n.diagnosticPhone['gateway'] ?? 'Not reported'}',
+                          ),
+                          KvRow('Root API', n.diagnosticRoot),
+                          KvRow(
+                            'Wi-Fi HTTPS',
+                            '${n.diagnosticInternet}${n.diagnosticInternet == 'Passed' && !n.diagnosticNokiaRadio ? ' · not attributed to Nokia' : ''}',
+                            last: true,
+                          ),
+                        ],
+                        const SizedBox(height: 12),
+                        OutlinedButton.icon(
+                          onPressed: n.busy ? null : n.diagnoseConnection,
+                          icon: const Icon(Icons.network_check),
+                          label: const Text('Check connection'),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: Space.lg),
                   if (id != null)
                     PanelCard(
                       child: Column(
