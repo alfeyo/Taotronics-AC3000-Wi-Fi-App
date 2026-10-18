@@ -5,11 +5,11 @@ void main() {
   test('rates and bytes keep the existing app formatting', () {
     expect(formatRate(0), '0 B/s');
     expect(formatRate(697), '697 B/s');
-    expect(formatRate(2048), '2.00 KB/s');
-    expect(formatRate(15 * 1024 * 1024), '15.0 MB/s');
+    expect(formatRate(2048), '2.00 KiB/s');
+    expect(formatRate(15 * 1024 * 1024), '15.0 MiB/s');
     expect(formatBytes(-1), '0 B');
-    expect(formatBytes(1536), '1.50 KB');
-    expect(formatBytes(300 * 1024 * 1024 * 1024), '300 GB');
+    expect(formatBytes(1536), '1.50 KiB');
+    expect(formatBytes(300 * 1024 * 1024 * 1024), '300 GiB');
   });
 
   test('uptime and age', () {

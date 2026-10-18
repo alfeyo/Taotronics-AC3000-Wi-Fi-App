@@ -106,7 +106,9 @@ Widget _app(RouterProvider provider, Widget home, {ThemeMode? mode}) =>
     MultiProvider(
       providers: [
         ChangeNotifierProvider.value(value: provider),
-        ChangeNotifierProvider(create: (_) => PiProvider()),
+        ChangeNotifierProvider(
+          create: (_) => PiProvider(router: provider, autoStart: false),
+        ),
       ],
       child: MaterialApp(
         theme: AppTheme.light(),

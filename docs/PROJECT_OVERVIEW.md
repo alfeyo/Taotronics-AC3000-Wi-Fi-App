@@ -1,0 +1,110 @@
+# TT Router + Argon — project overview
+
+Last verified: 2026-10-18 (Africa/Lusaka). Every statement below is labelled
+**proven** (observed this run), **recorded** (from earlier validation logs) or
+**unknown**. The requested source file `TT_Router_Argon_Project_Overview.md` was
+not found on the development Mac, so this overview was written from the live
+systems and both repositories.
+
+## 1. Components
+
+| Component | Where | State |
+|---|---|---|
+| TT Router (Flutter, Android) | this repo, `feature/argon-pi-integration` | 1.5.0+8 installed on Galaxy Z Fold4 (SM-F936B) |
+| Argon dashboard (Next.js) | `~/projects/argon-dashboard`, `feature/taotronics-router-integration` | deployed build `XY_VnAYyNWKT9FvxvvwUq` on Argon |
+| Argon | Raspberry Pi 4 Model B Rev 1.2, Debian 13, Tailscale `100.94.137.17` | up 1 d 18 h |
+| TaoTronics AC3000 | one ND001 node, role `mpp`, mesh SN `5702100B047E2E9D` | WAN 192.168.50.181, LAN 192.168.10.0/24 |
+| Nokia | Nokia WiFi Beacon (web UI identifies as NokiaWifi.com), gateway 192.168.18.1, MAC `b4:63:6f:db:e6:c0` | exact model **unknown** |
+
+## 2. Proven current topology (read-only audit, 2026-10-18 09:52)
+
+```
+ISP ── ? (unknown) ── Nokia WiFi Beacon 192.168.18.1
+                         │  Wi-Fi "Nokia Wifi" (WPA2, ch 112 5 GHz / ch 11 2.4 GHz)
+                         ▼
+                Argon wlan1 192.168.18.43 (primary, metric 600, ACTIVE_WAN)
+                Argon wlan0 192.168.18.42 (secondary, metric 700)
+                Argon eth0  — NO CARRIER (no cable or no link)
+                         │
+                Argon eth1 192.168.50.1/24, 1 Gbit/s, NM shared DHCP/NAT
+                         ▼
+          TaoTronics ND001 WAN 192.168.50.181
+                         │  Wi-Fi "Game labs" (2.4 + 5 GHz), "TT-35A0" disabled
+                         ▼
+                 Household clients 192.168.10.0/24
+```
+
+- **Uplink is Wi-Fi only.** `eth0` has carrier 0, operstate down. There is no wired WAN today, even though `eth0` is designated preferred.
+- **Ethernet profile already exists:** NM `Main LAN Ethernet` (eth0, DHCP, autoconnect yes, route metric 100, may hold default route). A cable delivering DHCP to `eth0` would immediately become the preferred route; plugging it in *is* the wired-WAN test and requires approval.
+- **VPN:** mode `on`; downstream 192.168.50.0/24 uses table `downstream_vpn` (153) via Surfshark `tun0` (UK, London). Kill switch `argon_eth1_vpn` rejects downstream traffic leaving by any path other than tun, tailscale0 or the upstream LAN; 0 rejected packets observed. `argon_dns_guard` limits resolver traffic to tun0. Today's household traffic was 100 % through the VPN.
+- **Tailscale:** `100.94.137.17`, no exit node, no routes advertised; listens on `eth0`/`wl*` UDP 41641.
+- **Pi's own DNS:** `192.168.18.1` (the Nokia).
+- **Live traffic:** `wlan1` carries upstream, `eth1`/`tun0` carry household traffic; `wlan0` is nearly idle.
+- **Wired evidence:** Nokia MAC `b4:63:6f:db:e6:c4` was last seen on Argon `eth1` at 192.168.50.244 on 2026-10-06 19:42. A Nokia Ethernet port was therefore once cabled to Argon, but as a DHCP client of Argon (the wrong direction for a WAN feed).
+- **Other Nokia BSSIDs:** hidden BSSIDs `b6:63:6f:cb:e6:cd` (ch 112) and `b6:63:6f:cb:e6:c9` (ch 11) are visible. These may be a second Beacon or Nokia backhaul; **unknown**.
+- **Power:** Argon recorded active throttling about 13 h before the audit, recovered 40 min before. Monitor the power supply before adding load.
+
+## 3. Ethernet WAN feasibility
+
+| Question | Answer |
+|---|---|
+| Is a wired WAN in place? | **No** (proven: no carrier on eth0). |
+| Can Argon take a wired WAN? | Yes in software: `Main LAN Ethernet` + WAN state machine prefer eth0 (recorded), firewall already admits DHCP/Tailscale on eth0 (proven). |
+| Which Nokia port? | A Nokia Beacon LAN port (not its WAN/ISP port) → Argon eth0. Port labelling and free-port availability are **unknown** until inspected physically. |
+| Must Nokia stay powered? | **Yes** if it is the box feeding eth0. It remains the ISP gateway/router and DHCP/DNS server for 192.168.18.0/24 even with radios off. |
+| Can Nokia be powered off entirely? | Only if a different wired ISP source (ONT/modem handing DHCP directly to Argon) is proven first. The ISP equipment upstream of the Beacon is **unknown**, as is whether the ISP needs PPPoE/VLAN credentials held by the Nokia. |
+| Can Nokia's radios be turned off while it keeps routing? | **Unknown**. It depends on the Beacon model and the Nokia WiFi app; verify in the app before planning on it. Any Nokia satellite using wireless backhaul would go offline. |
+
+## 4. TaoTronics capabilities (from `ROUTER_PROTOCOL_HANDOFF.md` + live data)
+
+- Wi-Fi edit is `SetWirelessInfoList` (V1; this firmware never answers V2). The full list must be written back with only the changed fields. Radios restart and clients drop for several seconds. The app verifies by read-back for up to 90 s.
+- Supported per network: SSID, password, `Encrypt` 0 none / 1 WEP / 2 WPA-PSK / 3 WPA2-PSK / 4 WPA/WPA2 / 5 WPA3 (WPA3 inferred, untested), enable (`Create`), VLAN and isolation fields. Index 0 = 2.4 GHz, 1 = 5 GHz (inferred), 2+ = additional networks.
+- Mesh: TaoTronics proprietary, one node online of one. **No interoperability with Nokia Beacon mesh.** Giving TaoTronics the Nokia SSID and password only lets clients that already know that network join it automatically. It does not join the Nokia mesh, make TaoTronics a Beacon, or allow roaming between the two. Running both with the same SSID would produce two unrelated networks on different subnets, with broken sessions when clients roam. No MAC/identity spoofing or firmware changes are planned.
+
+## 5. Staged migration plan (NOT executed)
+
+Target: ISP → Nokia (radios off, still powered) → **cable** → Argon eth0 → Argon eth1 → TaoTronics WAN → TaoTronics Wi-Fi broadcasting `Nokia Wifi`.
+
+### Stage 0 — prerequisites (no network change)
+1. Identify the Nokia Beacon model and its LAN port; confirm a free LAN port and a Cat5e/6 cable run to Argon.
+2. Confirm in the Nokia WiFi app that radios can be disabled while routing stays up; note any satellite Beacons.
+3. **Loop blocker:** Argon's `Argon WAN WiFi - Nokia (radio 1/2)` profiles match SSID `Nokia Wifi` with no BSSID lock. Before TaoTronics ever broadcasts that SSID, these profiles must be BSSID-locked to the Nokia (`b4:63:6f:db:e6:cd` / `…:c9`) or disabled. Otherwise Argon can join its own downstream router. This is an NM change and needs approval.
+4. Record baseline: `/api/status`, `ip route`, `tailscale status`, VPN state, kill-switch counters, dashboard and app screenshots.
+
+### Stage 1 — wired WAN test (requires explicit approval)
+1. Plug Nokia LAN → Argon eth0 (no config change needed).
+2. Expect: eth0 carrier + DHCP 192.168.18.x; after the ~30 s readiness window the state machine sets `ACTIVE_WAN=eth0`, and Wi-Fi uplinks are released per policy. Brief Tailscale/VPN re-establishment; the kill switch keeps downstream blocked during any tunnel gap.
+3. Go checks (all must pass): `/run/argon-wan/active` = eth0; default route via eth0; `tun0` up and table 153 default via tun0; household clients have internet through VPN; `tailscale ping` from phone/Mac; dashboard `/devices` + `/network` 200; TT Router MQTT controls and Gateway screen live; kill-switch reject counter unchanged.
+4. Rollback: unplug the cable. The state machine fails back to Wi-Fi; Wi-Fi WAN operation is proven by the current state. If routing does not recover within 60 s, restart nothing: use the dashboard WAN view and the runbook (`argon-dashboard/docs/RUNBOOK.md`).
+
+### Stage 2 — soak (24 h on wired WAN, Nokia Wi-Fi still on)
+Monitor throttling, VPN reconnects, dashboard history continuity and phone telemetry.
+
+### Stage 3 — Nokia Wi-Fi off (user performs; requires explicit final approval)
+Preconditions: Stage 1–2 passed; Stage 0.3 loop guard in place. The user disables Nokia radios. Verify Argon stays on eth0, VPN/Tailscale up, clients unaffected. Argon then has **no Wi-Fi fallback** unless another approved WAN profile is added.
+
+### Stage 4 — TaoTronics adopts the Nokia SSID (requires explicit approval)
+1. In TT Router, set index 0 and 1 SSID = `Nokia Wifi`, same password, `Encrypt` 3 (WPA2-PSK, matching Nokia), keeping all other entries raw.
+2. Expect all TaoTronics clients on `Game labs` to drop. Former Nokia clients join automatically. Every client gets 192.168.10.x behind double NAT (TaoTronics + Argon), so static IPs, port forwards or anything addressing 192.168.18.x must be checked.
+3. Verify read-back, client counts on `/devices`, app pairing (mesh ID based, unaffected by SSID).
+4. Rollback: rewrite SSID `Game labs` + previous password from the app, or re-enable Nokia radios.
+
+## 6. Application status
+
+- **Flutter 1.5.0+8** (proven on device 2026-10-18): Pi board artwork with hardware model, Gateway connection (local network transport observed; Tailscale supported), Internet source `Nokia Wifi · wlan1`, VPN London, CPU/temperature/memory/throttling, household traffic labelled "Measured by Argon … (eth1)", device synchronization (6 clients shared), merged router + Argon notifications with source labels. Router MQTT with pinned CA, LED state and Wi-Fi read work. `flutter analyze` clean, 103/103 tests. Bluetooth monitoring fallback is implemented and unit-tested but was **not exercised live** this run.
+- **Dashboard** (proven): `/devices` shows 6 real TaoTronics clients from the phone, labelled "Phone-supplied · 60 s expiry"; offline clients show `--`; router WAN traffic is shown separately as "combined traffic"; per-client daily usage is "Not measured". 111/111 tests, production build passes. The Pi gateway card now says "Loading…" until status arrives (committed, **not deployed**).
+- **Telemetry limitation:** client inventory only arrives while TT Router is open on a paired phone. Permanent visibility needs a LAN-side observer on the TaoTronics network (not installed).
+
+## 7. Releases, branches and rollback
+
+- APKs in `artifacts/releases/` (git-ignored): `tt-router-1.3.1-*.apk`, `tt-router-1.4.0-argon.apk`, `tt-router-1.5.0-8.apk` (SHA-1 `60d81c27a1db4f9e48bab4efd828ecde32a82154`, signer SHA-256 `c5f7a819…00ab89`). Downgrade needs uninstall (loses pairing); prefer forward fixes.
+- Flutter remote: `origin` (GitHub `alfeyo/Taotronics-AC3000-Wi-Fi-App`); branch not merged to `main`.
+- Dashboard: no git remote; commits are local only. Pi rollbacks: `~/argon-backups/release-20261018-091546/rollback.sh` (dashboard), `~/argon-backups/btbridge-20261018-084451/rollback.sh` (Bluetooth bridge), `~/argon-backups/router-20261017-204546/rollback.sh` (router integration).
+
+## 8. Future work
+
+1. Physical survey of Nokia ports and ISP equipment (Stage 0).
+2. Wired WAN test and soak after approval.
+3. LAN-side observer for permanent client visibility.
+4. Approved secondary WAN for Argon once Nokia Wi-Fi is off.
+5. Deploy the dashboard "Loading…" fix; add a git remote for argon-dashboard.

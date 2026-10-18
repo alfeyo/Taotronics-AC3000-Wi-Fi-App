@@ -39,7 +39,12 @@ class TTRouterApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => RouterProvider()),
-        ChangeNotifierProvider(create: (_) => PiProvider()),
+        // Created eagerly: Argon discovery starts with the app, not with a tab.
+        ChangeNotifierProvider(
+          lazy: false,
+          create: (context) =>
+              PiProvider(router: context.read<RouterProvider>()),
+        ),
       ],
       child: MaterialApp(
         title: 'TT Router',

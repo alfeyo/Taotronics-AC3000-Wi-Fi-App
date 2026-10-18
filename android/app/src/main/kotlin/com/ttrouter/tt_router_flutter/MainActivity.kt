@@ -40,6 +40,11 @@ class MainActivity : FlutterActivity() {
             flutterEngine.dartExecutor.binaryMessenger,
             "tt_router/ble_provisioning",
         ).setMethodCallHandler(::handleBleCall)
+        val argonBluetooth = ArgonBluetooth(applicationContext)
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "tt_router/argon_bluetooth",
+        ).setMethodCallHandler(argonBluetooth::handle)
     }
 
     private fun handleBleCall(call: MethodCall, result: MethodChannel.Result) {

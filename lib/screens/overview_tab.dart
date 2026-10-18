@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../providers/pi_provider.dart';
 import '../providers/router_provider.dart';
 import '../theme/app_theme.dart';
 import '../utils/format.dart';
@@ -39,6 +40,8 @@ class OverviewTab extends StatelessWidget {
         ),
       ),
       _LiveRow(provider: provider),
+      const SizedBox(height: Space.md),
+      _GatewayStrip(select: select),
       const SectionLabel('Network'),
       _NetworkTiles(provider: provider, select: select),
       const SectionLabel('Quick controls'),
@@ -283,6 +286,9 @@ class _SetupCard extends StatelessWidget {
   }
 }
 
+/// Household throughput. Argon's eth1 measurement is preferred while fresh
+/// (it is what actually crossed into the household); the router's own
+/// telemetry is the fallback. The source line always says which is shown.
 class _LiveRow extends StatelessWidget {
   const _LiveRow({required this.provider});
 
@@ -290,8 +296,32 @@ class _LiveRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final pi = maybePiProvider(context);
+    final usePi = pi != null && pi.liveFresh;
     final connected = provider.isConnected;
-    final stale = connected && provider.liveDataStale;
+    final stale = !usePi && connected && provider.liveDataStale;
+    final theme = Theme.of(context);
+    final String source;
+    if (usePi) {
+      source = 'Measured by Argon · household traffic · live';
+    } else if (connected) {
+      source =
+          '${stale ? 'Stale · ' : ''}'
+          '${provider.hasLiveWanRates ? 'Router internet (WAN) rate' : 'Sum of connected device rates'}'
+          ' · updated ${formatAge(provider.liveDataUpdatedAt)}'
+          '${pi != null && pi.gateway != null ? ' · Argon data not current' : ''}';
+    } else {
+      source = 'Live rates appear once the router or Argon is reachable.';
+    }
+    final today = usePi ? pi.today : null;
+    final todayDown = (today?['downloadBytes'] as num?)?.toInt();
+    final todayUp = (today?['uploadBytes'] as num?)?.toInt();
+    final todayVpn =
+        ((today?['vpnDownloadBytes'] as num?) ?? 0) +
+        ((today?['vpnUploadBytes'] as num?) ?? 0);
+    final todayTotal = todayDown == null || todayUp == null
+        ? null
+        : todayDown + todayUp;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -302,8 +332,14 @@ class _LiveRow extends StatelessWidget {
                 label: 'Download',
                 icon: Icons.south_rounded,
                 tone: Tone.brand,
-                value: connected ? formatRate(provider.liveDownRate) : null,
-                samples: [for (final r in provider.rateSamples) r.down],
+                value: usePi
+                    ? formatRate(pi.householdDownBytesPerSec!)
+                    : connected
+                    ? formatRate(provider.liveDownRate)
+                    : null,
+                samples: usePi
+                    ? [for (final r in pi.liveSamples) r.down]
+                    : [for (final r in provider.rateSamples) r.down],
               ),
             ),
             const SizedBox(width: Space.md),
@@ -312,26 +348,147 @@ class _LiveRow extends StatelessWidget {
                 label: 'Upload',
                 icon: Icons.north_rounded,
                 tone: Tone.accent,
-                value: connected ? formatRate(provider.liveUpRate) : null,
-                samples: [for (final r in provider.rateSamples) r.up],
+                value: usePi
+                    ? formatRate(pi.householdUpBytesPerSec!)
+                    : connected
+                    ? formatRate(provider.liveUpRate)
+                    : null,
+                samples: usePi
+                    ? [for (final r in pi.liveSamples) r.up]
+                    : [for (final r in provider.rateSamples) r.up],
               ),
             ),
           ],
         ),
         const SizedBox(height: Space.sm),
         Text(
-          !connected
-              ? 'Live rates appear once the router is connected.'
-              : '${stale ? 'Stale · ' : ''}'
-                    '${provider.hasLiveWanRates ? 'Router internet (WAN) rate' : 'Sum of connected device rates'}'
-                    ' · updated ${formatAge(provider.liveDataUpdatedAt)}',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          source,
+          style: theme.textTheme.bodySmall?.copyWith(
             color: stale
                 ? context.tone(Tone.warning).foreground
-                : Theme.of(context).colorScheme.onSurfaceVariant,
+                : theme.colorScheme.onSurfaceVariant,
           ),
         ),
+        if (todayTotal != null) ...[
+          const SizedBox(height: Space.md),
+          PanelCard(
+            padding: const EdgeInsets.symmetric(
+              horizontal: Space.lg,
+              vertical: Space.md,
+            ),
+            child: Row(
+              children: [
+                const IconBadge(
+                  Icons.data_usage_rounded,
+                  tone: Tone.brand,
+                  size: 36,
+                  round: true,
+                ),
+                const SizedBox(width: Space.md),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Today ${formatBytes(todayTotal)}',
+                        style: theme.textTheme.titleSmall,
+                      ),
+                      Text(
+                        '↓ ${formatBytes(todayDown!)} · ↑ ${formatBytes(todayUp!)}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (todayTotal > 0)
+                  StatusPill(
+                    label: '${(todayVpn / todayTotal * 100).round()}% via VPN',
+                    tone: Tone.success,
+                    icon: Icons.shield_rounded,
+                  ),
+              ],
+            ),
+          ),
+        ],
       ],
+    );
+  }
+}
+
+/// Argon at a glance on Home; opens the Gateway tab.
+class _GatewayStrip extends StatelessWidget {
+  const _GatewayStrip({required this.select});
+
+  final ValueChanged<HomeTab> select;
+
+  @override
+  Widget build(BuildContext context) {
+    final pi = maybePiProvider(context);
+    if (pi == null) return const SizedBox.shrink();
+    final theme = Theme.of(context);
+    final g = pi.gatewayFresh ? pi.gatewayInfo : null;
+    final vpn = (g?['vpn'] as Map?)?['state'];
+    final online = (g?['upstream'] as Map?)?['online'];
+    final status = switch (pi.state) {
+      PiLinkState.connected => [
+        'Online via ${pi.transportKind!.label}',
+        if (online == true)
+          'internet up'
+        else if (online == false)
+          'no internet',
+        if (vpn == 'connected')
+          'VPN protected'
+        else if (vpn != null)
+          'VPN $vpn',
+      ].join(' · '),
+      PiLinkState.unreachable => 'Unreachable · retrying automatically',
+      _ => 'Looking for Argon…',
+    };
+    return PanelCard(
+      onTap: () => select(HomeTab.gateway),
+      padding: const EdgeInsets.fromLTRB(
+        Space.lg,
+        Space.md,
+        Space.md,
+        Space.md,
+      ),
+      child: Row(
+        children: [
+          IconBadge(
+            Icons.developer_board_rounded,
+            tone: pi.connected
+                ? Tone.success
+                : pi.state == PiLinkState.unreachable
+                ? Tone.warning
+                : Tone.neutral,
+            size: 40,
+            round: true,
+          ),
+          const SizedBox(width: Space.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Argon gateway', style: theme.textTheme.titleSmall),
+                Text(
+                  status,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Icon(
+            Icons.chevron_right_rounded,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ],
+      ),
     );
   }
 }

@@ -2,6 +2,36 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/services.dart';
+
+/// How the app currently reaches Argon.
+enum PiTransportKind {
+  lan('Local network'),
+  tailscale('Tailscale'),
+  https('Secure web'),
+  bluetooth('Bluetooth');
+
+  const PiTransportKind(this.label);
+  final String label;
+}
+
+bool _isTailnet(List<int> p) => p[0] == 100 && p[1] >= 64 && p[1] <= 127;
+bool _isPrivate(List<int> p) =>
+    p[0] == 10 ||
+    (p[0] == 172 && p[1] >= 16 && p[1] <= 31) ||
+    (p[0] == 192 && p[1] == 168);
+
+List<int>? _ipv4(String host) {
+  final parts = host.split('.').map(int.tryParse).toList();
+  if (parts.length != 4 || parts.any((n) => n == null || n < 0 || n > 255)) {
+    return null;
+  }
+  return parts.cast<int>();
+}
+
+/// Endpoint policy. HTTPS anywhere; plain HTTP only to a literal private LAN
+/// or Tailscale (100.64.0.0/10) address, and only after the server proved it
+/// is the pinned Argon instance (see [PiDiscovery]).
 Uri validatePiEndpoint(String value) {
   final uri = Uri.tryParse(value.trim());
   if (uri == null ||
@@ -11,98 +41,276 @@ Uri validatePiEndpoint(String value) {
       uri.hasFragment ||
       (uri.path.isNotEmpty && uri.path != '/')) {
     throw const FormatException(
-      'Enter an HTTPS origin or a Tailscale IP address.',
+      'Enter an address such as http://192.168.50.1.',
     );
   }
-  final parts = uri.host.split('.').map(int.tryParse).toList();
-  final tailnet =
-      parts.length == 4 &&
-      parts.every((n) => n != null && n >= 0 && n <= 255) &&
-      parts[0] == 100 &&
-      parts[1]! >= 64 &&
-      parts[1]! <= 127;
-  if (uri.scheme != 'https' && !(uri.scheme == 'http' && tailnet)) {
-    throw const FormatException(
-      'Use HTTPS, or HTTP only over your private Tailscale VPN (100.64.0.0/10).',
-    );
+  if (uri.scheme == 'https') return uri.replace(path: '');
+  final ip = _ipv4(uri.host);
+  if (uri.scheme == 'http' &&
+      ip != null &&
+      (_isTailnet(ip) || _isPrivate(ip))) {
+    return uri.replace(path: '');
   }
-  return uri.replace(path: '');
+  throw const FormatException(
+    'Use HTTPS, or HTTP to a private LAN or Tailscale IP address.',
+  );
+}
+
+PiTransportKind kindForEndpoint(Uri uri) {
+  if (uri.scheme == 'https') return PiTransportKind.https;
+  final ip = _ipv4(uri.host);
+  return ip != null && _isTailnet(ip)
+      ? PiTransportKind.tailscale
+      : PiTransportKind.lan;
 }
 
 class PiApiException implements Exception {
-  const PiApiException(this.message);
+  const PiApiException(this.message, {this.status});
   final String message;
+  final int? status;
+  bool get unauthorized => status == 401 || status == 403;
   @override
   String toString() => message;
 }
 
-class PiApi {
-  PiApi(this.endpoint, this.token);
-  final Uri endpoint;
-  final String token;
-  Future<Map<String, dynamic>> request(
+/// A way to reach Argon's companion API.
+abstract class PiTransport {
+  PiTransportKind get kind;
+  String get describe;
+  Future<Map<String, dynamic>> get(
     String path, {
+    String? token,
+    Duration? timeout,
+  });
+  Future<Map<String, dynamic>> post(
+    String path,
+    Map<String, dynamic> body, {
+    String? token,
+    Duration? timeout,
+  });
+}
+
+Map<String, dynamic> _checked(int status, Object? data) {
+  if (status == 401 || status == 403) {
+    throw PiApiException('Argon refused the credential.', status: status);
+  }
+  if (status == 409) {
+    throw const PiApiException(
+      'Observation already received or out of order.',
+      status: 409,
+    );
+  }
+  if (data is! Map<String, dynamic>) {
+    throw PiApiException('Argon returned an invalid response.', status: status);
+  }
+  if (status != 200 || data['ok'] != true) {
+    throw PiApiException(
+      (data['error'] as String?) ?? 'Argon request failed ($status).',
+      status: status,
+    );
+  }
+  return data;
+}
+
+class HttpPiTransport implements PiTransport {
+  HttpPiTransport(
+    this.endpoint, {
+    this.connectTimeout = const Duration(seconds: 3),
+  }) : kind = kindForEndpoint(endpoint);
+
+  final Uri endpoint;
+  final Duration connectTimeout;
+  @override
+  final PiTransportKind kind;
+  @override
+  String get describe => endpoint.host;
+
+  Future<Map<String, dynamic>> _send(
+    String method,
+    String path,
     Map<String, dynamic>? body,
-  }) async {
-    final client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 10);
+    String? token,
+    Duration timeout,
+  ) async {
+    final client = HttpClient()..connectionTimeout = connectTimeout;
     try {
       final request = await client
-          .openUrl(body == null ? 'GET' : 'POST', endpoint.resolve(path))
-          .timeout(const Duration(seconds: 12));
+          .openUrl(method, endpoint.resolve(path))
+          .timeout(timeout);
       request.followRedirects = false;
-      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
-      request.headers.contentType = ContentType.json;
-      if (body != null) request.write(jsonEncode(body));
-      final response = await request.close().timeout(
-        const Duration(seconds: 25),
-      );
-      if (response.statusCode == 401 || response.statusCode == 403) {
-        throw const PiApiException('Access denied. Check the companion token.');
+      if (token != null) {
+        request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
       }
-      if (response.statusCode >= 300 && response.statusCode < 400) {
-        throw const PiApiException(
-          'Redirect refused. Use the final secure Pi address.',
-        );
+      if (body != null) {
+        request.headers.contentType = ContentType.json;
+        request.write(jsonEncode(body));
+      }
+      final response = await request.close().timeout(timeout);
+      if (response.isRedirect ||
+          (response.statusCode >= 300 && response.statusCode < 400)) {
+        throw const PiApiException('Redirect refused.');
       }
       final bytes = <int>[];
-      await for (final chunk in response.timeout(const Duration(seconds: 25))) {
+      await for (final chunk in response.timeout(timeout)) {
         bytes.addAll(chunk);
         if (bytes.length > 2 * 1024 * 1024) {
-          throw const PiApiException('Pi response exceeds the size limit.');
+          throw const PiApiException('Argon response exceeds the size limit.');
         }
       }
-      final data = jsonDecode(utf8.decode(bytes));
-      if (response.statusCode == 409 && body != null) {
-        throw const PiApiException(
-          'Snapshot was rejected as already received or out of date.',
-        );
+      Object? data;
+      try {
+        data = jsonDecode(utf8.decode(bytes));
+      } on FormatException {
+        data = null;
       }
-      if (response.statusCode != 200 ||
-          data is! Map<String, dynamic> ||
-          data['ok'] != true ||
-          data['version'] != 1) {
-        throw const PiApiException('Pi data is unavailable or incompatible.');
-      }
-      return data;
+      return _checked(response.statusCode, data);
     } on PiApiException {
       rethrow;
     } on HandshakeException {
-      throw const PiApiException(
-        'TLS verification failed. The connection was not trusted.',
-      );
+      throw const PiApiException('TLS verification failed.');
     } on TimeoutException {
-      throw const PiApiException(
-        'Pi did not respond. Check Tailscale and try again.',
-      );
+      throw const PiApiException('Argon did not respond in time.');
     } on SocketException {
-      throw const PiApiException(
-        'Pi unreachable. Direct router control remains available.',
-      );
-    } on FormatException {
-      throw const PiApiException('Pi returned an invalid response.');
+      throw const PiApiException('Argon is not reachable on this route.');
+    } on HttpException {
+      throw const PiApiException('Connection to Argon was interrupted.');
     } finally {
       client.close(force: true);
     }
+  }
+
+  @override
+  Future<Map<String, dynamic>> get(
+    String path, {
+    String? token,
+    Duration? timeout,
+  }) => _send('GET', path, null, token, timeout ?? const Duration(seconds: 8));
+
+  @override
+  Future<Map<String, dynamic>> post(
+    String path,
+    Map<String, dynamic> body, {
+    String? token,
+    Duration? timeout,
+  }) =>
+      _send('POST', path, body, token, timeout ?? const Duration(seconds: 10));
+}
+
+/// Read-only fallback over Argon's Bluetooth serial bridge (argon-bt-bridge).
+/// Only identity, live and gateway reads are available, and live/gateway need
+/// the paired credential; uploads and pairing require an IP route.
+class BluetoothPiTransport implements PiTransport {
+  BluetoothPiTransport(this.address, {MethodChannel? channel})
+    : _channel = channel ?? const MethodChannel('tt_router/argon_bluetooth');
+
+  final String address;
+  final MethodChannel _channel;
+  int _id = 0;
+
+  @override
+  PiTransportKind get kind => PiTransportKind.bluetooth;
+  @override
+  String get describe => 'Bluetooth';
+
+  static Future<Map<String, dynamic>> status({MethodChannel? channel}) async {
+    try {
+      final r =
+          await (channel ?? const MethodChannel('tt_router/argon_bluetooth'))
+              .invokeMapMethod<String, dynamic>('status');
+      return r ?? const {};
+    } on PlatformException {
+      return const {};
+    } on MissingPluginException {
+      return const {};
+    }
+  }
+
+  @override
+  Future<Map<String, dynamic>> get(
+    String path, {
+    String? token,
+    Duration? timeout,
+  }) async {
+    final id = ++_id;
+    final String? raw;
+    try {
+      raw = await _channel.invokeMethod<String>('request', {
+        'address': address,
+        'line': jsonEncode({
+          'id': id,
+          'method': 'GET',
+          'path': path,
+          'token': ?token,
+        }),
+        'timeoutMs': (timeout ?? const Duration(seconds: 12)).inMilliseconds,
+      });
+    } on PlatformException catch (e) {
+      throw PiApiException(
+        e.code == 'permission'
+            ? 'Bluetooth permission is needed for the fallback.'
+            : 'Bluetooth: ${e.message ?? 'request failed'}',
+      );
+    } on MissingPluginException {
+      throw const PiApiException('Bluetooth is not available.');
+    }
+    Object? reply;
+    try {
+      reply = jsonDecode(raw ?? '');
+    } on FormatException {
+      reply = null;
+    }
+    if (reply is! Map || reply['id'] != id) {
+      throw const PiApiException('Bluetooth bridge returned an invalid reply.');
+    }
+    return _checked(
+      (reply['status'] as num?)?.toInt() ?? 500,
+      reply['data'] ?? {'ok': false, 'error': reply['error']},
+    );
+  }
+
+  @override
+  Future<Map<String, dynamic>> post(
+    String path,
+    Map<String, dynamic> body, {
+    String? token,
+    Duration? timeout,
+  }) async => throw const PiApiException('Not available over Bluetooth.');
+}
+
+/// What /api/v1/identity proved about a server.
+class PiIdentity {
+  const PiIdentity({
+    required this.instanceId,
+    required this.host,
+    required this.monitorAllowed,
+    this.bluetoothAddress,
+  });
+  final String instanceId;
+  final String host;
+  final bool monitorAllowed;
+  final String? bluetoothAddress;
+
+  static PiIdentity parse(Map<String, dynamic> d) {
+    final id = d['instanceId'];
+    final versions = d['apiVersions'];
+    if (d['service'] != 'argon' ||
+        id is! String ||
+        !RegExp(r'^[0-9a-f-]{36}$').hasMatch(id) ||
+        versions is! List ||
+        !versions.contains(1)) {
+      throw const PiApiException('This server is not an Argon gateway.');
+    }
+    final bt = d['bluetooth'];
+    final address = bt is Map ? bt['address'] : null;
+    return PiIdentity(
+      instanceId: id,
+      host: (d['host'] as String?) ?? 'argon',
+      monitorAllowed: (d['access'] is Map) && d['access']['monitor'] == true,
+      bluetoothAddress:
+          address is String &&
+              RegExp(r'^[0-9A-F]{2}(:[0-9A-F]{2}){5}$').hasMatch(address)
+          ? address
+          : null,
+    );
   }
 }

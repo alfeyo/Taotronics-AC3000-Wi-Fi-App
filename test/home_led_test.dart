@@ -87,7 +87,9 @@ Future<RouterProvider> _provider(
 Widget _app(RouterProvider provider, Widget home) => MultiProvider(
   providers: [
     ChangeNotifierProvider.value(value: provider),
-    ChangeNotifierProvider(create: (_) => PiProvider()),
+    ChangeNotifierProvider(
+      create: (_) => PiProvider(router: provider, autoStart: false),
+    ),
   ],
   child: MaterialApp(theme: AppTheme.dark(), home: home),
 );

@@ -1,7 +1,9 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
+import '../providers/pi_provider.dart';
 import '../providers/router_provider.dart';
 import '../theme/app_theme.dart';
 import '../utils/format.dart';
@@ -551,19 +553,64 @@ class _SparkPainter extends CustomPainter {
 }
 
 /// Bell with unread count; opens the in-app event list.
+/// Looks up the gateway provider when the app provides one (tests and the
+/// discovery flow may not).
+PiProvider? maybePiProvider(BuildContext context, {bool listen = true}) {
+  try {
+    return Provider.of<PiProvider>(context, listen: listen);
+  } on ProviderNotFoundException {
+    return null;
+  }
+}
+
+typedef _Notice = ({
+  String title,
+  String message,
+  DateTime time,
+  String tone,
+  String source,
+});
+
+/// One notifications panel for router events (this phone's MQTT session) and
+/// Argon events (server-observed, plus link changes seen by this phone).
 class EventsButton extends StatelessWidget {
   const EventsButton({super.key, required this.provider});
 
   final RouterProvider provider;
 
+  List<_Notice> _merged(PiProvider? pi) {
+    final items = <_Notice>[
+      for (final e in provider.events)
+        (
+          title: e.title,
+          message: e.message,
+          time: e.time,
+          tone: e.tone,
+          source: 'Router',
+        ),
+      for (final e in pi?.events ?? const <PiEvent>[])
+        (
+          title: e.title,
+          message: e.message,
+          time: e.at,
+          tone: e.severity,
+          source: e.source == 'argon' ? 'Argon' : 'Gateway link',
+        ),
+    ];
+    items.sort((a, b) => b.time.compareTo(a.time));
+    return items;
+  }
+
   void _open(BuildContext context) {
+    final pi = maybePiProvider(context, listen: false);
     provider.markEventsRead();
+    pi?.markEventsRead();
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
       builder: (context) {
-        final events = provider.events;
+        final events = _merged(pi);
         final theme = Theme.of(context);
         return DraggableScrollableSheet(
           expand: false,
@@ -573,14 +620,21 @@ class EventsButton extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(Space.lg, 0, Space.lg, Space.xl),
             children: [
               Text('Notifications', style: theme.textTheme.titleLarge),
+              const SizedBox(height: Space.xs),
+              Text(
+                'Router and Argon events observed while the app is open.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
               const SizedBox(height: Space.md),
               if (events.isEmpty)
                 const EmptyState(
                   icon: Icons.notifications_none_rounded,
                   title: 'No events yet',
                   message:
-                      'Disconnections, reconnection problems and settings '
-                      'results appear here while the app is open.',
+                      'Router and gateway disconnections, VPN and uplink '
+                      'changes and settings results appear here.',
                 )
               else
                 for (final e in events)
@@ -601,7 +655,9 @@ class EventsButton extends StatelessWidget {
                       }).foreground,
                     ),
                     title: Text(e.title),
-                    subtitle: Text('${e.message}\n${formatAge(e.time)}'),
+                    subtitle: Text(
+                      '${e.message}\n${e.source} · ${formatAge(e.time)}',
+                    ),
                     isThreeLine: true,
                   ),
             ],
@@ -613,7 +669,8 @@ class EventsButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final unread = provider.unreadEvents;
+    final pi = maybePiProvider(context);
+    final unread = provider.unreadEvents + (pi?.unreadEvents ?? 0);
     final scheme = Theme.of(context).colorScheme;
     return Semantics(
       button: true,
