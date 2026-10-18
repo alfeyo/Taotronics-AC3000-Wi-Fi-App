@@ -90,6 +90,26 @@ abstract class PiTransport {
   });
 }
 
+/// Raw status and decoded JSON body of a request whose non-200 answers are
+/// meaningful to the caller (operator commands).
+class PiRawResponse {
+  const PiRawResponse(this.status, this.data);
+  final int status;
+  final Map<String, dynamic>? data;
+}
+
+/// A transport that can carry an operator-signed command. Only IP routes do:
+/// the Bluetooth bridge relays reads only.
+abstract class PiOperatorTransport {
+  Future<PiRawResponse> sendRaw(
+    String method,
+    String path, {
+    required List<int> body,
+    required Map<String, String> headers,
+    Duration? timeout,
+  });
+}
+
 Map<String, dynamic> _checked(int status, Object? data) {
   if (status == 401 || status == 403) {
     throw PiApiException('Argon refused the credential.', status: status);
@@ -112,7 +132,7 @@ Map<String, dynamic> _checked(int status, Object? data) {
   return data;
 }
 
-class HttpPiTransport implements PiTransport {
+class HttpPiTransport implements PiTransport, PiOperatorTransport {
   HttpPiTransport(
     this.endpoint, {
     this.connectTimeout = const Duration(seconds: 3),
@@ -132,18 +152,34 @@ class HttpPiTransport implements PiTransport {
     String? token,
     Duration timeout,
   ) async {
+    final r = await _exchange(
+      method,
+      path,
+      body == null ? null : utf8.encode(jsonEncode(body)),
+      {if (token != null) HttpHeaders.authorizationHeader: 'Bearer $token'},
+      timeout,
+    );
+    return _checked(r.status, r.data);
+  }
+
+  Future<PiRawResponse> _exchange(
+    String method,
+    String path,
+    List<int>? body,
+    Map<String, String> headers,
+    Duration timeout,
+  ) async {
     final client = HttpClient()..connectionTimeout = connectTimeout;
     try {
       final request = await client
           .openUrl(method, endpoint.resolve(path))
           .timeout(timeout);
       request.followRedirects = false;
-      if (token != null) {
-        request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
-      }
+      headers.forEach(request.headers.set);
       if (body != null) {
         request.headers.contentType = ContentType.json;
-        request.write(jsonEncode(body));
+        request.contentLength = body.length;
+        request.add(body);
       }
       final response = await request.close().timeout(timeout);
       if (response.isRedirect ||
@@ -163,7 +199,10 @@ class HttpPiTransport implements PiTransport {
       } on FormatException {
         data = null;
       }
-      return _checked(response.statusCode, data);
+      return PiRawResponse(
+        response.statusCode,
+        data is Map<String, dynamic> ? data : null,
+      );
     } on PiApiException {
       rethrow;
     } on HandshakeException {
@@ -178,6 +217,21 @@ class HttpPiTransport implements PiTransport {
       client.close(force: true);
     }
   }
+
+  @override
+  Future<PiRawResponse> sendRaw(
+    String method,
+    String path, {
+    required List<int> body,
+    required Map<String, String> headers,
+    Duration? timeout,
+  }) => _exchange(
+    method,
+    path,
+    body,
+    headers,
+    timeout ?? const Duration(seconds: 20),
+  );
 
   @override
   Future<Map<String, dynamic>> get(
@@ -298,7 +352,7 @@ class PiIdentity {
         !RegExp(r'^[0-9a-f-]{36}$').hasMatch(id) ||
         versions is! List ||
         !versions.contains(1)) {
-      throw const PiApiException('This server is not an Argon gateway.');
+      throw const PiApiException('This server is not an Argon Network Hub.');
     }
     final bt = d['bluetooth'];
     final address = bt is Map ? bt['address'] : null;

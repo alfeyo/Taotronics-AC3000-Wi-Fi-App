@@ -13,7 +13,7 @@ String formatRate(int bytesPerSecond) {
   const units = ['B/s', 'KiB/s', 'MiB/s', 'GiB/s'];
   var value = bytesPerSecond.toDouble();
   var unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
+  while (value >= 1023.5 && unit < units.length - 1) {
     value /= 1024;
     unit++;
   }
@@ -27,7 +27,7 @@ String formatBytes(int bytes) {
   const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
   var value = bytes.toDouble();
   var unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
+  while (value >= 1023.5 && unit < units.length - 1) {
     value /= 1024;
     unit++;
   }
@@ -54,4 +54,36 @@ String formatAge(DateTime? time, {DateTime? now}) {
   if (age.inSeconds < 60) return '${age.inSeconds}s ago';
   if (age.inMinutes < 60) return '${age.inMinutes} min ago';
   return '${age.inHours} h ago';
+}
+
+/// A live link speed that Argon reports in BITS per second.
+///
+/// At or above 1 Mbit/s it reads as "x.x Mbps" (decimal, as ISPs quote
+/// speeds); below that the rate is shown in bytes with binary units so small
+/// flows stay accurate: 78 800 bit/s → "9.6 KiB/s".
+String formatBitRate(num bitsPerSecond) {
+  if (bitsPerSecond.isNaN || bitsPerSecond <= 0) return '0 B/s';
+  if (bitsPerSecond >= 1000000) {
+    return '${(bitsPerSecond / 1000000).toStringAsFixed(1)} Mbps';
+  }
+  final bytes = bitsPerSecond / 8;
+  if (bytes < 1024) return '${bytes.round()} B/s';
+  final kib = bytes / 1024;
+  if (kib < 1024) return '${kib.toStringAsFixed(1)} KiB/s';
+  return '${(kib / 1024).toStringAsFixed(1)} MiB/s';
+}
+
+/// A 0..1 share as a percentage; tiny non-zero shares read "<1%".
+String formatShare(double share) {
+  final pct = share.clamp(0.0, 1.0) * 100;
+  if (pct > 0 && pct < 1) return '<1%';
+  return '${pct.round()}%';
+}
+
+/// Signed change between two periods, e.g. "+12% vs previous 7 days".
+String formatChange(int current, int previous) {
+  if (previous <= 0) return current > 0 ? 'New' : 'No change';
+  final pct = ((current - previous) / previous * 100).round();
+  if (pct == 0) return 'No change';
+  return '${pct > 0 ? '+' : '−'}${pct.abs()}%';
 }

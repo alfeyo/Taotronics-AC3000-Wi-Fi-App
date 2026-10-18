@@ -8,7 +8,7 @@ import 'overview_tab.dart';
 import 'settings_screen.dart';
 import 'statistics_screen.dart';
 import 'wifi_screen.dart';
-import 'pi_gateway_screen.dart';
+import 'network_hub_screen.dart';
 
 /// Top-level destinations of the signed-in app.
 enum HomeTab {
@@ -16,7 +16,7 @@ enum HomeTab {
   devices('Devices', Icons.devices_other_outlined, Icons.devices_other_rounded),
   wifi('Wi-Fi', Icons.wifi_rounded, Icons.wifi_rounded),
   statistics('Statistics', Icons.insights_outlined, Icons.insights_rounded),
-  gateway('Gateway', Icons.hub_outlined, Icons.hub_rounded),
+  hub('Network Hub', Icons.hub_outlined, Icons.hub_rounded),
   settings('Settings', Icons.settings_outlined, Icons.settings_rounded);
 
   const HomeTab(this.label, this.icon, this.selectedIcon);
@@ -93,7 +93,7 @@ class _HomeScreenState extends State<HomeScreen> {
       HomeTab.devices => const DevicesScreen(),
       HomeTab.wifi => const WifiSettingsScreen(),
       HomeTab.statistics => const StatisticsScreen(),
-      HomeTab.gateway => const PiGatewayScreen(),
+      HomeTab.hub => const NetworkHubScreen(),
       HomeTab.settings => const SettingsScreen(),
     },
   );

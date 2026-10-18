@@ -563,7 +563,7 @@ PiProvider? maybePiProvider(BuildContext context, {bool listen = true}) {
   }
 }
 
-typedef _Notice = ({
+typedef Notice = ({
   String title,
   String message,
   DateTime time,
@@ -578,8 +578,8 @@ class EventsButton extends StatelessWidget {
 
   final RouterProvider provider;
 
-  List<_Notice> _merged(PiProvider? pi) {
-    final items = <_Notice>[
+  static List<Notice> merged(RouterProvider provider, PiProvider? pi) {
+    final items = <Notice>[
       for (final e in provider.events)
         (
           title: e.title,
@@ -594,7 +594,7 @@ class EventsButton extends StatelessWidget {
           message: e.message,
           time: e.at,
           tone: e.severity,
-          source: e.source == 'argon' ? 'Argon' : 'Gateway link',
+          source: e.source == 'argon' ? 'Network Hub' : 'Network Hub link',
         ),
     ];
     items.sort((a, b) => b.time.compareTo(a.time));
@@ -610,7 +610,7 @@ class EventsButton extends StatelessWidget {
       isScrollControlled: true,
       useSafeArea: true,
       builder: (context) {
-        final events = _merged(pi);
+        final events = merged(provider, pi);
         final theme = Theme.of(context);
         return DraggableScrollableSheet(
           expand: false,
@@ -622,7 +622,7 @@ class EventsButton extends StatelessWidget {
               Text('Notifications', style: theme.textTheme.titleLarge),
               const SizedBox(height: Space.xs),
               Text(
-                'Router and Argon events observed while the app is open.',
+                'Router and Network Hub events observed while the app is open.',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
@@ -633,7 +633,7 @@ class EventsButton extends StatelessWidget {
                   icon: Icons.notifications_none_rounded,
                   title: 'No events yet',
                   message:
-                      'Router and gateway disconnections, VPN and uplink '
+                      'Router and Network Hub disconnections, VPN and uplink '
                       'changes and settings results appear here.',
                 )
               else

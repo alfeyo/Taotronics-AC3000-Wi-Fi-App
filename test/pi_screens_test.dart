@@ -6,7 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tt_router_flutter/providers/pi_provider.dart';
 import 'package:tt_router_flutter/providers/router_provider.dart';
 import 'package:tt_router_flutter/screens/home_screen.dart';
-import 'package:tt_router_flutter/screens/pi_gateway_screen.dart';
+import 'package:tt_router_flutter/screens/network_hub_screen.dart';
 import 'package:tt_router_flutter/services/auth_pairing_service.dart';
 import 'package:tt_router_flutter/services/credential_store.dart';
 import 'package:tt_router_flutter/services/mqtt_service.dart';
@@ -132,26 +132,28 @@ void main() {
   });
 
   testWidgets(
-    'Gateway shows the Raspberry Pi and its measurements, not a connection form',
+    'Network Hub shows the Raspberry Pi and its measurements, not a connection form',
     (tester) async {
       tester.view.physicalSize = const Size(400, 2600);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
       final (router, pi) = await _providers(tester);
-      await tester.pumpWidget(_app(router, pi, const PiGatewayScreen()));
+      await tester.pumpWidget(_app(router, pi, const NetworkHubScreen()));
       await tester.pump();
-      expect(find.text('Argon'), findsOneWidget);
-      expect(find.text('Raspberry Pi 4 Model B'), findsOneWidget);
+      expect(find.text('Network Hub'), findsOneWidget);
+      expect(find.text('Argon · Raspberry Pi 4 Model B'), findsOneWidget);
       expect(find.text('Connected · Local network'), findsOneWidget);
-      expect(find.text('VPN protected'), findsOneWidget);
+      expect(find.text('VPN on'), findsOneWidget, reason: 'legacy gateway.vpn');
       expect(find.text('12%'), findsOneWidget);
       expect(find.text('47°C'), findsOneWidget);
       expect(
-        find.text('1.00 MiB/s'),
+        find.text('8.4 Mbps'),
         findsOneWidget,
-        reason: '8 Mbit/s from Argon = 1 MiB/s',
+        reason: '8 Mi bit/s from Argon, shown as a link speed',
       );
-      expect(find.text('3.00 GiB'), findsOneWidget);
+      expect(find.text('2.0 KiB/s'), findsOneWidget, reason: '16 384 bit/s');
+      expect(find.text('3.00 GiB'), findsOneWidget, reason: 'legacy today');
+      expect(find.text('100%'), findsOneWidget, reason: 'all of today via VPN');
       expect(find.text('Enable device synchronization'), findsOneWidget);
       expect(
         find.byType(TextField),
@@ -176,7 +178,10 @@ void main() {
         find.text('Measured by Argon · household traffic · live'),
         findsOneWidget,
       );
-      expect(find.textContaining('Online via Local network'), findsOneWidget);
+      expect(
+        find.textContaining('Available via Local network'),
+        findsOneWidget,
+      );
       pi.dispose();
 
       (router, pi) = await _providers(tester, argonUp: false);

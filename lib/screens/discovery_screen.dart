@@ -1,4 +1,4 @@
-import 'pi_gateway_screen.dart';
+import 'network_hub_screen.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -205,11 +205,11 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
           title: const Text('Find your router'),
           actions: [
             IconButton(
-              tooltip: 'Raspberry Pi gateway',
+              tooltip: 'Network Hub',
               icon: const Icon(Icons.hub_outlined),
               onPressed: () => Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => const PiGatewayScreen()),
+                MaterialPageRoute(builder: (_) => const NetworkHubScreen()),
               ),
             ),
             IconButton(

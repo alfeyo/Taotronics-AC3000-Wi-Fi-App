@@ -284,6 +284,16 @@ class _DevicesScreenState extends State<DevicesScreen> {
                               ],
                             ),
                           ),
+                        const SizedBox(height: Space.sm),
+                        Text(
+                          'Rates are live from the router'
+                          '${provider.devicesUpdatedAt == null ? '' : ' · updated ${formatAge(provider.devicesUpdatedAt)}'}. '
+                          'Historical per-device usage not measured: the '
+                          'TaoTronics router only exposes aggregate traffic.',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -455,6 +465,10 @@ class _DeviceTile extends StatelessWidget {
                   _Rate(Icons.south_rounded, d.downloadSpeed, Tone.brand),
                   const SizedBox(height: 2),
                   _Rate(Icons.north_rounded, d.uploadSpeed, Tone.accent),
+                  Text(
+                    'live',
+                    style: theme.textTheme.labelSmall?.copyWith(color: muted),
+                  ),
                 ],
               )
             else
@@ -504,7 +518,10 @@ class _Rate extends StatelessWidget {
       children: [
         Icon(icon, size: 14, color: context.tone(tone).foreground),
         const SizedBox(width: 2),
-        Text(formatRate(rate), style: Theme.of(context).textTheme.labelMedium),
+        Text(
+          formatBitRate(rate * 8),
+          style: Theme.of(context).textTheme.labelMedium,
+        ),
       ],
     );
   }
@@ -544,6 +561,13 @@ class _DeviceDetails extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final d = device;
+    final node = d.nodeSn == null
+        ? null
+        : context
+              .read<RouterProvider>()
+              .nodes
+              .where((n) => n.sn == d.nodeSn)
+              .firstOrNull;
     final rows = <(String, String, bool)>[
       ('IP address', d.ipAddress ?? 'Not reported', true),
       ('MAC address', d.mac.isEmpty ? 'Not reported' : d.mac, true),
@@ -556,16 +580,36 @@ class _DeviceDetails extends StatelessWidget {
             : '${_linkLabel(d.link)} (inferred from router client type)',
         false,
       ),
-      ('Download now', d.isOnline ? formatRate(d.downloadSpeed) : '—', false),
-      ('Upload now', d.isOnline ? formatRate(d.uploadSpeed) : '—', false),
+      if (node != null)
+        (
+          'Mesh node',
+          '${node.displayName}${node.role == null ? '' : ' · ${node.role}'}',
+          false,
+        ),
+      (
+        'Download (live)',
+        d.isOnline ? formatBitRate(d.downloadSpeed * 8) : '—',
+        false,
+      ),
+      (
+        'Upload (live)',
+        d.isOnline ? formatBitRate(d.uploadSpeed * 8) : '—',
+        false,
+      ),
       ('Connected since', d.isOnline ? _time(d.connectedSince) : '—', false),
       ('Last seen', _time(d.lastSeen), false),
       ('First seen', _time(d.firstSeen), false),
       (
-        'Data usage',
+        'Router byte counters',
         d.hasByteCounters
             ? '${formatBytes(d.downBytes)} down · ${formatBytes(d.upBytes)} up'
             : 'Not reported by this router',
+        false,
+      ),
+      (
+        'Historical usage',
+        'Historical per-device usage not measured (the router only exposes '
+            'aggregate traffic)',
         false,
       ),
     ];

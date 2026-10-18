@@ -32,4 +32,35 @@ void main() {
       '4 min ago',
     );
   });
+
+  test('live bit rates: Mbps from 1 Mbit/s, binary byte units below', () {
+    expect(formatBitRate(0), '0 B/s');
+    expect(formatBitRate(-5), '0 B/s');
+    expect(formatBitRate(8), '1 B/s');
+    expect(formatBitRate(8 * 1023), '1023 B/s');
+    expect(formatBitRate(8 * 1024), '1.0 KiB/s');
+    expect(formatBitRate(78800), '9.6 KiB/s');
+    expect(formatBitRate(999999), '122.1 KiB/s', reason: 'just under 1 Mbit');
+    expect(formatBitRate(1000000), '1.0 Mbps');
+    expect(formatBitRate(84200000), '84.2 Mbps');
+    expect(formatBitRate(940000000), '940.0 Mbps');
+  });
+
+  test('totals use binary units; shares and changes', () {
+    expect(
+      formatBytes(1024 * 1024 - 1),
+      '1.00 MiB',
+      reason: 'never "1024 KiB"',
+    );
+    expect(formatBytes(1024 * 1024), '1.00 MiB');
+    expect(formatBytes(1024 * 1024 * 1024), '1.00 GiB');
+    expect(formatShare(0), '0%');
+    expect(formatShare(0.004), '<1%');
+    expect(formatShare(0.42), '42%');
+    expect(formatShare(1.5), '100%');
+    expect(formatChange(24, 20), '+20%');
+    expect(formatChange(15, 20), '−25%');
+    expect(formatChange(20, 20), 'No change');
+    expect(formatChange(5, 0), 'New');
+  });
 }

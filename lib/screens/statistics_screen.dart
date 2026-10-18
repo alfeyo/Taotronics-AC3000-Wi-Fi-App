@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../models/device_entity.dart';
 import '../providers/router_provider.dart';
 import '../services/router_certificate_verifier.dart';
 import '../theme/app_theme.dart';
@@ -166,6 +167,8 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                     _TransferCard(provider: provider),
                     const SectionLabel('Devices'),
                     _DevicesCard(provider: provider),
+                    const SectionLabel('Mesh'),
+                    _MeshCard(provider: provider),
                     const SectionLabel('Wi-Fi availability'),
                     _WifiAvailability(provider: provider),
                     const SectionLabel('Internet'),
@@ -718,7 +721,10 @@ class _DevicesCard extends StatelessWidget {
           ),
           if (top.isNotEmpty) ...[
             const Divider(height: Space.xl),
-            Text('Most active right now', style: theme.textTheme.titleSmall),
+            Text(
+              'Most active right now · live',
+              style: theme.textTheme.titleSmall,
+            ),
             const SizedBox(height: Space.sm),
             for (final d in top)
               InkWell(
@@ -739,7 +745,9 @@ class _DevicesCard extends StatelessWidget {
                             ),
                           ),
                           Text(
-                            formatRate(d.downloadSpeed + d.uploadSpeed),
+                            formatBitRate(
+                              (d.downloadSpeed + d.uploadSpeed) * 8,
+                            ),
                             style: theme.textTheme.labelMedium,
                           ),
                         ],
@@ -757,6 +765,116 @@ class _DevicesCard extends StatelessWidget {
                 ),
               ),
           ],
+          const SizedBox(height: Space.md),
+          Text(
+            'Device rates are live from the router. Historical per-device '
+            'usage not measured: the TaoTronics router only exposes '
+            'aggregate traffic.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Mesh nodes as the router reports them: role, status and client count.
+class _MeshCard extends StatelessWidget {
+  const _MeshCard({required this.provider});
+
+  final RouterProvider provider;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = theme.colorScheme.onSurfaceVariant;
+    final nodes = provider.nodes;
+    final wired = provider.devices
+        .where((d) => d.isOnline && d.link == DeviceLink.wired)
+        .length;
+    final wifi = provider.devices
+        .where((d) => d.isOnline && d.link == DeviceLink.wireless)
+        .length;
+    final unknown = provider.devices
+        .where((d) => d.isOnline && d.link == DeviceLink.unknown)
+        .length;
+    return PanelCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: _Figure(
+                  label: 'Nodes',
+                  value: provider.isConnected && nodes.isNotEmpty
+                      ? '${nodes.where((n) => n.isOnline).length}/${nodes.length}'
+                      : null,
+                  color: theme.colorScheme.onSurface,
+                ),
+              ),
+              Expanded(
+                child: _Figure(
+                  label: 'Wi-Fi clients',
+                  value: provider.isConnected ? '$wifi' : null,
+                  color: theme.colorScheme.onSurface,
+                ),
+              ),
+              Expanded(
+                child: _Figure(
+                  label: 'Wired clients',
+                  value: provider.isConnected ? '$wired' : null,
+                  color: theme.colorScheme.onSurface,
+                ),
+              ),
+            ],
+          ),
+          if (provider.isConnected && nodes.isNotEmpty) ...[
+            const Divider(height: Space.xl),
+            for (final n in nodes)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  children: [
+                    Icon(
+                      n.isMaster ? Icons.router_rounded : Icons.hub_rounded,
+                      size: 18,
+                      color: n.isOnline
+                          ? context.tone(Tone.success).foreground
+                          : muted,
+                    ),
+                    const SizedBox(width: Space.sm),
+                    Expanded(
+                      child: Text(
+                        '${n.displayName} · ${n.isMaster ? 'Main router' : 'Satellite'}'
+                        '${n.role == null ? '' : ' (${n.role})'}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyMedium,
+                      ),
+                    ),
+                    Text(
+                      n.isOnline ? '${n.connectedDevices} clients' : 'Offline',
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: muted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+          const SizedBox(height: Space.sm),
+          Text(
+            [
+              'Mesh inventory from the router',
+              if (provider.nodesUpdatedAt != null)
+                'updated ${formatAge(provider.nodesUpdatedAt)}',
+              if (unknown > 0) '$unknown online with unknown connection type',
+            ].join(' · '),
+            style: theme.textTheme.bodySmall?.copyWith(color: muted),
+          ),
         ],
       ),
     );
