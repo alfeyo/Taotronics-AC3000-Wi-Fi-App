@@ -76,6 +76,21 @@ MQTT login succeeds for every phone, and the refusal is at the command level.
 - OnePlus (holder): router LED switched off and back on, each confirmed by the app's read-back.
 - Argon: eth0 uplink, VPN (GB egress), Tailscale, `/devices` and `/network` unaffected.
 
-## 4. Related observation
+### 1.6.3+12 refinements (validated 12:33 on both phones)
+
+- **Unknown is not zero.** Until the router has answered this phone once, counts render as "Devices: waiting" or "—". The hero, Home tile, Devices summary and empty state all name the waiting reason. Cached counts on a refused phone are labelled "last read … · not live". Validated: the Fold4, refused with a fresh process and no cache, showed the banner and "Devices: waiting"; the OnePlus (holder) showed 20 devices. Widget test: `a phone refused by the router shows waiting, never zero`.
+- **Polling:** live cadence went from 3 s to **5 s**. Each tick is four commands at about 0.9 s average round trip on a router that serves one command at a time. At 3 s that kept it over 100% busy, which is why round trips stretched to 4–5 s. The refused-phone probe is every 4 ticks (about 20 s). Full refreshes are skipped while refused. The V1-only verdict is persisted: 0 V2 probes on both phones after the update.
+- **Releasing on background:** already in place. The app pauses all polling when backgrounded, and the router hands the session over about 60–80 s later (validated: 76 s). Disconnecting MQTT doesn't speed this up: in T1 the process was killed with the socket closed and access still took about 56 s. So the release time is set by the router, not the app.
+
+## 4. Argon monitoring under the one-controller limit
+
+- **No Pi MQTT session (decision):** Argon sits on the router's WAN side, where the control port is refused. More importantly, any always-on client would hold or compete for the single management session and lock the phones out. Not enabled.
+- **Low-contention strategy:** Argon keeps using **phone-supplied** snapshots, which add **zero** router load because they reuse the managing phone's own reads. Only a phone that is currently managing has fresh inventory to send; a refused phone sends nothing. The data is labelled phone-supplied with a 60 s expiry. Argon's own measurements (eth1 traffic and VPN accounting) don't touch the router at all.
+- **Recommendation:** pair **both** phones with Argon (`/devices` → "Pair TT Router app"; the OnePlus isn't paired yet). Then whichever phone holds the router keeps Argon fresh.
+- **Dashboard states (deployed builds `jppyp4As4JHsDD0swUtPs`, then `2MSZsHe2usMkuye3t29qP`):**
+  - Before the first response: "Loading…" everywhere, instead of "Management not connected", "UNAVAILABLE", "VPN off", "DOWN" or "0 known".
+  - Stale router data: "Stale · last report N min ago · waiting for a paired phone" on `/network`. `/devices` already showed "Management data stale", with clients "Unverified" and "--".
+
+## 5. Related observation
 
 At about 11:40 router index 1 was renamed from `Game labs` to `Nokia Wifi` from a phone (not by this investigation). Six BSSIDs now broadcast `Nokia Wifi`: both networks on all three radios.

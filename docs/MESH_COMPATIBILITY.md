@@ -46,3 +46,54 @@ Limits of this setup:
 - **Outside the local API:** it isn't in `GetWirelessInfoList` (indices 0–2) or guest (`Game Labs-VIP`). The only infrastructure-looking BSS is the hidden `…:AC` on 5 GHz ch 149.
 
 **Likely purpose (inferred):** a 2.4 GHz-only compatibility or IoT network created through the vendor app. Whether household devices rely on it can't be determined, because TaoTronics client records carry no SSID. It is left untouched. Retiring it requires the vendor app, a watch on device counts while it's disabled, and disabling rather than deleting.
+
+## Duplicate `Nokia Wifi` networks (audit 2026-10-18 12:25, read-only)
+
+| | Index 0 | Index 1 |
+|---|---|---|
+| SSID | `Nokia Wifi` | `Nokia Wifi` (renamed from `Game labs` about 11:40) |
+| Enabled | yes | yes |
+| BSSIDs | `…:A7` (2.4 ch 2), `…:A3` (5 ch 44), `…:AD` (5 ch 149) | `…:AA` (2.4 ch 2), `…:A5` (5 ch 44), `…:AE` (5 ch 149) |
+| Security (RSN element) | WPA/WPA2-PSK, CCMP only | byte-identical |
+| Password | accepts the Nokia password | accepts the Nokia password |
+| Observed clients | Fold4 (`…:AD`) | OnePlus (`…:AE`) |
+
+The two networks share an SSID, security and passphrase, so they are **accidental duplicates**: two virtual networks per radio advertising the same network. The password evidence is that both phones joined with their single saved `Nokia Wifi` profile. Per-network client counts aren't available: the router's client records carry no SSID, and the BSS Load station count (10) is device-wide. Effects: double beacon overhead on every radio (six BSSIDs), and clients may switch between the two networks on one radio. No security impact.
+
+**Smallest safe correction (needs approval):** switch **index 1 off** with TT Router's existing per-network switch (`Create=0`), leaving its settings intact so it can be re-enabled. Don't rename or delete it.
+- **Expected effect:** clients on index 1 BSSIDs (at least the OnePlus) drop for a few seconds and rejoin the same SSID on index 0 with their saved password. Radios restart, so all clients may reconnect briefly.
+- **Before:** note the device counts on `/devices`.
+- **After:** check that the router's read-back shows index 1 off, and that the device count recovers within about 2 minutes.
+- **Rollback:** switch index 1 back on.
+
+`Game Labs-2.4G` (`…:A9`) is unchanged: the same radio, the same security, broadcast independently of index 1. Its purpose is still only inferred (a vendor-app 2.4 GHz compatibility/IoT network); confirming it needs the vendor app. Leave it on until no device depends on it.
+
+## Recommended coverage solution
+
+1. **Best unified option:** a second **TaoTronics TT-ND001** satellite, if one can still be obtained, enrolled through the vendor's own flow.
+   - It's a real mesh: one SSID set, one management app, one client list. Backhaul runs over the dedicated 5 GHz-high radio (hidden `…:AC`) or Ethernet.
+   - It costs nothing in configuration, but the satellite would share the router's one-phone management limit.
+2. **Available now:** the Nokia Beacon as a **bridged access point** (below).
+   - It adds coverage, but as a separately managed AP with client-driven roaming. It's not a mesh.
+
+### Executable bridged-AP setup (Nokia Beacon; radios stay off until approved)
+
+Topology:
+`MikroTik → Argon eth0 … Argon eth1 → TaoTronics WAN │ TaoTronics LAN port ──Ethernet──► Nokia Beacon (AP bridge)`
+
+1. **Survey (no change):** in the Nokia WiFi app (local login), record the model and firmware (`get_devmap_cap_status_app.cgi` data, shown in the app's device info). Also list anything still cabled to the Beacon.
+2. **Cable:** a TaoTronics LAN port to the Beacon's port (WAN or LAN). Never connect it to Argon `eth1` or the MikroTik. One cable only, so no loop.
+3. **Mode:** in the Nokia app, set Work mode to **AP bridge** (the app's `whw_beacon_mode_app.cgi act=setWorkMode&brEnable=1`, followed by a reboot). This turns off the Beacon's DHCP server and NAT. Use the official app only; don't send these calls manually.
+4. **Verify bridging (radios still off):**
+   - The Beacon takes a 192.168.10.x lease from 192.168.10.1.
+   - A client on the Beacon's LAN port gets its address from 192.168.10.1. No 192.168.18.x appears, and there's no second DHCP offer or double NAT.
+   - `/devices` lists the Beacon as a wired TaoTronics client.
+5. **(Approval) Wi-Fi settings:**
+   - SSID `Nokia Wifi`, the same password, WPA2-PSK AES (no WPA3-only).
+   - 2.4 GHz on ch 6 or 11 at 20 MHz. 5 GHz on ch 52–64 or 100–112 at 80 MHz. TaoTronics uses 44 (36–48) and 149 (149–161).
+   - Lower the transmit power if the Beacon is close to the router.
+6. **Roaming:** there's no 802.11k/v/r coordination between vendors, so clients decide when to switch. Place the Beacon where the TaoTronics signal drops below about −70 dBm, not next to it. Expect a short reconnect when a client changes AP.
+7. **Validate:** clients on both APs get 192.168.10.x, the internet works through the VPN, Argon stays on eth0, and device counts are stable.
+8. **Rollback:** switch the Beacon's radios off, or unplug its Ethernet. Bridge mode can be reversed in the Nokia app (`brEnable=0`).
+
+The shared SSID gives the same network name and password everywhere. It **does not** create a cross-vendor mesh.
