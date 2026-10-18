@@ -158,9 +158,17 @@ Stages 3 and 4 were carried out with the user. Final state and evidence are in
 - **Coverage:** a TaoTronics satellite (unified mesh) if obtainable; otherwise the Nokia bridged-AP procedure in [MESH_COMPATIBILITY.md](MESH_COMPATIBILITY.md).
 - **Argon:** phone-supplied snapshots only; pair the OnePlus too. See [MULTI_DEVICE_CONNECTION_REVIEW.md](MULTI_DEVICE_CONNECTION_REVIEW.md) §4.
 
+### Software close-out (2026-10-18, 1.8.0+16 / dashboard `58Iu751gYZQjlvj0x0IDj`)
+See [PROJECT_CLOSEOUT_CHECKLIST.md](PROJECT_CLOSEOUT_CHECKLIST.md) for per-requirement status, evidence and the consolidated owner approvals.
+- **Netflix DNS/classification feature removed** live and from the repo (restore script kept). Essential NetworkManager dnsmasq DHCP/DNS is untouched and stable.
+- **VPN DNS leak fix** (`argon-vpn-dns`) is installed and inert while the VPN is off. Its NetworkManager → dnsmasq mechanism was proven live without disturbing `eth1`. Live VPN-on verification is pending approval.
+- **Phone VPN control:** Keystore-signed per-phone grants (the Fold4 is granted) and a real location selector (5 Surfshark profiles; choosing one while off never starts the tunnel).
+- **Unified Wi-Fi manager:** a primary "Nokia Wifi" view; every network labelled, including `Game Labs-2.4G` (observed, not exposed by the router API); duplicate consolidation that needs approval; open entries can't be enabled; WPA3 never offered.
+- **Nokia:** the Mesh page shows MAC-OUI matches as candidates only, and verified states come only from a validated owner record. The Beacons are still off.
+
 ## 7. Releases, branches and rollback
 
-- APKs in `artifacts/releases/` (git-ignored): `tt-router-1.3.1-*.apk`, `tt-router-1.4.0-argon.apk`, `tt-router-1.5.0-8.apk` (SHA-1 `60d81c27a1db4f9e48bab4efd828ecde32a82154`), `tt-router-1.6.0-9.apk` (SHA-1 `aa6dd9ab64912ce59a8dbe09db51160bbc45b177`), `tt-router-1.6.2-11.apk` (SHA-1 `40260de606e72960ffbca06aae48b7dc6aff6a93`), `tt-router-1.6.3-12.apk` (SHA-1 `369edf2da0d9f4485a74da0777175968ea4c2832`, installed on the Fold4 and the OnePlus; both signer SHA-256 `c5f7a819…00ab89`). Downgrade needs uninstall (loses pairing); prefer forward fixes.
+- APKs in `artifacts/releases/` (git-ignored): `tt-router-1.3.1-*.apk`, `tt-router-1.4.0-argon.apk`, `tt-router-1.5.0-8.apk` (SHA-1 `60d81c27a1db4f9e48bab4efd828ecde32a82154`), `tt-router-1.6.0-9.apk` (SHA-1 `aa6dd9ab64912ce59a8dbe09db51160bbc45b177`), `tt-router-1.6.2-11.apk` (SHA-1 `40260de606e72960ffbca06aae48b7dc6aff6a93`), `tt-router-1.6.3-12.apk` (SHA-1 `369edf2da0d9f4485a74da0777175968ea4c2832`), `tt-router-1.8.0-16.apk` (SHA-1 `efd321fb51bbbde07cf5675cb80194a08d709717`, Fold4; installed on the Fold4 and the OnePlus; both signer SHA-256 `c5f7a819…00ab89`). Downgrade needs uninstall (loses pairing); prefer forward fixes.
 - Flutter remote: `origin` (GitHub `alfeyo/Taotronics-AC3000-Wi-Fi-App`); branch not merged to `main`.
 - Dashboard: no git remote; commits are local only. Pi rollbacks: `~/argon-backups/release-20261018-110003/rollback.sh` (Network Hub API, build `RMfC8snyfaHkDDD5P93Z1`), `~/argon-backups/release-20261018-091546/rollback.sh` (earlier dashboard), `~/argon-backups/btbridge-20261018-084451/rollback.sh` (Bluetooth bridge), `~/argon-backups/router-20261017-204546/rollback.sh` (router integration).
 
