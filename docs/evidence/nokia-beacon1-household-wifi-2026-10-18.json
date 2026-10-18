@@ -86,5 +86,9 @@
     "finalObservedBssid": "80:c5:48:50:35:ae",
     "note": "Temporary BSSID pin removed. Phone initially selected Nokia 5 GHz, then switched to TaoTronics under the shared SSID. Diagnostics invalidated the check during that transition; this is not evidence of seamless roaming."
   },
-  "temporarySecretsRemoved": true
+  "temporarySecretsRemoved": true,
+  "postChangeManagementCheck": {
+    "observation": "API temporarily timed out after client re-selection; root ping still passed. Static page subsequently returned HTTP 200, followed by discovery CGI HTTP 200 with matching serial and AP_Bridge.",
+    "recoveryAction": "No reboot or configuration change; service recovered during read-only verification."
+  }
 }

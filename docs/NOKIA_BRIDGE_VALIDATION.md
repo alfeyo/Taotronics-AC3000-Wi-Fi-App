@@ -16,6 +16,7 @@ At approximately 19:35–19:37 local time on 18 October 2026, after explicit own
 - Fold4 on Nokia **2.4 GHz BSSID `b4:63:6f:db:e6:c9`**, 2412 MHz, client signal −46 dBm: the same address/DHCP/gateway and Wi-Fi-bound HTTPS **passed**. Temporary phone BSSID selection was removed afterward (Android configuration BSSID=null). The phone selected Nokia 5 GHz and later TaoTronics under the shared SSID; diagnostics caught and invalidated a check during the transition. Normal automatic selection is retained; continuity during roaming was not measured.
 - TT Router 1.9.2+19 successfully reconnected to the saved root after the rename and displayed the new SSID and actual BSSID in diagnostics. No app rebuild was required for this configuration change.
 - Argon API remains healthy with online `eth0` and VPN off. TaoTronics routing/DHCP and Wi-Fi configuration were not written. A separate direct MQTT read was denied for its unpaired client (ErrorCode 5); it sent no configuration writes.
+- During final verification, management HTTP briefly timed out while root ping remained reachable. The static page and discovery CGI subsequently returned HTTP 200 with matching serial and AP bridge mode; no reboot or configuration change was needed.
 - These are measurements at the phone's current location, not a whole-house coverage survey or seamless roaming test. The root Ethernet cable remains required. Work on Beacon 2 is outside the current scope.
 
 [Sanitized read-back and client evidence](evidence/nokia-beacon1-household-wifi-2026-10-18.json).
