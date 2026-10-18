@@ -31,6 +31,14 @@ void main() {
       formatAge(now.subtract(const Duration(minutes: 4)), now: now),
       '4 min ago',
     );
+    expect(
+      formatAge(now.subtract(const Duration(hours: 47)), now: now),
+      '47 h ago',
+    );
+    expect(
+      formatAge(now.subtract(const Duration(hours: 244)), now: now),
+      '10 d ago',
+    );
   });
 
   test('live bit rates: Mbps from 1 Mbit/s, binary byte units below', () {

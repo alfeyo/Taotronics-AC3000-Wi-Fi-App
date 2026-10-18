@@ -749,6 +749,7 @@ class _Usage extends StatelessWidget {
               ShareBar(
                 label: 'Today',
                 share: today?.measured == false ? null : today?.vpnShare,
+                unmeasured: today?.measured == false,
                 state: usageState,
               ),
               ShareBar(
@@ -756,6 +757,7 @@ class _Usage extends StatelessWidget {
                 share: usage?.last7?.measured == false
                     ? null
                     : usage?.last7?.vpnShare,
+                unmeasured: usage?.last7?.measured == false,
                 state: usageState,
               ),
               ShareBar(
@@ -763,6 +765,7 @@ class _Usage extends StatelessWidget {
                 share: usage?.thisMonth?.measured == false
                     ? null
                     : usage?.thisMonth?.vpnShare,
+                unmeasured: usage?.thisMonth?.measured == false,
                 state: usageState,
               ),
               const SizedBox(height: Space.xs),

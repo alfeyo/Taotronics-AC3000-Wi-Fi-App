@@ -479,11 +479,15 @@ class ShareBar extends StatelessWidget {
     required this.label,
     required this.share,
     required this.state,
+    this.unmeasured = false,
   });
 
   final String label;
   final double? share;
   final HubDataState state;
+
+  /// Argon reported the period, but its coverage is too low to quote a share.
+  final bool unmeasured;
 
   @override
   Widget build(BuildContext context) {
@@ -504,7 +508,9 @@ class ShareBar extends StatelessWidget {
                 ),
               ),
               Text(
-                share == null ? hubValue(state, null) : formatShare(share!),
+                share == null
+                    ? (unmeasured ? 'Not measured' : hubValue(state, null))
+                    : formatShare(share!),
                 style: theme.textTheme.labelLarge,
               ),
             ],
