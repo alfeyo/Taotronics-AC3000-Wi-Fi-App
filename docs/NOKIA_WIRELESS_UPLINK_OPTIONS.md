@@ -1,5 +1,40 @@
 # Nokia uplink recovery and dedicated wireless bridge options
 
+## Current decision — strictly wireless extension, 18 October 2026
+
+**This section supersedes the wired-root recommendations and recovery instructions below.** The owner reports the Nokia cable is disconnected and now requires no Ethernet connection to either Beacon. Earlier recovery results are historical, not current Nokia connectivity. No reconnection, reset, SSID change or router configuration write was performed in this final investigation.
+
+**Engineering result: the available hardware and inspected firmware/API do not provide a verified, implementable wireless-only Nokia uplink. The smallest documented hardware change for wireless coverage is one additional matching TaoTronics TT-ND001, used as a wireless child of the existing TaoTronics.** This replaces the Nokia coverage role; it does not integrate Nokia into the TaoTronics mesh. No compatible firmware replacement for the existing Beacons was identified.
+
+### Exact implementation blocker
+
+The [completed enrollment trace](NOKIA_ENROLLMENT_PROTOCOL.md) reaches the authenticated Nokia root's `whw_zerotouchonb_app.cgi` with `act=AddBeacon&BeaconSrn=<serial>`. The device WebGUI instead uses encrypted `mesh_web_app.cgi?add` with `SerialNumber`; TT Router implements that operation. Both delegate discovery, device authorization, backhaul key exchange, association and configuration synchronization to Nokia firmware. Neither supplies a third-party upstream SSID/credential operation or the protocol needed to implement an accepted non-Nokia controller. `mesh_status_web_app.cgi` reports inventory/status; it cannot create that missing controller.
+
+The inspected TaoTronics implementation has `SetMeshInitByBt`, AP broadcast settings and node inventory, but no verified Nokia enrollment counterpart. Generic Linux AP/STA or Multi-AP support does not establish the required Nokia bootstrap and controller compatibility. The available APK and firmware-delivered WebGUI are not a full firmware implementation: the exact over-air handshake remains unknown, not proven proprietary or universally impossible. This is an implementation blocker, not a claim about all future firmware.
+
+Either Beacon can only be credited with wireless extender service after an accepted upstream root and actual association are established. Exchanging their root/extender roles does not supply an upstream internet source. The second unit's exact identity and firmware remain unavailable; no enrollment or role change was attempted.
+
+### Live read-only hardware findings
+
+- Fold4: associated with **TaoTronics** BSSID `80:c5:48:50:35:ae`, SSID `Nokia Wifi`, address `192.168.10.69`, RSSI −33 dBm, 5745 MHz. Its reported 866 Mbps PHY rate is not measured throughput. This is not Nokia internet evidence.
+- Argon: Raspberry Pi 4 Model B Rev 1.2, reachable over its existing Tailscale path. Default route remains `eth0` via `192.168.88.1`, source `192.168.88.250`. This demonstrates management reachability, not a fresh comprehensive VPN/gateway-health test.
+- Only `phy0` / onboard `wlan0` is present, using `brcmfmac`, SDIO ID `02D0:A9A6`. USB inventory contains the Realtek Ethernet adapter and hubs, but no USB Wi-Fi adapter. The network migration record reserves onboard Wi-Fi for OnePlus failover; it is not isolated test hardware.
+- `iw phy phy0 info` advertises managed/AP/P2P/IBSS modes, with concurrent managed+AP restricted to one channel. It does not establish Nokia-compatible enrollment or transparent four-address forwarding. Channels 149–165 were reported disabled in this radio's current configuration; the observed TaoTronics phone connection is on channel 149. No regulatory, channel or interface settings were changed.
+
+No isolated spare Linux radio/controller was available in the inspected inventory. The protocol prerequisite also remains unmet, so no speculative proof of concept was built. Nokia DHCP, internet, reconnect, throughput and coverage were **not newly demonstrated**. The earlier cable-removal failure remains historical evidence; the phone was not switched off its working TaoTronics connection to repeat it.
+
+### Smallest safe hardware path
+
+Use **existing TaoTronics → wireless → one additional TT-ND001 → clients**. The remote satellite needs its matching power supply, no Ethernet. Confirm regional model/firmware compatibility before obtaining a unit; availability and price were not verified. The vendor-authored guide documents wireless mesh on printed page 5 and adding a child near the master, then relocating it with power, on printed page 9. This is vendor-supported topology evidence, not a successful household test of a satellite that is not yet present. [TT-ND001 guide](https://fccid.io/2AVUHTT-ND001/User-Manual/User-Manual-4842956.pdf).
+
+After obtaining that unit, use the documented child-enrollment procedure, preserve the current gateway/SSID/security, and verify its identity/parent and wireless connection. Before claiming coverage, bind a client to the child's BSSID and check TaoTronics DHCP/gateway, same-LAN access, DNS/HTTPS, concurrent-client forwarding, measured throughput, roaming and child reboot/RF-loss recovery. Verify IPv6/multicast where used and absence of another DHCP/NAT layer. No production-root reset is part of this path. If retaining Nokia radios is mandatory, no verified no-Ethernet solution was identified for the existing firmware.
+
+TT Router application code is unchanged: no new working wireless capability was established to expose. Argon's interfaces, Ethernet, VPN, routing, DHCP, firewall, Tailscale and recovery configuration were not modified. Validation for this update is documentation diff/link checking; previous Flutter test results are not new radio test evidence.
+
+---
+
+## Historical feasibility audit and cable-based alternatives
+
 18 October 2026, Africa/Lusaka. **Final feasibility audit: TT Router 1.9.2+19.** Read-only inspection of existing APK, device WebGUI sources, recorded authenticated responses and Flutter code; no new router requests, cable removal or production configuration changes. Second-Beacon role replacement is assessed below, not performed. The previously approved Beacon 1 SSID migration is recorded separately in [current validation](NOKIA_BRIDGE_VALIDATION.md).
 
 ## Final compatibility verdict

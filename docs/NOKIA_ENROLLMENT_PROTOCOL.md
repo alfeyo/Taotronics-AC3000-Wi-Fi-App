@@ -1,5 +1,7 @@
 # Nokia enrollment protocol and intermediary feasibility
 
+**Subsequent scope update:** the owner has disconnected the Nokia cable and requires no Ethernet to either Beacon. The [final wireless-only decision and live Pi inventory](NOKIA_WIRELESS_UPLINK_OPTIONS.md#current-decision--strictly-wireless-extension-18-october-2026) supersede the cable-preservation instructions and proposed reference test below. Those sections describe the earlier phase, not current connectivity or authorization to reconnect.
+
 18 October 2026. Baseline: installed TT Router 1.9.2+19, Nokia Beacon 2 `3FE49334IJJJ09` / CGI **5.5**, root `ALCLB4392160` in AP_Bridge at `192.168.10.97`. The root's Ethernet uplink and approved household `Nokia Wifi` configuration remain unchanged. The owner deferred the second-Beacon hardware test until later.
 
 ## Findings and evidence boundaries
