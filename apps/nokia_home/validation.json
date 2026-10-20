@@ -1,0 +1,17 @@
+{
+  "date": "2026-10-20",
+  "timezone": "Africa/Lusaka",
+  "version": "1.0.0+1",
+  "branch": "codex/nokia-home-app",
+  "application_id": "com.alfeyo.nokia_home",
+  "apk_sha256": "2cf68c3cec9136421e21ef95dba8a3d2c878373b7626ebcb7c5288f38b163fb4",
+  "apk_path": "artifacts/releases/nokia-home-1.0.0-1.apk",
+  "signing": "Local debug key, private sideload build",
+  "app_tests_passed": 30,
+  "shared_source_baseline_tests_passed": 32,
+  "apk_manifest_verified": true,
+  "no_tt_artwork_in_apk": true,
+  "physical_device_test": "Not performed: no ADB phone or AVD available",
+  "router_or_argon_configuration_changed": false,
+  "wifi_uplink_limitation": "No verified method for installed Beacon 2 to associate upstream to TaoTronics Wi-Fi"
+}
