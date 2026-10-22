@@ -508,9 +508,20 @@ Changed:
   cap; the refused probe moved from 20 s to 45 s. `applyPiOwnership()` stops timers,
   unbinds discovery and writes an event; releasing it restores them.
 - `PiProvider`: `_sync()` no longer calls `refreshWanSettings()` or
-  `loadGuestWifiSettings()`; snapshots use cached data only. Optional new
-  `reportsRouterOwnership()` reads the existing `gateway.router.monitoring` block (or an
-  `owner` field) and pushes the claim into `RouterProvider` after every gateway poll.
+  `loadGuestWifiSettings()`; snapshots use cached data only. `reportsRouterOwnership()`
+  accepts **only an explicit ownership field** (`router.owner`, `router.control`,
+  `monitoring.owner`, `monitoring.control` equal to `argon`) and pushes that claim into
+  `RouterProvider` after every gateway poll.
+
+  The first build of this phase inferred ownership from
+  `router.monitoring.state == "connected"`. On the live system that state means "router
+  device monitoring connected" and is fed by a Dell LAN observer
+  (`source: lan-observer:dell`). The detector fired, the app went read-only, and because
+  polling was suppressed it never noticed when router access freed up: it sat on "Waiting
+  for router access" indefinitely. Deployed and caught on device 2026-10-22; the inference
+  was removed. Argon must publish `router.owner = "argon"` before this path becomes active
+  (Phase 2), and `RouterProvider.applyPiOwnership()` now closes any established session
+  rather than lingering.
 - `ConnectionStatusBanners`: shows "Router control provided by Network Hub" and suppresses
   the misleading "not connected" banner while Argon owns the router.
 - `diagnostics_screen` / `discovery_screen`: port probes and the router round-trip are

@@ -996,6 +996,12 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
       _reconnectTimer?.cancel();
       _reconnectTimer = null;
       _stopAutoRefresh();
+      // The router serves one management client. If this phone still holds a
+      // session when the Pi takes over, close it rather than lingering.
+      if (isConnected) {
+        unawaited(_gateway.disconnect());
+        _authState = AuthenticationState.notAuthenticated;
+      }
       // Stop listening for router beacons too: with the Pi in control there is
       // nothing this phone may do with the address it would learn.
       if (_discoveryRunning) {

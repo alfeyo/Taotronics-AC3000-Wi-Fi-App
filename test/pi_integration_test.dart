@@ -294,6 +294,7 @@ void main() {
         ..._gateway(),
         'router': {
           'name': 'TaoTronics',
+          'owner': 'argon',
           'monitoring': {'state': 'connected'},
         },
       },

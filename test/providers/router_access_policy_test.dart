@@ -185,7 +185,21 @@ void main() {
   });
 
   group('Pi ownership reporting', () {
-    test('Argon monitoring states count as ownership', () {
+    test('monitoring state alone is not ownership', () {
+      // The live Argon reports state=connected for a Dell LAN observer. That is
+      // telemetry, not control; treating it as ownership froze the app.
+      expect(
+        PiProvider.reportsRouterOwnership({
+          'router': {
+            'monitoring': {
+              'state': 'connected',
+              'label': 'Router device monitoring connected',
+              'source': 'lan-observer:dell',
+            },
+          },
+        }),
+        isFalse,
+      );
       for (final state in ['connected', 'active', 'owner', 'argon']) {
         expect(
           PiProvider.reportsRouterOwnership({
@@ -193,8 +207,8 @@ void main() {
               'monitoring': {'state': state},
             },
           }),
-          isTrue,
-          reason: state,
+          isFalse,
+          reason: 'state $state must not imply ownership',
         );
       }
     });
@@ -209,13 +223,20 @@ void main() {
         }),
         isFalse,
       );
-      expect(PiProvider.reportsRouterOwnership({'router': <String, dynamic>{}}), isFalse);
+      expect(
+        PiProvider.reportsRouterOwnership({'router': <String, dynamic>{}}),
+        isFalse,
+      );
       expect(PiProvider.reportsRouterOwnership({'gateway': {}}), isFalse);
     });
 
-    test('an explicit owner field is honoured', () {
+    test('an explicit owner or control field is honoured', () {
       expect(
         PiProvider.reportsRouterOwnership({'router': {'owner': 'argon'}}),
+        isTrue,
+      );
+      expect(
+        PiProvider.reportsRouterOwnership({'router': {'control': 'argon'}}),
         isTrue,
       );
       expect(
@@ -228,7 +249,7 @@ void main() {
       );
     });
 
-    test('phone-supplied data never counts as Pi ownership', () {
+    test('phone-supplied data is not ownership without an owner field', () {
       expect(
         PiProvider.reportsRouterOwnership({
           'router': {
@@ -237,7 +258,6 @@ void main() {
           },
         }),
         isFalse,
-        reason: 'Argon relaying phone data is not Argon controlling the router',
       );
     });
   });

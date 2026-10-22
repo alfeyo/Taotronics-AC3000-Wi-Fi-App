@@ -330,41 +330,32 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   /// True when Argon's own report says it holds the router management session.
   ///
-  /// Phase 1 adds no API contract, so this reads the existing
-  /// `gateway.router.monitoring` block and also honours an explicit `owner`
-  /// field if a newer Argon sends one. Data Argon labels as phone-supplied can
-  /// never count as ownership: the Pi is relaying, not controlling.
+  /// Argon's `router.monitoring.state == "connected"` is **not** ownership: on
+  /// the live system it means "router device monitoring connected", fed by a
+  /// LAN observer (`source: lan-observer:<host>`), or by this phone's own
+  /// snapshots. Treating that as ownership froze the app in read-only mode on
+  /// 2026-10-22 while Argon controlled nothing.
+  ///
+  /// Only an explicit ownership field counts, so Phase 1 stays dormant until
+  /// Argon actually reports that it holds the router (Phase 2 adds
+  /// `router.owner = "argon"`). No API contract is required today.
   bool routerOwnedByArgon = false;
-
-  static const _ownershipStates = {
-    'connected',
-    'active',
-    'owner',
-    'argon',
-    'managing',
-    'controlling',
-  };
 
   /// Pure parser, exported for tests and for callers that hold a raw payload.
   static bool reportsRouterOwnership(Object? rawGateway) {
     final router = rawGateway is Map ? rawGateway['router'] : null;
     if (router is! Map) return false;
 
-    final source = '${router['source']}'.toLowerCase();
-    if (source == 'phone' || source == 'phone-supplied') return false;
-
-    if ('${router['owner']}'.toLowerCase() == 'argon') return true;
-
+    if (_isArgon(router['owner']) || _isArgon(router['control'])) return true;
     final monitoring = router['monitoring'];
     if (monitoring is Map) {
-      if ('${monitoring['owner']}'.toLowerCase() == 'argon') return true;
-      return _ownershipStates.contains('${monitoring['state']}'.toLowerCase());
-    }
-    if (monitoring is String) {
-      return _ownershipStates.contains(monitoring.toLowerCase());
+      return _isArgon(monitoring['owner']) ||
+          _isArgon(monitoring['control']);
     }
     return false;
   }
+
+  static bool _isArgon(Object? value) => '$value'.toLowerCase() == 'argon';
 
   /// Hands Argon's claim to `RouterProvider`, which stops bidding for the
   /// router and switches the screens to read-only.
