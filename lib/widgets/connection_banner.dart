@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../models/save_result.dart';
 import '../providers/router_provider.dart';
+import '../services/router_access_policy.dart';
 import '../theme/app_theme.dart';
 import 'app_widgets.dart';
 
@@ -17,6 +18,18 @@ class ConnectionStatusBanners extends StatelessWidget {
   Widget build(BuildContext context) {
     final provider = context.watch<RouterProvider>();
     final banners = <Widget>[];
+
+    if (provider.isRouterControlledByPi) {
+      // Network Hub is the controller. Read-only by design, not a fault.
+      banners.add(
+        const InfoBanner(
+          tone: Tone.info,
+          icon: Icons.hub_rounded,
+          title: RouterAccessPolicy.piOwnershipMessage,
+          message: RouterAccessPolicy.piOwnershipDetail,
+        ),
+      );
+    }
 
     if (provider.isReconnecting) {
       banners.add(
@@ -48,6 +61,7 @@ class ConnectionStatusBanners extends StatelessWidget {
         ),
       );
     } else if (!provider.isConnected &&
+        !provider.isRouterControlledByPi &&
         provider.authState != AuthenticationState.authenticating) {
       banners.add(
         InfoBanner(

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:fake_async/fake_async.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tt_router_flutter/models/mesh_entity.dart';
@@ -103,19 +104,20 @@ void main() {
       h.factory.last.drop();
       async.flushMicrotasks();
 
-      async.elapse(const Duration(seconds: 1, milliseconds: 10));
-      expect(h.factory.created, hasLength(2), reason: 'retry after 1s');
-      async.elapse(const Duration(seconds: 2, milliseconds: 10));
-      expect(h.factory.created, hasLength(3), reason: 'retry after 2s');
+      // Delays are jittered by +/-20 %, so allow the top of each window.
+      async.elapse(const Duration(milliseconds: 1300));
+      expect(h.factory.created, hasLength(2), reason: 'retry after ~1s');
+      async.elapse(const Duration(seconds: 3));
+      expect(h.factory.created, hasLength(3), reason: 'retry after ~2s');
 
       h.factory.rejectCredentials = false;
-      async.elapse(const Duration(seconds: 4, milliseconds: 10));
+      async.elapse(const Duration(seconds: 6));
       expect(provider.isConnected, isTrue);
       provider.dispose();
     });
   });
 
-  test('rediscovering the saved router retries without waiting', () {
+  test('rediscovering the saved router does not trigger a reconnect', () {
     fakeAsync((async) {
       final h = _Harness();
       final provider = h.provider;
@@ -123,17 +125,23 @@ void main() {
       async.elapse(const Duration(milliseconds: 10));
       expect(provider.isConnected, isTrue);
 
-      // Wi-Fi goes away: two attempts fail, backoff is now 4s.
+      // Wi-Fi goes away: the drop starts the backoff timer.
       h.factory.rejectCredentials = true;
       h.factory.last.drop();
-      async.elapse(const Duration(seconds: 3, milliseconds: 100));
-      expect(h.factory.created, hasLength(3));
+      async.elapse(const Duration(seconds: 4));
+      final attempts = h.factory.created.length;
 
-      // Wi-Fi is back and the router beacon arrives mid-backoff.
-      h.factory.rejectCredentials = false;
-      h.discovery.announce('meshA', '10.0.0.1');
-      async.elapse(const Duration(milliseconds: 10));
-      expect(provider.isConnected, isTrue, reason: 'no 4s wait');
+      // The router keeps broadcasting while it is unreachable. Beacons must not
+      // turn into login attempts: that is an ownership bid at beacon rate.
+      for (var i = 0; i < 5; i++) {
+        h.discovery.announce('meshA', '10.0.0.1');
+        async.elapse(const Duration(milliseconds: 200));
+      }
+      expect(
+        h.factory.created.length,
+        attempts,
+        reason: 'discovery must not shorten or add a retry',
+      );
       provider.dispose();
     });
   });
@@ -150,6 +158,110 @@ void main() {
       async.elapse(const Duration(seconds: 30));
       expect(h.factory.created, hasLength(1));
       expect(provider.isConnected, isFalse);
+      provider.dispose();
+    });
+  });
+
+  test('app resume no longer triggers a reconnect', () {
+    fakeAsync((async) {
+      final h = _Harness();
+      final provider = h.provider;
+      h.discovery.announce('meshA', '10.0.0.1');
+      async.elapse(const Duration(milliseconds: 10));
+      expect(provider.isConnected, isTrue);
+
+      h.factory.rejectCredentials = true;
+      h.factory.last.drop();
+      async.elapse(const Duration(milliseconds: 10));
+      final attempts = h.factory.created.length;
+
+      provider.didChangeAppLifecycleState(AppLifecycleState.paused);
+      async.elapse(const Duration(seconds: 1));
+      provider.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      async.elapse(const Duration(milliseconds: 100));
+
+      expect(
+        h.factory.created.length,
+        attempts,
+        reason: 'a foreground transition must not bid for the router',
+      );
+      provider.dispose();
+    });
+  });
+
+  test('automatic reconnects stop after the frequency cap', () {
+    fakeAsync((async) {
+      final h = _Harness();
+      final provider = h.provider;
+      provider.selectRouter(_router('meshA', '10.0.0.1'));
+      async.elapse(const Duration(milliseconds: 10));
+
+      h.factory.rejectCredentials = true;
+      h.factory.last.drop();
+      async.elapse(const Duration(minutes: 5));
+
+      expect(
+        h.factory.created.length,
+        lessThanOrEqualTo(1 + RouterProvider.maxAutoReconnects),
+        reason: 'no endless retry loop',
+      );
+      expect(
+        provider.events.any((e) => e.title.contains('paused')),
+        isTrue,
+        reason: 'the user is told the loop stopped',
+      );
+
+      // A deliberate retry restarts the budget.
+      final before = h.factory.created.length;
+      h.factory.rejectCredentials = false;
+      provider.reconnectNow();
+      async.elapse(const Duration(seconds: 1));
+      expect(h.factory.created.length, greaterThan(before));
+      expect(provider.isConnected, isTrue);
+      provider.dispose();
+    });
+  });
+
+  test('Network Hub ownership stops reconnects and refuses writes', () {
+    fakeAsync((async) {
+      final h = _Harness();
+      final provider = h.provider;
+      provider.selectRouter(_router('meshA', '10.0.0.1'));
+      async.elapse(const Duration(milliseconds: 10));
+      expect(provider.isConnected, isTrue);
+
+      provider.applyPiOwnership(ownedByArgon: true);
+      expect(provider.isRouterControlledByPi, isTrue);
+      expect(provider.isReadOnly, isTrue);
+      expect(provider.accessPolicy.mayConnect, isFalse);
+      expect(provider.accessPolicy.mayWrite, isFalse);
+
+      // A drop must not start a takeover attempt.
+      final attempts = h.factory.created.length;
+      h.factory.last.drop();
+      async.elapse(const Duration(seconds: 30));
+      expect(h.factory.created.length, attempts);
+
+      // Reads and polling stop: the cached values stay on screen.
+      final published = h.factory.last.published.length;
+      provider.refreshAll();
+      async.elapse(const Duration(seconds: 40));
+      expect(h.factory.last.published.length, published);
+
+      // Writes are refused with the ownership message.
+      SaveResult? reboot;
+      provider.rebootRouter().then((r) => reboot = r);
+      async.flushMicrotasks();
+      expect(reboot, isNotNull);
+      expect(reboot!.isFailed, isTrue);
+      expect(reboot!.message, contains('Network Hub'));
+      expect(h.factory.last.published.length, published);
+
+      // Releasing ownership resumes normal behaviour.
+      provider.applyPiOwnership(ownedByArgon: false);
+      expect(provider.isRouterControlledByPi, isFalse);
+      expect(provider.isReadOnly, isFalse);
+      expect(provider.accessPolicy.mayConnect, isTrue);
       provider.dispose();
     });
   });
@@ -197,7 +309,7 @@ void main() {
       async.elapse(const Duration(seconds: 4));
       expect(h.provider.managedElsewhere, isTrue);
 
-      // While refused: one light probe per 20 s, no full refreshes.
+      // While refused: one light probe per 45 s, no full refreshes.
       final before = h.factory.last.published.length;
       async.elapse(const Duration(seconds: 60));
       final during = h.factory.last.published
@@ -206,14 +318,15 @@ void main() {
           .toList();
       expect(
         during.where((p) => p == '/GetDevListInfo').length,
-        lessThanOrEqualTo(4),
+        lessThanOrEqualTo(2),
+        reason: '45 s probe cadence, not 20 s',
       );
       expect(during.where((p) => p != '/GetDevListInfo'), isEmpty);
       expect(h.provider.isConnected, isTrue);
 
       // The other phone goes idle: the next probe succeeds, full refresh runs.
       refused = false;
-      async.elapse(const Duration(seconds: 25));
+      async.elapse(const Duration(seconds: 95));
       expect(h.provider.managedElsewhere, isFalse);
       expect(
         h.factory.last.published.map((p) => p.topic.split(_appId).last),

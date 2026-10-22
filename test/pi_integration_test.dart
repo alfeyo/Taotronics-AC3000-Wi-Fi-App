@@ -267,8 +267,7 @@ void main() {
     },
   );
 
-  test('a different server at the LAN address is not trusted', () async {
-    final first = _pi(_offlineRouter(), {
+  test('a different server at the LAN address is not trusted', () async {    final first = _pi(_offlineRouter(), {
       '192.168.50.1': FakePi(PiTransportKind.lan, _argon()),
     });
     await first.ready;
@@ -285,6 +284,32 @@ void main() {
     expect(pi.transportKind, PiTransportKind.tailscale);
     expect(pi.identity!.instanceId, _id);
     pi.dispose();
+  });
+
+  test('Argon router ownership reaches the router policy', () async {
+    final router = _offlineRouter();
+    final gateway = FakePi(PiTransportKind.lan, {
+      ..._argon(),
+      'GET /api/v1/gateway': (_, _) => {
+        ..._gateway(),
+        'router': {
+          'name': 'TaoTronics',
+          'monitoring': {'state': 'connected'},
+        },
+      },
+    });
+    final pi = _pi(router, {'192.168.50.1': gateway});
+    await pi.ready;
+    await pi.discover();
+    await pi.tick();
+
+    expect(pi.routerOwnedByArgon, isTrue);
+    expect(router.isRouterControlledByPi, isTrue);
+    expect(router.isReadOnly, isTrue);
+    expect(router.accessPolicy.mayConnect, isFalse);
+    expect(router.accessPolicy.mayWrite, isFalse);
+    pi.dispose();
+    router.dispose();
   });
 
   test(

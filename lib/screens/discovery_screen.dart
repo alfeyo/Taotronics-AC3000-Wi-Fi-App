@@ -101,6 +101,7 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
   Future<void> _retryDiscovery() => _startDiscovery(askPermission: true);
 
   Future<void> _runScan({bool askPermission = false}) async {
+    final policy = context.read<RouterProvider>().accessPolicy;
     _update(() {
       _isScanning = true;
       _errorMessage = null;
@@ -110,14 +111,19 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
 
     await _requestPermissions(ask: askPermission);
     await _getNetworkInfo();
-    await _checkRouterReachability();
-    await _checkMqttPort();
+
+    if (policy.mayProbe) {
+      await _checkRouterReachability();
+      await _checkMqttPort();
+    }
 
     if (!mounted) return;
-    context.read<RouterProvider>().updateNetworkState(
-      gatewayReachable: _routerReachable,
-      mqttPortOpen: _mqttPortOpen,
-    );
+    if (policy.mayProbe) {
+      context.read<RouterProvider>().updateNetworkState(
+        gatewayReachable: _routerReachable,
+        mqttPortOpen: _mqttPortOpen,
+      );
+    }
     _update(() => _isScanning = false);
   }
 

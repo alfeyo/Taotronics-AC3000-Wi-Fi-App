@@ -119,11 +119,20 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
 
     _addEntry(DiagnosticType.info, 'Starting full diagnostics...');
 
+    final policy = context.read<RouterProvider>().accessPolicy;
     await _getNetworkInfo();
     await _checkNetworkInterfaces();
-    await _checkGatewayConnectivity();
-    await _checkMqttPort();
-    await _checkDiscoveryPort();
+    if (policy.mayProbe) {
+      await _checkGatewayConnectivity();
+      await _checkMqttPort();
+      await _checkDiscoveryPort();
+    } else {
+      _addEntry(
+        DiagnosticType.info,
+        'Router reachability and port probes are handled by Network Hub; '
+            'this phone did not touch the router.',
+      );
+    }
     await _measureRouterResponse();
     _checkRouterProvider();
 
@@ -259,6 +268,14 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
 
   Future<void> _measureRouterResponse() async {
     final provider = context.read<RouterProvider>();
+    if (!provider.accessPolicy.mayRefresh) {
+      _addEntry(
+        DiagnosticType.info,
+        'Router response time is not measured while Network Hub controls the '
+            'router.',
+      );
+      return;
+    }
     if (!provider.isConnected) {
       _addEntry(DiagnosticType.info, 'Router response time: not connected');
       return;
@@ -321,8 +338,10 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
     }
 
     provider.updateNetworkState(
-      gatewayReachable: _routerReachable,
-      mqttPortOpen: _mqttPortOpen,
+      gatewayReachable: provider.accessPolicy.mayProbe
+          ? _routerReachable
+          : null,
+      mqttPortOpen: provider.accessPolicy.mayProbe ? _mqttPortOpen : null,
     );
   }
 

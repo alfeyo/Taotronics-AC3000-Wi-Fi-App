@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:flutter/widgets.dart';
 import '../models/mesh_entity.dart';
 import '../models/device_entity.dart';
@@ -7,7 +8,9 @@ import '../models/usb_storage.dart';
 import '../models/wireless_network.dart';
 import '../services/router_certificate_verifier.dart';
 import '../services/router_discovery.dart';
+import '../services/router_gateway.dart';
 import '../services/mqtt_service.dart';
+import '../services/router_access_policy.dart';
 import '../services/auth_pairing_service.dart';
 
 enum RouterDiscoveryState { idle, scanning, routerFound, notFound }
@@ -59,19 +62,22 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
   RouterProvider({
     RouterDiscoveryService? discovery,
     MqttService? mqtt,
+    RouterGateway? gateway,
     AuthPairingService? authService,
     bool autoStart = true,
+    Random? random,
   }) : _discovery = discovery ?? RouterDiscoveryService(),
-       _mqtt = mqtt ?? MqttService(),
-       _authService = authService ?? AuthPairingService() {
+       _gateway = gateway ?? DirectRouterGateway(mqtt ?? MqttService()),
+       _authService = authService ?? AuthPairingService(),
+       _random = random ?? Random() {
     WidgetsBinding.instance.addObserver(this);
     _discoverySubscription = _discovery.routerStream.listen(
       _onRouterDiscovered,
     );
-    _connectionSubscription = _mqtt.connectionStream.listen(
+    _connectionSubscription = _gateway.connectionStream.listen(
       _onConnectionChanged,
     );
-    _managementSubscription = _mqtt.managementStream.listen((refused) {
+    _managementSubscription = _gateway.managementStream.listen((refused) {
       if (!refused) {
         _refusedTicks = 0;
         refreshAll();
@@ -86,16 +92,40 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   final RouterDiscoveryService _discovery;
-  final MqttService _mqtt;
-  final AuthPairingService _authService;
 
-  /// Delays used between automatic reconnect attempts.
+  /// The only route to the router. Phase 1 wraps the existing MQTT session in
+  /// [DirectRouterGateway]; later phases swap in a Pi-backed implementation
+  /// without changing a single call below.
+  final RouterGateway _gateway;
+  final AuthPairingService _authService;
+  final Random _random;
+
+  /// Ownership policy consulted before every discovery, connection,
+  /// authentication, read, write and reconnect. Argon's ownership claim flips
+  /// it through [applyPiOwnership].
+  RouterAccessPolicy get accessPolicy => _gateway.policy;
+
+  /// Delays used between automatic reconnect attempts. Reconciled with the
+  /// router's 60-80 s handover window: the cap means a phone that cannot reach
+  /// the router stops bidding instead of retrying every 8 s forever.
   static const reconnectDelays = [
     Duration(seconds: 1),
     Duration(seconds: 2),
     Duration(seconds: 4),
     Duration(seconds: 8),
+    Duration(seconds: 15),
+    Duration(seconds: 30),
+    Duration(seconds: 60),
   ];
+
+  /// Automatic reconnect attempts allowed in one outage before the loop stops
+  /// and waits for a manual retry, a new pairing, or a network change.
+  static const maxAutoReconnects = 6;
+
+  /// Reconnect delays are randomised by ±20 % so two phones that restart
+  /// together do not retry in lockstep and repeatedly collide on the router's
+  /// single management session.
+  static const reconnectJitter = 0.2;
 
   /// How long a configuration change waits for the router to come back
   /// before it is reported as unverified.
@@ -157,12 +187,13 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
   static const liveInterval = Duration(seconds: 5);
 
   /// While another phone manages the router, one light read every this many
-  /// live ticks (~20 s) detects when access frees up, without loading the
-  /// router's single command queue.
-  static const refusedProbeEveryTicks = 4;
+  /// live ticks (~45 s) detects when access frees up, without loading the
+  /// router's single command queue. Was 20 s in 1.9.3; the router hands access
+  /// over 60-80 s after the holder stops, so probing faster only added load.
+  static const refusedProbeEveryTicks = 9;
 
   /// The router currently serves another phone and refuses this one.
-  bool get managedElsewhere => isConnected && _mqtt.managedElsewhere;
+  bool get managedElsewhere => isConnected && _gateway.managedElsewhere;
   bool _liveTelemetryResponsive = true;
   int _telemetryMisses = 0;
 
@@ -175,7 +206,15 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
   bool _allowReconnect = true;
   bool _inBackground = false;
   int _reconnectAttempt = 0;
-  bool _discoveryRetryUsed = false;
+
+  /// Automatic attempts spent on the current outage. Capped by
+  /// [maxAutoReconnects] so a phone that cannot reach the router stops bidding.
+  int _autoReconnectAttempts = 0;
+  bool _reconnectExhausted = false;
+
+  /// Whether the discovery socket is bound. Tracked so ownership can stop it
+  /// and release can restore it without double-binding the port.
+  bool _discoveryRunning = false;
   int _sessionGeneration = 0;
   final Set<LivePauseToken> _pauseTokens = {};
   LivePauseToken? _backgroundPause;
@@ -216,7 +255,7 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   /// When the wireless list was last read successfully from the router.
   DateTime? get wirelessUpdatedAt => _wirelessUpdatedAt;
-  CertificateVerdict? get certificateVerdict => _mqtt.lastCertificateVerdict;
+  CertificateVerdict? get certificateVerdict => _gateway.lastCertificateVerdict;
 
   /// True when live telemetry has not refreshed for a while although the
   /// session is up, so the dashboard can mark the numbers as stale.
@@ -303,6 +342,14 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   bool get isLoading => _isLoading;
   bool get isConnected => _authState == AuthenticationState.authenticated;
+
+  /// Argon reported that it holds the router session. The app then renders
+  /// cached state, refuses writes, and never tries to take the router back.
+  bool get isRouterControlledByPi => accessPolicy.blockDirectOwnership;
+
+  /// Screens stay reachable but offer no settings changes.
+  bool get isReadOnly => accessPolicy.isReadOnly;
+
   bool get isReconnecting =>
       _authState == AuthenticationState.authenticating &&
       _shouldReconnectCurrentRouter;
@@ -509,7 +556,8 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
   Map<String, dynamic>? get wanInfo => _wanInfo;
 
   Future<void> _refreshWanInfo() async {
-    final response = await _mqtt.getWanSettings();
+    if (!accessPolicy.mayRefresh) return;
+    final response = await _gateway.getWanSettings();
     final data = response?['Data'];
     if (response?['ErrorCode'] == 0 && data is List && data.isNotEmpty) {
       if (data.first is Map) {
@@ -523,7 +571,7 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
   bool _certificateEventSent = false;
 
   void _noteCertificateRejection() {
-    final verdict = _mqtt.lastCertificateVerdict;
+    final verdict = _gateway.lastCertificateVerdict;
     if (verdict == null || verdict.trusted || _certificateEventSent) return;
     _certificateEventSent = true;
     _addEvent(
@@ -537,8 +585,14 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> _initialize() async {
     await _authService.loadSavedPairings();
     if (!_ready.isCompleted) _ready.complete();
+    if (!accessPolicy.mayDiscover) {
+      _discoveryState = RouterDiscoveryState.idle;
+      notifyListeners();
+      return;
+    }
     _discoveryState = RouterDiscoveryState.scanning;
     notifyListeners();
+    _discoveryRunning = true;
     await _discovery.startDiscovery();
   }
 
@@ -549,12 +603,10 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
         _inBackground = false;
         _backgroundPause?.release();
         _backgroundPause = null;
-        if (isConnected) {
-          refreshAll();
-        } else if (_shouldReconnectCurrentRouter) {
-          _reconnectAttempt = 0;
-          _scheduleReconnect();
-        }
+        // A resume refreshes an existing session but never acquires one.
+        // Reconnecting on resume made every foreground transition an
+        // ownership bid against the Pi (and against another phone).
+        if (isConnected) refreshAll();
       case AppLifecycleState.paused:
       case AppLifecycleState.hidden:
         _inBackground = true;
@@ -596,21 +648,19 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
     }
 
     if (_currentRouter == null && _routers.isNotEmpty) {
+      if (!accessPolicy.mayConnect) {
+        // Keep the router visible for diagnostics, but do not take it over.
+        if (changed) notifyListeners();
+        return;
+      }
       selectRouter(_routers.first);
       return;
-    } else if (_currentRouter?.meshId == discovered.meshId &&
-        !isConnected &&
-        _authService.isPaired(discovered.meshId)) {
-      if (_reconnectAttempt > 0 && !_discoveryRetryUsed && !_inBackground) {
-        // The router is broadcasting again: retry now instead of waiting for
-        // the backoff timer. Once per outage, so failing logins are not
-        // retried at the beacon rate.
-        _discoveryRetryUsed = true;
-        reconnectNow();
-      } else {
-        _scheduleReconnect();
-      }
     }
+
+    // A discovery beacon no longer triggers a reconnect. The router broadcasts
+    // continuously, so retrying at beacon rate turned every Wi-Fi blip into a
+    // stream of ownership bids. Reconnection belongs to the backoff timer and
+    // to the user's explicit retry.
 
     if (changed) notifyListeners();
   }
@@ -620,7 +670,8 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
       _reconnectTimer?.cancel();
       _reconnectTimer = null;
       _reconnectAttempt = 0;
-      _discoveryRetryUsed = false;
+      _autoReconnectAttempts = 0;
+      _reconnectExhausted = false;
       if (_hadDrop) {
         _hadDrop = false;
         _addEvent('Reconnected', 'The router connection is back.', 'success');
@@ -633,9 +684,13 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
       // Only unexpected drops of an established session arrive here.
       _stopAutoRefresh();
       _hadDrop = true;
+      final yielding = !accessPolicy.mayAutoReconnect;
       _addEvent(
         'Router disconnected',
-        'The connection dropped. The app is trying to reconnect.',
+        yielding
+            ? 'The connection dropped. Network Hub holds the router, so this '
+                  'phone is not reconnecting.'
+            : 'The connection dropped. The app is trying to reconnect.',
         'warning',
       );
       if (_shouldReconnectCurrentRouter) {
@@ -676,11 +731,20 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
     _reconnectAttempt = 0;
+    _autoReconnectAttempts = 0;
+    _reconnectExhausted = false;
     _allowReconnect = true;
     return _sessionGeneration;
   }
 
   Future<void> selectRouter(MeshEntity router) async {
+    if (!accessPolicy.mayConnect) {
+      _currentRouter = router;
+      _authState = AuthenticationState.notAuthenticated;
+      _errorMessage = accessPolicy.blockMessage;
+      notifyListeners();
+      return;
+    }
     final session = _beginSession();
     _currentRouter = router;
     _authState = AuthenticationState.authenticating;
@@ -692,7 +756,7 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
       final reconnectPassword = _authService.isPaired(router.meshId)
           ? _authService.reconnectPassword(router.meshId)
           : null;
-      final success = await _mqtt.connect(
+      final success = await _gateway.connect(
         router.meshId,
         router.ipAddress!,
         password: reconnectPassword,
@@ -725,13 +789,18 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
     String ipAddress, {
     String? password,
   }) async {
+    if (!accessPolicy.mayAuthenticate) {
+      _errorMessage = accessPolicy.blockMessage;
+      notifyListeners();
+      return false;
+    }
     final session = _beginSession();
     _authState = AuthenticationState.authenticating;
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
 
-    final success = await _mqtt.connect(meshId, ipAddress, password: password);
+    final success = await _gateway.connect(meshId, ipAddress, password: password);
     if (session != _sessionGeneration) return false;
 
     if (success) {
@@ -766,10 +835,11 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   void _startAutoRefresh() {
     _refreshTimer?.cancel();
+    _liveTimer?.cancel();
+    if (!accessPolicy.mayRefresh) return;
     _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (!isLivePaused) refreshAll();
     });
-    _liveTimer?.cancel();
     _liveTimer = Timer.periodic(liveInterval, (_) {
       _liveRefresh();
     });
@@ -785,9 +855,17 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
   bool get _shouldReconnectCurrentRouter {
     final router = _currentRouter;
     return _allowReconnect &&
+        accessPolicy.mayAutoReconnect &&
         router != null &&
         router.ipAddress != null &&
         _authService.isPaired(router.meshId);
+  }
+
+  /// Randomised delay: ±20 % around the backoff step, so two phones that
+  /// restart together do not collide on the router's single session.
+  Duration _jittered(Duration base) {
+    final factor = 1 + (_random.nextDouble() * 2 - 1) * reconnectJitter;
+    return Duration(microseconds: (base.inMicroseconds * factor).round());
   }
 
   void _scheduleReconnect() {
@@ -798,13 +876,33 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
       return;
     }
 
-    final delay =
-        reconnectDelays[_reconnectAttempt.clamp(0, reconnectDelays.length - 1)];
+    // Frequency cap: stop bidding after a handful of automatic attempts and
+    // wait for the user (or a new pairing or network change) instead of
+    // retrying forever. A refused phone cannot take the router by insisting.
+    if (_reconnectExhausted ||
+        _autoReconnectAttempts >= maxAutoReconnects) {
+      if (!_reconnectExhausted) {
+        _reconnectExhausted = true;
+        _addEvent(
+          'Automatic reconnection paused',
+          'The router has not answered several attempts. Open Diagnostics and '
+              'retry from this phone, or let Network Hub manage the router.',
+          'warning',
+        );
+        notifyListeners();
+      }
+      return;
+    }
+
+    final delay = _jittered(
+      reconnectDelays[_reconnectAttempt.clamp(0, reconnectDelays.length - 1)],
+    );
     _reconnectAttempt++;
+    _autoReconnectAttempts++;
     final session = _sessionGeneration;
     debugPrint(
-      'RouterProvider: reconnecting saved router in ${delay.inSeconds}s '
-      '(attempt $_reconnectAttempt)',
+      'RouterProvider: reconnecting saved router in '
+      '${delay.inMilliseconds} ms (attempt $_reconnectAttempt)',
     );
     _reconnectTimer = Timer(delay, () => _reconnectCurrentRouter(session));
   }
@@ -824,7 +922,7 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
     _authState = AuthenticationState.authenticating;
     notifyListeners();
 
-    final success = await _mqtt.connect(
+    final success = await _gateway.connect(
       router.meshId,
       ipAddress,
       password: _authService.reconnectPassword(router.meshId),
@@ -854,9 +952,9 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
   /// Times one lightweight router command (GetSysConnectInfo). Returns null
   /// when not connected or the router does not answer.
   Future<Duration?> measureRouterResponse() async {
-    if (!isConnected) return null;
+    if (!isConnected || !accessPolicy.mayRefresh) return null;
     final watch = Stopwatch()..start();
-    final response = await _mqtt.getSystemConnectionInfo();
+    final response = await _gateway.getSystemConnectionInfo();
     watch.stop();
     if (response == null) return null;
     _lastResponseTime = watch.elapsed;
@@ -866,19 +964,76 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   /// Retries the saved router immediately, e.g. after the phone rejoins Wi-Fi.
+  /// This is the one deliberate way a user restarts direct control; it is
+  /// refused while Network Hub owns the router.
   void reconnectNow() {
+    if (!accessPolicy.mayConnect) {
+      _errorMessage = accessPolicy.blockMessage;
+      notifyListeners();
+      return;
+    }
     if (isConnected || !_shouldReconnectCurrentRouter || _reconnectInProgress) {
       return;
     }
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
     _reconnectAttempt = 0;
+    _autoReconnectAttempts = 0;
+    _reconnectExhausted = false;
     _reconnectCurrentRouter(_sessionGeneration);
   }
 
+  /// Records Argon's ownership claim and stops or resumes bidding accordingly.
+  ///
+  /// Called by `PiProvider` after each gateway poll. When Argon owns the router
+  /// the app cancels pending reconnects and polling, keeps the data it already
+  /// has on screen, and refuses writes until ownership is released.
+  void applyPiOwnership({required bool ownedByArgon}) {
+    final changed = accessPolicy.setPiOwnership(ownedByArgon: ownedByArgon);
+    if (!changed) return;
+
+    if (ownedByArgon) {
+      _reconnectTimer?.cancel();
+      _reconnectTimer = null;
+      _stopAutoRefresh();
+      // Stop listening for router beacons too: with the Pi in control there is
+      // nothing this phone may do with the address it would learn.
+      if (_discoveryRunning) {
+        _discovery.stopDiscovery();
+        _discoveryRunning = false;
+        _discoveryState = RouterDiscoveryState.idle;
+      }
+      _addEvent(
+        'Router control provided by Network Hub',
+        'The Raspberry Pi holds the router connection. This phone is '
+            'read-only until Network Hub releases it.',
+        'info',
+      );
+    } else if (isConnected) {
+      _startAutoRefresh();
+      refreshAll();
+    } else if (_shouldReconnectCurrentRouter) {
+      _reconnectAttempt = 0;
+      _scheduleReconnect();
+    }
+
+    if (!ownedByArgon && accessPolicy.mayDiscover && !_discoveryRunning) {
+      _discoveryRunning = true;
+      _discoveryState = RouterDiscoveryState.scanning;
+      unawaited(_discovery.startDiscovery());
+    }
+    notifyListeners();
+  }
+
   Future<void> _liveRefresh() async {
-    if (!isConnected || _liveRefreshing || _refreshing || isLivePaused) return;
-    if (_mqtt.managedElsewhere) {
+    if (!isConnected ||
+        _liveRefreshing ||
+        _refreshing ||
+        isLivePaused ||
+        !accessPolicy.mayRefresh) {
+      return;
+    }
+    if (_gateway.managedElsewhere) {
       if (_refusedTicks++ % refusedProbeEveryTicks != 0) return;
       _liveRefreshing = true;
       try {
@@ -907,8 +1062,10 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<void> refreshAll() async {
     if (!isConnected || _refreshing) return;
+    // Network Hub owns the router: cached state stays on screen, nothing is read.
+    if (!accessPolicy.mayRefresh) return;
     // Refused reads would only load the router; the live probe detects access.
-    if (_mqtt.managedElsewhere) return;
+    if (_gateway.managedElsewhere) return;
     _refreshing = true;
     try {
       await _refreshAllInternal();
@@ -960,9 +1117,10 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
       _devices.fold(0, (sum, d) => sum + d.downloadSpeed);
 
   Future<void> refreshTrafficStats() async {
+    if (!accessPolicy.mayRefresh) return;
     final responses = await Future.wait([
-      _mqtt.getNetworkFlowDaily(),
-      _mqtt.getNetworkFlowMonthly(),
+      _gateway.getNetworkFlowDaily(),
+      _gateway.getNetworkFlowMonthly(),
     ]);
 
     final daily = responses[0];
@@ -1001,10 +1159,11 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<void> refreshLiveTelemetry() async {
+    if (!accessPolicy.mayRefresh) return;
     final responses = await Future.wait([
-      _mqtt.getSystemConnectionInfo(),
-      _mqtt.getNodeRateInfo(),
-      _mqtt.getWanRateInfo(),
+      _gateway.getSystemConnectionInfo(),
+      _gateway.getNodeRateInfo(),
+      _gateway.getWanRateInfo(),
     ]);
     if (responses.any((response) => response != null)) {
       _telemetryMisses = 0;
@@ -1053,7 +1212,8 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<void> refreshSystemStatus() async {
-    final response = await _mqtt.getSystemStatus();
+    if (!accessPolicy.mayRefresh) return;
+    final response = await _gateway.getSystemStatus();
     if (response != null && response['ErrorCode'] == 0) {
       final data = response['Data'];
       if (data is Map) {
@@ -1066,7 +1226,8 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<void> refreshDevices() async {
-    final response = await _mqtt.getDeviceList();
+    if (!accessPolicy.mayRefresh) return;
+    final response = await _gateway.getDeviceList();
     if (response != null && response['ErrorCode'] == 0) {
       final data = response['Data'];
       if (data is List) {
@@ -1083,7 +1244,8 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<void> refreshNodes() async {
-    final response = await _mqtt.getNodeList();
+    if (!accessPolicy.mayRefresh) return;
+    final response = await _gateway.getNodeList();
     if (response != null && response['ErrorCode'] == 0) {
       final data = response['Data'];
       if (data is List) {
@@ -1100,10 +1262,11 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   /// Returns true when the router answered with a wireless list.
   Future<bool> refreshWirelessSettings() async {
+    if (!accessPolicy.mayRefresh) return false;
     _wirelessLoading = true;
     notifyListeners();
 
-    final response = await _mqtt.getWirelessSettings();
+    final response = await _gateway.getWirelessSettings();
     _wirelessLoading = false;
     _wirelessLoaded = true;
 
@@ -1240,7 +1403,7 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
       label: 'Wi-Fi change',
       requireReadBack: true,
       failureMessage: 'Failed to update Wi-Fi settings',
-      request: () => _mqtt.setWirelessSettings(payload),
+      request: () => _gateway.setWirelessSettings(payload),
       verify: () async {
         if (!await refreshWirelessSettings()) return null;
         return _matchesByIndex(_wirelessNetworksRaw, payload, keys);
@@ -1257,7 +1420,8 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
   DateTime? get guestUpdatedAt => _guestUpdatedAt;
 
   Future<void> refreshWanSettings() async {
-    final response = await _mqtt.getWanSettings();
+    if (!accessPolicy.mayRefresh) return;
+    final response = await _gateway.getWanSettings();
     if (response != null && response['ErrorCode'] == 0) {
       _wanSettings = response['Data'];
       _wanUpdatedAt = DateTime.now();
@@ -1266,7 +1430,8 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<void> refreshLanSettings() async {
-    final response = await _mqtt.getLanSettings();
+    if (!accessPolicy.mayRefresh) return;
+    final response = await _gateway.getLanSettings();
     if (response != null && response['ErrorCode'] == 0) {
       _lanSettings = response['Data'];
       notifyListeners();
@@ -1274,15 +1439,15 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<Map<String, dynamic>?> loadWanSettings() {
-    return _readRouterSetting(_mqtt.getWanSettings);
+    return _readRouterSetting(_gateway.getWanSettings);
   }
 
   Future<SaveResult> updateWanSettings(List<Map<String, dynamic>> settings) {
     return _writeRouterSetting(
       label: 'Internet (WAN) change',
       failureMessage: 'Failed to update WAN settings',
-      request: () => _mqtt.setWanSettings(settings),
-      verify: () => _verifyListSubset(_mqtt.getWanSettings, settings, const [
+      request: () => _gateway.setWanSettings(settings),
+      verify: () => _verifyListSubset(_gateway.getWanSettings, settings, const [
         'WanProto',
         'ManualDns',
         'WanIp',
@@ -1299,15 +1464,15 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<Map<String, dynamic>?> loadLanSettings() {
-    return _readRouterSetting(_mqtt.getLanSettings);
+    return _readRouterSetting(_gateway.getLanSettings);
   }
 
   Future<SaveResult> updateLanSettings(List<Map<String, dynamic>> settings) {
     return _writeRouterSetting(
       label: 'LAN change',
       failureMessage: 'Failed to update LAN settings',
-      request: () => _mqtt.setLanSettings(settings),
-      verify: () => _verifyListSubset(_mqtt.getLanSettings, settings, const [
+      request: () => _gateway.setLanSettings(settings),
+      verify: () => _verifyListSubset(_gateway.getLanSettings, settings, const [
         'LanIp',
         'LanMask',
         'DhcpStartAddr',
@@ -1322,9 +1487,10 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
     bool quiet = false,
   }) async {
     if (quiet && !isConnected) return null;
+    if (!accessPolicy.mayRefresh) return null;
     final response = quiet
-        ? await _mqtt.getGuestWifi()
-        : await _readRouterSetting(_mqtt.getGuestWifi);
+        ? await _gateway.getGuestWifi()
+        : await _readRouterSetting(_gateway.getGuestWifi);
     if (response == null || response['ErrorCode'] != 0) return response;
     final data = response['Data'];
     final guest = data is List && data.isNotEmpty && data.first is Map
@@ -1366,26 +1532,26 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
       label: 'Guest Wi-Fi change',
       requireReadBack: true,
       failureMessage: 'Failed to update guest Wi-Fi',
-      request: () => _mqtt.setGuestWifi(payload),
-      verify: () => _verifyListSubset(_mqtt.getGuestWifi, [
+      request: () => _gateway.setGuestWifi(payload),
+      verify: () => _verifyListSubset(_gateway.getGuestWifi, [
         payload,
       ], payload.keys.toList()),
     );
   }
 
   Future<Map<String, dynamic>?> loadFirewallSettings() {
-    return _readRouterSetting(_mqtt.getFirewallSettings);
+    return _readRouterSetting(_gateway.getFirewallSettings);
   }
 
   Future<SaveResult> updateFirewallSettings(bool enabled) {
     return _writeRouterSetting(
       failureMessage: 'Failed to update firewall',
-      request: () => _mqtt.setFirewallSettings(enabled),
+      request: () => _gateway.setFirewallSettings(enabled),
     );
   }
 
   Future<Map<String, dynamic>?> loadUpnpDmzSettings() {
-    return _readRouterSetting(_mqtt.getUpnpDmzSettings);
+    return _readRouterSetting(_gateway.getUpnpDmzSettings);
   }
 
   Future<SaveResult> updateUpnpDmzSettings({
@@ -1395,7 +1561,7 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
   }) {
     return _writeRouterSetting(
       failureMessage: 'Failed to update UPnP and DMZ',
-      request: () => _mqtt.setUpnpDmzSettings(
+      request: () => _gateway.setUpnpDmzSettings(
         upnpEnabled: upnpEnabled,
         dmzEnabled: dmzEnabled,
         dmzHost: dmzHost,
@@ -1404,7 +1570,7 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<Map<String, dynamic>?> loadQosSettings() {
-    return _readRouterSetting(_mqtt.getQosSettings);
+    return _readRouterSetting(_gateway.getQosSettings);
   }
 
   Future<SaveResult> updateQosSettings({
@@ -1414,7 +1580,7 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
   }) {
     return _writeRouterSetting(
       failureMessage: 'Failed to update QoS',
-      request: () => _mqtt.setQosSettings(
+      request: () => _gateway.setQosSettings(
         enabled: enabled,
         upBandwidth: upBandwidth,
         downBandwidth: downBandwidth,
@@ -1423,7 +1589,7 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<Map<String, dynamic>?> loadFastNatSettings() {
-    return _readRouterSetting(_mqtt.getFastNatSettings);
+    return _readRouterSetting(_gateway.getFastNatSettings);
   }
 
   Future<SaveResult> updateFastNatSettings({
@@ -1433,7 +1599,7 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
   }) {
     return _writeRouterSetting(
       failureMessage: 'Failed to update Fast NAT',
-      request: () => _mqtt.setFastNatSettings(
+      request: () => _gateway.setFastNatSettings(
         enabled: enabled,
         autoFilter: autoFilter,
         portList: portList,
@@ -1442,62 +1608,62 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<Map<String, dynamic>?> loadVpnSettings() {
-    return _readRouterSetting(_mqtt.getVpnSettings);
+    return _readRouterSetting(_gateway.getVpnSettings);
   }
 
   Future<Map<String, dynamic>?> loadVpnStatus() {
-    return _readRouterSetting(_mqtt.getVpnStatus);
+    return _readRouterSetting(_gateway.getVpnStatus);
   }
 
   Future<SaveResult> updateVpnSettings(Map<String, dynamic> settings) {
     return _writeRouterSetting(
       failureMessage: 'Failed to update VPN',
-      request: () => _mqtt.setVpnSettings(settings),
+      request: () => _gateway.setVpnSettings(settings),
     );
   }
 
   Future<Map<String, dynamic>?> loadVirtualServers() {
-    return _readRouterSetting(_mqtt.getVirtualServers);
+    return _readRouterSetting(_gateway.getVirtualServers);
   }
 
   Future<SaveResult> addVirtualServer(Map<String, dynamic> rule) {
     return _writeRouterSetting(
       failureMessage: 'Failed to add port forwarding rule',
-      request: () => _mqtt.addVirtualServer(rule),
+      request: () => _gateway.addVirtualServer(rule),
     );
   }
 
   Future<SaveResult> updateVirtualServer(Map<String, dynamic> rule) {
     return _writeRouterSetting(
       failureMessage: 'Failed to update port forwarding rule',
-      request: () => _mqtt.updateVirtualServer(rule),
+      request: () => _gateway.updateVirtualServer(rule),
     );
   }
 
   Future<SaveResult> deleteVirtualServer(String index) {
     return _writeRouterSetting(
       failureMessage: 'Failed to delete port forwarding rule',
-      request: () => _mqtt.deleteVirtualServer(index),
+      request: () => _gateway.deleteVirtualServer(index),
     );
   }
 
   Future<Map<String, dynamic>?> loadDdnsSettings() {
-    return _readRouterSetting(_mqtt.getDdnsSettings);
+    return _readRouterSetting(_gateway.getDdnsSettings);
   }
 
   Future<Map<String, dynamic>?> loadDdnsStatus() {
-    return _readRouterSetting(_mqtt.getDdnsStatus);
+    return _readRouterSetting(_gateway.getDdnsStatus);
   }
 
   Future<SaveResult> updateDdnsSettings(Map<String, dynamic> settings) {
     return _writeRouterSetting(
       failureMessage: 'Failed to update DDNS',
-      request: () => _mqtt.setDdnsSettings(settings),
+      request: () => _gateway.setDdnsSettings(settings),
     );
   }
 
   Future<Map<String, dynamic>?> loadLedSettings() async {
-    final response = await _readRouterSetting(_mqtt.getLedSettings);
+    final response = await _readRouterSetting(_gateway.getLedSettings);
     final data = response?['Data'];
     if (data is List) {
       _ledNodes = _mapList(data);
@@ -1509,8 +1675,8 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   /// Background LED read: no error banner when the router does not answer.
   Future<void> refreshLeds() async {
-    if (!isConnected) return;
-    final response = await _mqtt.getLedSettings();
+    if (!isConnected || !accessPolicy.mayRefresh) return;
+    final response = await _gateway.getLedSettings();
     final data = response?['Data'];
     if (response?['ErrorCode'] == 0 && data is List) {
       _ledNodes = _mapList(data);
@@ -1557,7 +1723,8 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   /// Reads GetLedList and returns the reported LED value for [nodeSn].
   Future<int?> _readLedState(String nodeSn) async {
-    final response = await _mqtt.getLedSettings();
+    if (!accessPolicy.mayRefresh) return null;
+    final response = await _gateway.getLedSettings();
     final data = response?['Data'];
     if (response?['ErrorCode'] != 0 || data is! List) return null;
     _ledNodes = _mapList(data);
@@ -1584,7 +1751,7 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
       final result = await _writeRouterSetting(
         label: 'LED change',
         failureMessage: 'Failed to update the router LED',
-        request: () => _mqtt.setNodeLed(nodeSn: nodeSn, led: led),
+        request: () => _gateway.setNodeLed(nodeSn: nodeSn, led: led),
       );
       if (!result.isConfirmed) return result;
       // The router acknowledges SetNodeLed before the LED changes, so an
@@ -1620,19 +1787,24 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<Map<String, dynamic>?> loadRestartSchedule() {
-    return _readRouterSetting(_mqtt.getRestartSchedule);
+    return _readRouterSetting(_gateway.getRestartSchedule);
   }
 
   Future<SaveResult> updateRestartSchedule(Map<String, dynamic> settings) {
     return _writeRouterSetting(
       failureMessage: 'Failed to update restart schedule',
-      request: () => _mqtt.setRestartSchedule(settings),
+      request: () => _gateway.setRestartSchedule(settings),
     );
   }
 
   Future<Map<String, dynamic>?> _readRouterSetting(
     Future<Map<String, dynamic>?> Function() request,
   ) async {
+    if (!accessPolicy.mayRefresh) {
+      _errorMessage = accessPolicy.blockMessage;
+      notifyListeners();
+      return null;
+    }
     if (!isConnected) {
       _errorMessage = 'Authentication required for router settings';
       notifyListeners();
@@ -1665,6 +1837,13 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
     Future<bool?> Function()? verify,
     bool requireReadBack = false,
   }) async {
+    if (!accessPolicy.mayWrite) {
+      _errorMessage = accessPolicy.blockMessage;
+      notifyListeners();
+      return SaveResult.failed(
+        accessPolicy.blockMessage ?? 'Router changes are unavailable.',
+      );
+    }
     if (!isConnected) {
       _errorMessage = 'Authentication required for router settings';
       notifyListeners();
@@ -1855,15 +2034,16 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<void> refreshUsbStorage() async {
     if (!isConnected || _usbStorageLoading) return;
+    if (!accessPolicy.mayRefresh) return;
 
     _usbStorageLoading = true;
     notifyListeners();
 
     try {
       final responses = await Future.wait([
-        _mqtt.getPrivateStorage(),
-        _mqtt.getDiskInfo(),
-        _mqtt.getStorageVisitAddress(),
+        _gateway.getPrivateStorage(),
+        _gateway.getDiskInfo(),
+        _gateway.getStorageVisitAddress(),
       ]);
 
       final settings = responses[0];
@@ -1911,7 +2091,7 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
     final result = await _writeRouterSetting(
       label: 'USB storage change',
       failureMessage: 'Failed to update USB storage settings',
-      request: () => _mqtt.setPrivateStorage(
+      request: () => _gateway.setPrivateStorage(
         usb3Enabled: updated.usb3Enabled,
         sambaEnabled: updated.sambaEnabled,
         anonymousAccess: updated.anonymousAccess,
@@ -1926,13 +2106,20 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
   /// Asks every mesh node to restart. The router may drop the session before
   /// acknowledging, which is reported as pending rather than as a failure.
   Future<SaveResult> rebootRouter() async {
+    if (!accessPolicy.mayWrite) {
+      _errorMessage = accessPolicy.blockMessage;
+      notifyListeners();
+      return SaveResult.failed(
+        accessPolicy.blockMessage ?? 'Router changes are unavailable.',
+      );
+    }
     if (!isConnected) {
       _errorMessage = 'Cannot reboot: Authentication required';
       notifyListeners();
       return const SaveResult.failed('Not connected to the router.');
     }
 
-    final response = await _mqtt.rebootRouter();
+    final response = await _gateway.rebootRouter();
     if (response == null) {
       return const SaveResult.pending(
         'Restart requested. The router did not confirm before the connection '
@@ -1954,7 +2141,7 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
     _allowReconnect = false;
     _reconnectInProgress = false;
     _stopAutoRefresh();
-    await _mqtt.disconnect();
+    await _gateway.disconnect();
 
     _authState = AuthenticationState.notAuthenticated;
     _devices = [];
@@ -2032,7 +2219,7 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
     _liveTimer?.cancel();
     _reconnectTimer?.cancel();
     _discovery.dispose();
-    _mqtt.dispose();
+    _gateway.dispose();
     super.dispose();
   }
 }

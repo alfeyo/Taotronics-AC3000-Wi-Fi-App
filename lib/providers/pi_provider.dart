@@ -209,7 +209,7 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
   int _failures = 0;
   int _attempt = 0;
   DateTime? _nextDiscovery;
-  DateTime? _lastLive, _lastGateway, _lastSync, _lastRouterDetails;
+  DateTime? _lastLive, _lastGateway, _lastSync;
   bool _discovering = false,
       _pollingLive = false,
       _pollingGateway = false,
@@ -327,6 +327,52 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
       ArgonUsage.parse(gateway?['usage'], legacyHistory: gateway?['history']);
   ArgonUplink? get uplink => ArgonUplink.parse(gateway?['uplink']);
   ArgonRouterView? get routerView => ArgonRouterView.parse(gateway?['router']);
+
+  /// True when Argon's own report says it holds the router management session.
+  ///
+  /// Phase 1 adds no API contract, so this reads the existing
+  /// `gateway.router.monitoring` block and also honours an explicit `owner`
+  /// field if a newer Argon sends one. Data Argon labels as phone-supplied can
+  /// never count as ownership: the Pi is relaying, not controlling.
+  bool routerOwnedByArgon = false;
+
+  static const _ownershipStates = {
+    'connected',
+    'active',
+    'owner',
+    'argon',
+    'managing',
+    'controlling',
+  };
+
+  /// Pure parser, exported for tests and for callers that hold a raw payload.
+  static bool reportsRouterOwnership(Object? rawGateway) {
+    final router = rawGateway is Map ? rawGateway['router'] : null;
+    if (router is! Map) return false;
+
+    final source = '${router['source']}'.toLowerCase();
+    if (source == 'phone' || source == 'phone-supplied') return false;
+
+    if ('${router['owner']}'.toLowerCase() == 'argon') return true;
+
+    final monitoring = router['monitoring'];
+    if (monitoring is Map) {
+      if ('${monitoring['owner']}'.toLowerCase() == 'argon') return true;
+      return _ownershipStates.contains('${monitoring['state']}'.toLowerCase());
+    }
+    if (monitoring is String) {
+      return _ownershipStates.contains(monitoring.toLowerCase());
+    }
+    return false;
+  }
+
+  /// Hands Argon's claim to `RouterProvider`, which stops bidding for the
+  /// router and switches the screens to read-only.
+  void _applyRouterOwnership(Map<String, dynamic> payload) {
+    final owned = reportsRouterOwnership(payload);
+    routerOwnedByArgon = owned;
+    _router.applyPiOwnership(ownedByArgon: owned);
+  }
 
   /// Today's household usage: Argon's `usage.periods.today`, or the older
   /// live `traffic.today` counters (download/upload, VPN subset).
@@ -732,6 +778,7 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
       gatewayAt = _now();
       lastContact = gatewayAt;
       _failures = 0;
+      _applyRouterOwnership(r);
       _mergeServerEvents(r['events']);
       unawaited(refreshVpnPermission(force: false));
       _emit();
@@ -842,14 +889,11 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
     _syncing = true;
     final generation = _generation;
     try {
-      if (_lastRouterDetails == null ||
-          _now().difference(_lastRouterDetails!).inMinutes >= 5) {
-        _lastRouterDetails = _now();
-        await _router.refreshWanSettings();
-        if (generation != _generation) return;
-        await _router.loadGuestWifiSettings(quiet: true);
-        if (generation != _generation) return;
-      }
+      // Cached router data only. Phase 1 removed the 5-minute
+      // refreshWanSettings()/loadGuestWifiSettings() pair that ran here: the Pi
+      // link was issuing router commands of its own, competing for the
+      // router's single management session. Fields whose cache has expired
+      // are sent as null (the snapshot schema already allows unavailable).
       final snapshot = buildPiRouterSnapshot(_router, now: _now());
       if (snapshot == null) {
         syncError = 'Waiting for a fresh router device list.';
