@@ -166,7 +166,7 @@ void main() {
   );
 
   testWidgets(
-    'Home labels Argon-measured traffic; falls back to labelled router data',
+    'Home labels Argon-measured traffic and shows an honest offline state',
     (tester) async {
       tester.view.physicalSize = const Size(400, 2400);
       tester.view.devicePixelRatio = 1;
@@ -175,11 +175,14 @@ void main() {
       await tester.pumpWidget(_app(router, pi, const HomeScreen()));
       await tester.pump();
       expect(
-        find.text('Measured by Argon · household traffic · live'),
+        find.text(
+          'Measured by Argon at the household link (eth1) · bits per second',
+        ),
         findsOneWidget,
       );
+      expect(find.text('Connected · Local network'), findsOneWidget);
       expect(
-        find.textContaining('Available via Local network'),
+        find.text('Connected to Argon — monitoring household network'),
         findsOneWidget,
       );
       pi.dispose();
@@ -188,7 +191,9 @@ void main() {
       await tester.pumpWidget(_app(router, pi, const HomeScreen()));
       await tester.pump();
       expect(
-        find.text('Measured by Argon · household traffic · live'),
+        find.text(
+          'Measured by Argon at the household link (eth1) · bits per second',
+        ),
         findsNothing,
       );
       expect(find.textContaining('Unreachable'), findsWidgets);

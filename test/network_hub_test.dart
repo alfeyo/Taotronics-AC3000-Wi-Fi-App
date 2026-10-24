@@ -302,6 +302,9 @@ class HubFake implements PiTransport, PiOperatorTransport {
       if (keyDeleteGate != null) await keyDeleteGate!.future;
       return PiRawResponse(keyDeleteStatus, {'ok': keyDeleteStatus == 200});
     }
+    if (path.startsWith('/api/v1/alerts')) {
+      return const PiRawResponse(200, {'ok': true, 'alerts': []});
+    }
     if (path == '/api/v1/vpn/authorize') {
       return PiRawResponse(deviceAllowed ? 200 : 403, {
         'ok': deviceAllowed,
@@ -884,19 +887,19 @@ void main() {
           await tester.pump();
           expect(tester.takeException(), isNull);
           expect(_text('84.2 Mbps'), findsOneWidget);
-          expect(_text('2.50 GiB'), findsOneWidget);
-          expect(_text('24.0 GiB'), findsOneWidget);
-          expect(_text('42% of today via VPN'), findsOneWidget);
           expect(
-            find.textContaining(
-              'Available via Local network',
-              skipOffstage: false,
-            ),
+            _text('Connected to Argon — monitoring household network'),
             findsOneWidget,
           );
-          expect(_text('Recent notifications'), findsOneWidget);
-          expect(_text('Devices online · router'), findsOneWidget);
-          expect(_text('Network Hub'), findsWidgets);
+          expect(_text('Connected · Local network'), findsOneWidget);
+          expect(_text('Downloaded'), findsOneWidget);
+          expect(_text('Total today'), findsOneWidget);
+          expect(
+            find.textContaining('via VPN', skipOffstage: false),
+            findsWidgets,
+          );
+          expect(_text('Managed router'), findsOneWidget);
+          expect(_text('Recent events'), findsOneWidget);
           await tester.pumpWidget(const SizedBox());
           pi.dispose();
         },

@@ -31,6 +31,35 @@ enum HubDataState {
 
 enum VpnCommandPhase { idle, sending, verifying, confirmed, failed }
 
+/// Direct Router Control: the explicit, temporary mode in which this phone
+/// holds the TaoTronics router's single management session.
+enum DirectControlPhase {
+  /// Argon mode (default): Argon's LAN observer monitors the router.
+  off,
+
+  /// Asking Argon for a router control lease.
+  requesting,
+
+  /// Lease granted; waiting for Argon's observer to close its router session.
+  waitingForObserver,
+
+  /// Connecting with this phone's existing router pairing.
+  connecting,
+
+  /// Connected, but the router still serves the previous holder (it hands
+  /// the session over about a minute after that holder stops).
+  waitingForRouter,
+
+  /// This phone controls the router; router settings are available.
+  active,
+
+  /// Releasing the router and returning to Argon mode.
+  returning,
+
+  /// The takeover could not proceed; [PiProvider.directMessage] says why.
+  failed,
+}
+
 enum VpnCommandIssue {
   none,
   needsToken,
@@ -239,6 +268,28 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
   /// The VPN confirmation flow is open; further taps are ignored.
   bool vpnPrompting = false;
 
+  // Direct Router Control.
+  DirectControlPhase directPhase = DirectControlPhase.off;
+
+  /// Progress, blocker or outcome of the current Direct Control step.
+  String? directMessage;
+
+  /// The user overrode without Argon coordinating a handover.
+  bool directWithoutHandover = false;
+  RouterLease? lease;
+  DateTime? _leaseRenewedAt, _leaseRenewFailingSince, _directDeadline;
+  bool _leaseBusy = false;
+  int _directGeneration = 0;
+
+  /// Set when Direct Control ended; cleared once Argon reports fresh router
+  /// monitoring again (or after [resumeWatch]).
+  DateTime? monitoringResumeSince;
+  static const leaseRenewEvery = Duration(seconds: 30);
+  static const observerHandoverTimeout = Duration(seconds: 45);
+  static const routerConnectTimeout = Duration(seconds: 60);
+  static const resumeWatch = Duration(minutes: 3);
+  Duration leasePollInterval = const Duration(seconds: 3);
+
   // VPN exit location.
   VpnLocations? vpnLocations;
   DateTime? vpnLocationsAt;
@@ -349,8 +400,7 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
     if (_isArgon(router['owner']) || _isArgon(router['control'])) return true;
     final monitoring = router['monitoring'];
     if (monitoring is Map) {
-      return _isArgon(monitoring['owner']) ||
-          _isArgon(monitoring['control']);
+      return _isArgon(monitoring['owner']) || _isArgon(monitoring['control']);
     }
     return false;
   }
@@ -420,6 +470,7 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
       bluetoothFallback = prefs.getBool('argon.v2.bluetoothFallback') ?? false;
       _pairedDeviceId = prefs.getString('argon.v2.deviceId');
       _keyAlias = prefs.getString('argon.v2.keyAlias');
+      _alertCursor = prefs.getInt('argon.v2.alertCursor') ?? 0;
       // A credential provisioned earlier (shared token or paired device) is
       // used automatically.
       _token = await _storage.read(key: companionKey) ?? '';
@@ -455,6 +506,7 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
     await put('argon.v2.deviceId', _pairedDeviceId);
     await put('argon.v2.keyAlias', _keyAlias);
     await prefs.setBool('argon.v2.sync', syncEnabled);
+    await prefs.setInt('argon.v2.alertCursor', _alertCursor);
     await prefs.setBool('argon.v2.bluetoothFallback', bluetoothFallback);
   }
 
@@ -473,6 +525,13 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
       case AppLifecycleState.resumed:
         _foreground = true;
         _nextDiscovery = null;
+        if (directPhase == DirectControlPhase.active ||
+            directPhase == DirectControlPhase.waitingForRouter) {
+          // Renew at once: a lease that lapsed in the background ends
+          // Direct Control instead of fighting Argon's observer.
+          _foregroundResumed = true;
+          _leaseRenewedAt = null;
+        }
         _start();
       case AppLifecycleState.paused:
       case AppLifecycleState.hidden:
@@ -506,6 +565,8 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> tick() async {
     if (_disposed || !_foreground) return;
     final now = _now();
+    _advanceDirect(now);
+    _watchMonitoringResume(now);
     if (transport == null) {
       if (_nextDiscovery == null || !now.isBefore(_nextDiscovery!)) {
         await discover();
@@ -522,6 +583,10 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
     if (_lastSync == null || now.difference(_lastSync!) >= syncEvery) {
       jobs.add(_sync());
     }
+    if (transport!.kind != PiTransportKind.bluetooth &&
+        (_lastAlerts == null || now.difference(_lastAlerts!) >= alertsEvery)) {
+      jobs.add(_pollAlerts());
+    }
     await Future.wait(jobs);
   }
 
@@ -532,6 +597,14 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
     _nextDiscovery = null;
     transport = null;
     await discover();
+  }
+
+  /// Refresh network statistics and device inventory now (both come from
+  /// the gateway report and the live sample).
+  Future<void> refreshNow() async {
+    if (transport == null) return reconnect();
+    _lastLive = _lastGateway = null;
+    await tick();
   }
 
   // -------------------------------------------------------------- discovery
@@ -868,6 +941,11 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
     if (t.kind == PiTransportKind.bluetooth) {
       syncError =
           'Router sharing needs a network route to Argon (not Bluetooth).';
+      return;
+    }
+    // Argon mode: the observer feeds Argon; this phone has nothing to share.
+    if (_router.isArgonMode) {
+      syncError = null;
       return;
     }
     // Never compete with a router configuration change in progress.
@@ -1794,6 +1872,501 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
       VpnCommandIssue.unconfirmed,
       'Argon has not confirmed the change yet. Check the VPN status again shortly.',
     );
+  }
+
+  // --------------------------------------------------- Direct Router Control
+
+  /// A handover can be coordinated: Argon reachable over IP and this phone
+  /// paired with an enrolled key.
+  bool get canCoordinateHandover =>
+      connected &&
+      paired &&
+      transport is PiOperatorTransport &&
+      transport?.kind != PiTransportKind.bluetooth;
+
+  bool get directInProgress =>
+      directPhase != DirectControlPhase.off &&
+      directPhase != DirectControlPhase.failed;
+
+  /// Why Argon cannot coordinate a handover right now (null when it can).
+  String? get handoverBlocker {
+    if (!connected) {
+      return 'Argon is not reachable, so its observer cannot be asked to '
+          'release the router.';
+    }
+    if (transport?.kind == PiTransportKind.bluetooth) {
+      return 'Argon is reachable only over Bluetooth, which cannot coordinate '
+          'router control.';
+    }
+    if (!paired) {
+      return 'This phone is not paired with Argon, so it cannot ask the '
+          'observer to release the router. Pair it in Network Hub.';
+    }
+    return null;
+  }
+
+  void _directFail(String message, {bool release = true}) {
+    directPhase = DirectControlPhase.failed;
+    directMessage = message;
+    if (release && lease != null && !directWithoutHandover) {
+      unawaited(_leaseCommand('release').then((_) {}, onError: (_) {}));
+    }
+    lease = null;
+    _emit();
+  }
+
+  void dismissDirectResult() {
+    if (directPhase != DirectControlPhase.failed) return;
+    directPhase = DirectControlPhase.off;
+    directMessage = null;
+    _emit();
+  }
+
+  /// Takes Direct Router Control: asks Argon's observer to step aside (a
+  /// lease), waits until it has, then connects with this phone's existing
+  /// router pairing. With [withoutHandover] (only offered when Argon cannot
+  /// coordinate) the phone connects directly; the observer then backs off on
+  /// its own when the router keeps closing its sessions.
+  /// Household internet, VPN, NAT, DHCP, Tailscale and traffic accounting on
+  /// Argon are never touched.
+  Future<bool> takeDirectControl({bool withoutHandover = false}) async {
+    if (directInProgress || _disposed) return false;
+    final gen = ++_directGeneration;
+    directWithoutHandover = withoutHandover;
+    lease = null;
+    if (!withoutHandover) {
+      final blocker = handoverBlocker;
+      if (blocker != null) {
+        _directFail(blocker, release: false);
+        return false;
+      }
+      directPhase = DirectControlPhase.requesting;
+      directMessage = 'Asking Argon to release the router…';
+      _emit();
+      final PiRawResponse? r;
+      try {
+        r = await _leaseCommand('acquire');
+      } on PiApiException catch (e) {
+        if (gen != _directGeneration) return false;
+        _directFail(e.message, release: false);
+        return false;
+      } catch (_) {
+        if (gen != _directGeneration) return false;
+        _directFail(
+          'Phone signing key is unavailable. Unlock the phone and try again.',
+          release: false,
+        );
+        return false;
+      }
+      if (gen != _directGeneration || _disposed) return false;
+      if (r == null) {
+        _directFail('Connection to Argon changed. Try again.', release: false);
+        return false;
+      }
+      if (r.status != 200) {
+        _directFail(_leaseError(r), release: false);
+        return false;
+      }
+      lease = RouterLease.parse(r.data?['lease']);
+      directPhase = DirectControlPhase.waitingForObserver;
+      directMessage =
+          'Waiting for Argon\'s observer to close its router '
+          'session…';
+      _emit();
+      final deadline = _now().add(observerHandoverTimeout);
+      while (lease?.handedOver != true) {
+        if (_now().isAfter(deadline)) {
+          _directFail(
+            'Argon\'s observer did not release the router within '
+            '${observerHandoverTimeout.inSeconds} s. Argon keeps monitoring; '
+            'nothing was changed.',
+          );
+          return false;
+        }
+        await Future<void>.delayed(leasePollInterval);
+        if (gen != _directGeneration || _disposed) return false;
+        try {
+          final view = RouterLease.parse(
+            (await _readPath('/api/v1/router/lease'))['lease'],
+          );
+          if (gen != _directGeneration || _disposed) return false;
+          if (view != null) lease = view;
+          if (view != null && !view.active) {
+            _directFail('The router control lease ended unexpectedly.');
+            return false;
+          }
+        } on PiApiException {
+          // Keep waiting until the deadline.
+        }
+        _emit();
+      }
+      _leaseRenewedAt = _now();
+      _leaseRenewFailingSince = null;
+    }
+    directPhase = DirectControlPhase.connecting;
+    directMessage = 'Connecting with this phone\'s router pairing…';
+    _directDeadline = _now().add(routerConnectTimeout);
+    _addEvent(
+      'direct',
+      'Direct router control',
+      withoutHandover
+          ? 'Connecting to the router without an Argon handover.'
+          : 'Argon\'s observer released the router; this phone is connecting.',
+      'info',
+    );
+    _emit();
+    await _router.enterDirectMode();
+    if (gen != _directGeneration) return false;
+    _advanceDirect(_now());
+    return true;
+  }
+
+  /// Leaves Direct Router Control: stops phone-side router polling, closes the
+  /// MQTT session, releases the lease and resumes Argon-backed screens. Never
+  /// clears the router pairing.
+  Future<void> returnToArgon({String? reason}) async {
+    if (directPhase == DirectControlPhase.off ||
+        directPhase == DirectControlPhase.returning) {
+      return;
+    }
+    _directGeneration++;
+    directPhase = DirectControlPhase.returning;
+    directMessage = 'Releasing the router…';
+    _emit();
+    await _router.exitDirectMode();
+    if (lease != null && !directWithoutHandover) {
+      try {
+        await _leaseCommand('release').timeout(const Duration(seconds: 10));
+      } catch (_) {
+        // The lease expires on its own within two minutes.
+      }
+    }
+    lease = null;
+    directWithoutHandover = false;
+    _leaseRenewedAt = _leaseRenewFailingSince = _directDeadline = null;
+    directPhase = DirectControlPhase.off;
+    directMessage = null;
+    monitoringResumeSince = _now();
+    _lastGateway = _lastLive = null; // refresh the Argon view promptly
+    _addEvent(
+      'direct',
+      'Back in Argon mode',
+      reason ?? 'This phone released the router; Argon\'s observer resumes.',
+      reason == null ? 'success' : 'warning',
+    );
+    _emit();
+    unawaited(tick());
+  }
+
+  /// One scheduler step of the Direct Control state machine.
+  void _advanceDirect(DateTime now) {
+    switch (directPhase) {
+      case DirectControlPhase.connecting:
+      case DirectControlPhase.waitingForRouter:
+      case DirectControlPhase.active:
+        break;
+      default:
+        return;
+    }
+    if (!_router.isDirectMode) {
+      directPhase = DirectControlPhase.off;
+      directMessage = null;
+      _emit();
+      return;
+    }
+    final before = directPhase;
+    if (_router.isConnected && !_router.managedElsewhere) {
+      directPhase = DirectControlPhase.active;
+      directMessage = null;
+      if (before != DirectControlPhase.active) {
+        _addEvent(
+          'direct',
+          'Direct router control active',
+          'Router settings can be changed from this phone. Return to Argon '
+              'mode when you are done.',
+          'success',
+        );
+      }
+    } else if (_router.isConnected) {
+      directPhase = DirectControlPhase.waitingForRouter;
+      directMessage =
+          'The router is still serving its previous controller. '
+          'It hands over about a minute after that session stops.';
+    } else if (before == DirectControlPhase.connecting &&
+        _directDeadline != null &&
+        now.isAfter(_directDeadline!) &&
+        !_router.isReconnecting) {
+      final why = _router.errorMessage;
+      unawaited(
+        returnToArgon(
+          reason:
+              'Direct control could not connect to the router'
+              '${why == null ? '.' : ': $why'}',
+        ),
+      );
+      return;
+    }
+    if (directPhase != before) _emit();
+    _renewLease(now);
+  }
+
+  void _renewLease(DateTime now) {
+    if (directWithoutHandover ||
+        lease == null ||
+        _leaseBusy ||
+        (_leaseRenewedAt != null &&
+            now.difference(_leaseRenewedAt!) < leaseRenewEvery)) {
+      return;
+    }
+    _leaseBusy = true;
+    final gen = _directGeneration;
+    _leaseCommand('renew')
+        .then((r) {
+          if (gen != _directGeneration) return;
+          if (r != null && r.status == 200) {
+            lease = RouterLease.parse(r.data?['lease']) ?? lease;
+            _leaseRenewedAt = _now();
+            _leaseRenewFailingSince = null;
+          } else if (r != null && r.status == 409) {
+            unawaited(
+              returnToArgon(
+                reason: _foregroundResumed
+                    ? 'Direct control expired while TT Router was in the '
+                          'background. Argon monitors the router again.'
+                    : _leaseError(r),
+              ),
+            );
+          } else {
+            _leaseRenewFailingSince ??= _now();
+          }
+        })
+        .catchError((Object _) {
+          if (gen == _directGeneration) _leaseRenewFailingSince ??= _now();
+        })
+        .whenComplete(() {
+          _leaseBusy = false;
+          _foregroundResumed = false;
+          _emit();
+        });
+  }
+
+  bool _foregroundResumed = false;
+
+  /// Renewals have failed for a while; the lease may lapse and Argon's
+  /// observer may resume.
+  bool get leaseAtRisk =>
+      _leaseRenewFailingSince != null &&
+      _now().difference(_leaseRenewFailingSince!).inSeconds >= 60;
+
+  void _watchMonitoringResume(DateTime now) {
+    final since = monitoringResumeSince;
+    if (since == null) return;
+    final view = routerView;
+    if (view?.live == true &&
+        view?.observedAt != null &&
+        view!.observedAt!.isAfter(since)) {
+      monitoringResumeSince = null;
+      _addEvent(
+        'monitoring',
+        'Argon monitoring resumed',
+        'Router data from ${view.sourceLabel} is current again.',
+        'success',
+      );
+      _emit();
+    } else if (now.difference(since) > resumeWatch) {
+      monitoringResumeSince = null;
+      _addEvent(
+        'monitoring',
+        'Argon monitoring has not resumed',
+        'No fresh router observation for ${resumeWatch.inMinutes} minutes '
+            'after Direct Control ended. Check the collector in Network Hub.',
+        'warning',
+      );
+      _emit();
+    }
+  }
+
+  String _leaseError(PiRawResponse r) {
+    final e = r.data?['error'];
+    final text = e is String && e.trim().isNotEmpty ? e : null;
+    return switch (r.status) {
+      401 || 403 =>
+        'Argon did not accept this phone\'s signature. Pair the phone with '
+            'Argon again in Network Hub.',
+      404 => 'This Argon does not support router handover yet.',
+      429 => 'Too many requests. Wait a minute and try again.',
+      _ => text ?? 'Argon refused the router control request (${r.status}).',
+    };
+  }
+
+  /// Signed `POST /api/v1/router/lease`.
+  Future<PiRawResponse?> _leaseCommand(String action) => _deviceRequest(
+    'POST',
+    '/api/v1/router/lease',
+    utf8.encode(
+      jsonEncode({'action': action, 'confirm': 'DIRECT_ROUTER_CONTROL'}),
+    ),
+  );
+
+  /// A request signed with this pairing's `ArgonDevice v2` key. Uses the
+  /// current route when the key is known (no secret travels, so LAN works);
+  /// otherwise enrolls the key over a secure route first. Null when the
+  /// connection changed meanwhile.
+  Future<PiRawResponse?> _deviceRequest(
+    String method,
+    String path,
+    List<int> body,
+  ) async {
+    final generation = _generation;
+    Future<PiRawResponse> send(PiTransport t, String id, String alias) async =>
+        (t as PiOperatorTransport).sendRaw(
+          method,
+          path,
+          body: body,
+          timeout: const Duration(seconds: 15),
+          headers: {
+            'Authorization': await _deviceKey.header(
+              alias: alias,
+              id: id,
+              method: method,
+              // Argon signs the pathname only, never the query string.
+              path: Uri.parse(path).path,
+              body: body,
+              ts: _now().millisecondsSinceEpoch ~/ 1000,
+              nonce: _nonce(),
+            ),
+          },
+        );
+    final t = transport;
+    final id = _deviceId ?? _pairedDeviceId;
+    if (t is PiOperatorTransport &&
+        t != null &&
+        t.kind != PiTransportKind.bluetooth &&
+        id != null &&
+        _keyAlias != null) {
+      final r = await send(t, id, _keyAlias!);
+      if (generation != _generation || _disposed) return null;
+      if (r.status != 403 || _deviceId != null) return r;
+      // Key not enrolled yet on Argon: enroll over a secure route and retry.
+    }
+    final secure = await _secureTransport();
+    if (generation != _generation || _disposed) return null;
+    await _enrollKey(secure);
+    if (generation != _generation || _disposed) return null;
+    return send(secure, _deviceId!, _keyAlias!);
+  }
+
+  // ------------------------------------------------------- usage alerts
+
+  static const alertsEvery = Duration(seconds: 60);
+  DateTime? _lastAlerts;
+  bool _pollingAlerts = false;
+  int _alertCursor = 0;
+
+  /// Why usage alerts are not being received, or null when they are.
+  String? alertsError;
+
+  /// Argon's sustained-usage alerts, fetched while the app is open with this
+  /// phone's device signature, shown in the notification center and then
+  /// acknowledged. Not a background push.
+  Future<void> _pollAlerts() async {
+    if (_pollingAlerts || !paired || trustedId == null) return;
+    _pollingAlerts = true;
+    _lastAlerts = _now();
+    try {
+      final r = await _deviceRequest(
+        'GET',
+        '/api/v1/alerts?after=$_alertCursor&limit=50',
+        const [],
+      );
+      if (r == null) return;
+      if (r.status != 200 || r.data?['alerts'] is! List) {
+        alertsError = r.status == 404
+            ? 'This Argon does not offer usage alerts.'
+            : 'Usage alerts unavailable (${r.status}).';
+        return;
+      }
+      alertsError = null;
+      final shown = <int>[];
+      for (final a in (r.data!['alerts'] as List).whereType<Map>()) {
+        final id = a['id'];
+        if (id is! int) continue;
+        if (id > _alertCursor) _alertCursor = id;
+        if (a['status'] != 'pending') continue;
+        final at = a['createdAt'];
+        final name = (a['deviceName'] as String?) ?? (a['mac'] as String?);
+        final avg = a['avgBps'];
+        final share = a['share'];
+        final bytes = [a['downloadBytes'], a['uploadBytes']]
+            .whereType<num>()
+            .fold<num>(0, (x, y) => x + y);
+        _events.add(
+          PiEvent(
+            id: 'argon:alert:$id',
+            at: at is num
+                ? DateTime.fromMillisecondsSinceEpoch(at.toInt() * 1000)
+                : _now(),
+            title: 'High usage: ${name ?? 'a device'}',
+            message: [
+              if (avg is num) 'averaged ${formatBitRateLabel(avg)}',
+              if (share is num)
+                '${(share * 100).toStringAsFixed(0)}% of household traffic',
+              if (bytes > 0)
+                '${a['estimated'] == true ? '≈ ' : ''}${_bytesLabel(bytes.toInt())} in the window',
+            ].join(' · '),
+            severity: 'warning',
+            source: 'argon',
+          ),
+        );
+        unreadEvents++;
+        shown.add(id);
+      }
+      if (shown.isEmpty) return;
+      _sortEvents();
+      _emit();
+      await _savePrefs();
+      final ack = await _deviceRequest(
+        'POST',
+        '/api/v1/alerts/ack',
+        utf8.encode(jsonEncode({'ids': shown})),
+      );
+      if (ack != null && ack.status != 200) {
+        alertsError = 'Alerts shown but not acknowledged (${ack.status}).';
+      }
+    } on PiApiException catch (e) {
+      alertsError = e is PiSecureRouteUnavailable
+          ? 'Usage alerts need the phone key; enroll it over Tailscale once.'
+          : e.message;
+    } catch (_) {
+      alertsError = 'Phone signing key is unavailable.';
+    } finally {
+      _pollingAlerts = false;
+    }
+  }
+
+  static String formatBitRateLabel(num bps) => bps >= 1e6
+      ? '${(bps / 1e6).toStringAsFixed(1)} Mbit/s'
+      : '${(bps / 1e3).toStringAsFixed(0)} kbit/s';
+
+  static String _bytesLabel(int b) {
+    const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
+    var v = b.toDouble();
+    var u = 0;
+    while (v >= 1023.5 && u < units.length - 1) {
+      v /= 1024;
+      u++;
+    }
+    return '${v >= 100 ? v.toStringAsFixed(0) : v.toStringAsFixed(1)} ${units[u]}';
+  }
+
+  /// Monitoring GET with the same credential rules as the gateway report.
+  Future<Map<String, dynamic>> _readPath(String path) async {
+    final t = transport;
+    if (t == null) throw const PiApiException('Argon is not reachable.');
+    final route = _readToken != null && t.kind == PiTransportKind.lan
+        ? await _secureTransport()
+        : t;
+    return route.get(path, token: _readToken);
   }
 
   @override

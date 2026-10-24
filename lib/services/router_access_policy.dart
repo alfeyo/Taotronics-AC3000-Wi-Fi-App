@@ -54,8 +54,14 @@ class RouterAccessPolicy {
   /// True when screens should render cached values without offering writes.
   bool get isReadOnly => !_direct || diagnosticsOnly;
 
+  /// Shown wherever router access is refused in the default Argon mode.
+  static const directControlOffMessage =
+      'Argon monitors the router. Take Direct Router Control to change '
+      'router settings from this phone.';
+
   /// Shown wherever a write is refused because Argon controls the router.
-  static const piOwnershipMessage = 'Router control is provided by Network Hub.';
+  static const piOwnershipMessage =
+      'Router control is provided by Network Hub.';
 
   static const piOwnershipDetail =
       'The Raspberry Pi holds the router connection. Values here are the last '
@@ -64,7 +70,7 @@ class RouterAccessPolicy {
   /// The user-facing reason direct control is unavailable, or null when it is.
   String? get blockMessage {
     if (!directControlEnabled) {
-      return 'Direct router control is turned off on this phone.';
+      return directControlOffMessage;
     }
     if (blockDirectOwnership) return piOwnershipMessage;
     return null;

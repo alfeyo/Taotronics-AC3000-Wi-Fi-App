@@ -1,5 +1,7 @@
 # Argon companion API v1
 
+> Superseded in detail by the server-side contract `argon-dashboard/docs/contracts/argon-v1.md`. Its 24 October additions cover the router control lease (`/api/v1/router/lease`), `gateway.router.control`, new event kinds, and paired-phone signatures for usage alerts. TT Router 1.11.0 consumes those. Endpoint use by screen is in [PI_FIRST_TRANSITION.md](PI_FIRST_TRANSITION.md).
+
 The browser keeps its existing sign-in-free monitoring. This API always requires `Authorization: Bearer <companion token>`, independently of ARGON_AUTH_MODE. Configure ARGON_COMPANION_TOKEN on the Pi; store the token in the phone's Keystore. The companion token grants read-only Pi monitoring and sanitized inventory upload, never router control. Use HTTPS with normal certificate validation, or the Pi's literal Tailscale IPv4 over an active private VPN. Never follow redirects with credentials. No credentials are bundled into the APK.
 
 All times are Unix seconds in UTC, rates are **bits per second**, counters are **bytes**, durations seconds, temperatures Celsius, CPU percentage is across all cores. Null means unavailable, not zero. Responses use `{version:1,ok:true,generatedAt,...}`; errors use `{ok:false,error}` with 401 authorization, 400 invalid data, 409 replay/unsupported operation, 413 size limit, 503 unavailable. Responses are no-store. Poll at most once per 15 seconds in the foreground; retain clearly marked stale data on failure. No background push service.

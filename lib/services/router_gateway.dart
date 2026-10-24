@@ -216,8 +216,7 @@ class DirectRouterGateway implements RouterGateway {
       _read(_mqtt.getNodeRateInfo);
 
   @override
-  Future<Map<String, dynamic>?> getWanRateInfo() =>
-      _read(_mqtt.getWanRateInfo);
+  Future<Map<String, dynamic>?> getWanRateInfo() => _read(_mqtt.getWanRateInfo);
 
   @override
   Future<Map<String, dynamic>?> getPrivateStorage() =>
@@ -234,12 +233,10 @@ class DirectRouterGateway implements RouterGateway {
   Future<Map<String, dynamic>?> getGuestWifi() => _read(_mqtt.getGuestWifi);
 
   @override
-  Future<Map<String, dynamic>?> getWanSettings() =>
-      _read(_mqtt.getWanSettings);
+  Future<Map<String, dynamic>?> getWanSettings() => _read(_mqtt.getWanSettings);
 
   @override
-  Future<Map<String, dynamic>?> getLanSettings() =>
-      _read(_mqtt.getLanSettings);
+  Future<Map<String, dynamic>?> getLanSettings() => _read(_mqtt.getLanSettings);
 
   @override
   Future<Map<String, dynamic>?> getFirewallSettings() =>
@@ -257,8 +254,7 @@ class DirectRouterGateway implements RouterGateway {
       _read(_mqtt.getFastNatSettings);
 
   @override
-  Future<Map<String, dynamic>?> getVpnSettings() =>
-      _read(_mqtt.getVpnSettings);
+  Future<Map<String, dynamic>?> getVpnSettings() => _read(_mqtt.getVpnSettings);
 
   @override
   Future<Map<String, dynamic>?> getVpnStatus() => _read(_mqtt.getVpnStatus);
@@ -357,9 +353,8 @@ class DirectRouterGateway implements RouterGateway {
   );
 
   @override
-  Future<Map<String, dynamic>?> setVpnSettings(
-    Map<String, dynamic> settings,
-  ) => _write(() => _mqtt.setVpnSettings(settings));
+  Future<Map<String, dynamic>?> setVpnSettings(Map<String, dynamic> settings) =>
+      _write(() => _mqtt.setVpnSettings(settings));
 
   @override
   Future<Map<String, dynamic>?> addVirtualServer(Map<String, dynamic> rule) =>

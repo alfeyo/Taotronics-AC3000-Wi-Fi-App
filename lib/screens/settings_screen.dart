@@ -13,6 +13,7 @@ import '../widgets/app_widgets.dart';
 import '../widgets/connection_banner.dart';
 import '../widgets/feedback.dart';
 import '../widgets/led_card.dart';
+import '../widgets/managed_router.dart';
 import 'diagnostics_screen.dart';
 import 'nodes_screen.dart';
 import 'router_settings_screens.dart';
@@ -41,9 +42,13 @@ class SettingsScreen extends StatelessWidget {
                 children: [
                   const PageHeader(kicker: 'Control centre', title: 'Settings'),
                   const SizedBox(height: Space.lg),
-                  const ConnectionStatusBanners(),
-                  const RouterLedCard(),
+                  const RouterControlCard(),
                   const SizedBox(height: Space.md),
+                  if (provider.isDirectMode) ...[
+                    const ConnectionStatusBanners(),
+                    const RouterLedCard(),
+                    const SizedBox(height: Space.md),
+                  ],
                   SettingsGroup(
                     title: 'Wi-Fi & wireless',
                     icon: Icons.wifi_rounded,

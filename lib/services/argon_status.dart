@@ -372,7 +372,159 @@ class ArgonUplink {
   }
 }
 
-/// Argon's view of the TaoTronics router (from the phone's shared snapshot).
+/// Per-device usage Argon estimates from sampled router rates. Never a meter:
+/// [coverage] says how much of the day was observed.
+class ClientUsageDay {
+  const ClientUsageDay({
+    required this.day,
+    this.downloadBytes,
+    this.uploadBytes,
+    this.totalBytes,
+    this.coverage,
+    this.observedSeconds,
+  });
+  final String day;
+  final int? downloadBytes;
+  final int? uploadBytes;
+  final int? totalBytes;
+  final double? coverage;
+  final int? observedSeconds;
+
+  static ClientUsageDay? parse(Object? raw) {
+    final d = _map(raw);
+    final day = _str(d?['day']);
+    if (d == null || day == null) return null;
+    final c = _double(d['coverage']);
+    return ClientUsageDay(
+      day: day,
+      downloadBytes: _int(d['downloadBytes']),
+      uploadBytes: _int(d['uploadBytes']),
+      totalBytes: _int(d['totalBytes']),
+      coverage: c?.clamp(0.0, 1.0),
+      observedSeconds: _int(d['observedSeconds']),
+    );
+  }
+}
+
+/// One household device from Argon's normalized router-client inventory.
+/// Rates are bits per second (Argon converts the router's bytes/s x8).
+class ArgonClient {
+  const ArgonClient({
+    required this.mac,
+    this.ip,
+    this.name,
+    this.hostname,
+    this.connectionType,
+    this.online,
+    this.downBitsPerSec,
+    this.upBitsPerSec,
+    this.lastSeen,
+    this.source,
+    this.labelled = false,
+    this.today,
+    this.days = const [],
+  });
+
+  final String mac;
+  final String? ip;
+  final String? name;
+  final String? hostname;
+
+  /// 'wifi', 'wired' or 'unknown'.
+  final String? connectionType;
+
+  /// Null when Argon has no live observation.
+  final bool? online;
+  final num? downBitsPerSec;
+  final num? upBitsPerSec;
+  final DateTime? lastSeen;
+  final String? source;
+  final bool labelled;
+  final ClientUsageDay? today;
+  final List<ClientUsageDay> days;
+
+  static final _macLike = RegExp(
+    r'^[0-9a-f]{2}([:-][0-9a-f]{2}){5}$',
+    caseSensitive: false,
+  );
+
+  /// A human name, or null when the router only knows the MAC/IP.
+  String? get friendlyName {
+    for (final v in [name, hostname]) {
+      if (v != null && !_macLike.hasMatch(v) && v != ip) return v;
+    }
+    return null;
+  }
+
+  String get displayName => friendlyName ?? 'Unnamed device';
+  bool get isOnline => online == true;
+  bool get isWired => connectionType == 'wired';
+  num get totalBitsPerSec => (downBitsPerSec ?? 0) + (upBitsPerSec ?? 0);
+
+  static ArgonClient? parse(Object? raw) {
+    final c = _map(raw);
+    final mac = _str(c?['mac']);
+    if (c == null || mac == null) return null;
+    final usage = _map(c['usage']);
+    final days = usage?['days'];
+    return ArgonClient(
+      mac: mac.toLowerCase(),
+      ip: _str(c['ip']),
+      name: _str(c['name']),
+      hostname: _str(c['hostname']),
+      connectionType: _str(c['connectionType']),
+      online: _bool(c['online']),
+      downBitsPerSec: _double(c['rateRxBps']),
+      upBitsPerSec: _double(c['rateTxBps']),
+      lastSeen: _unix(c['lastSeen']),
+      source: _str(c['source']),
+      labelled: c['labelled'] == true,
+      today: ClientUsageDay.parse(usage?['today']),
+      days: days is List
+          ? [for (final d in days) ?ClientUsageDay.parse(d)]
+          : const [],
+    );
+  }
+}
+
+/// Argon's router control lease (`/api/v1/router/lease`, `router.control.lease`).
+class RouterLease {
+  const RouterLease({
+    this.active = false,
+    this.holderId,
+    this.holderName,
+    this.expiresAt,
+    this.handover,
+  });
+  final bool active;
+  final String? holderId;
+  final String? holderName;
+  final DateTime? expiresAt;
+
+  /// 'none', 'waiting-for-observer', 'observer-yielded' or 'observer-offline'.
+  final String? handover;
+
+  /// The router's management session is free for the lease holder.
+  bool get handedOver =>
+      active &&
+      (handover == 'observer-yielded' || handover == 'observer-offline');
+
+  static RouterLease? parse(Object? raw) {
+    final l = _map(raw);
+    if (l == null) return null;
+    final holder = _map(l['holder']);
+    return RouterLease(
+      active: l['active'] == true,
+      holderId: _str(holder?['id']),
+      holderName: _str(holder?['name']),
+      expiresAt: _unix(l['expiresAt']),
+      handover: _str(l['handover']),
+    );
+  }
+}
+
+/// Argon's view of the TaoTronics router: observed by its LAN observer relay
+/// (or, as a fallback, by a phone's shared snapshot).
 class ArgonRouterView {
   const ArgonRouterView({
     this.name,
@@ -383,10 +535,33 @@ class ArgonRouterView {
     this.nodesTotal,
     this.observedAt,
     this.monitoring,
+    this.monitoringLabel,
+    this.monitoringDetail,
+    this.source,
+    this.clients = const [],
+    this.knownCount,
+    this.onlineCount,
+    this.wifiCount,
+    this.wiredCount,
+    this.wanDownBitsPerSec,
+    this.wanUpBitsPerSec,
+    this.ssids = const [],
+    this.nodes = const [],
+    this.controlHolder,
+    this.lease,
+    this.usageMethod,
+    this.usageStale,
+    this.usageObservedAt,
   });
 
-  /// Argon's own description of its router monitoring (e.g. connected).
+  /// Argon's own description of its router monitoring: 'connected', 'stale',
+  /// 'unreachable', 'not-connected' or 'direct-control'.
   final String? monitoring;
+  final String? monitoringLabel;
+  final String? monitoringDetail;
+
+  /// e.g. 'lan-observer:dell' or 'flutter-phone'.
+  final String? source;
   final String? name;
   final String? model;
   final bool? internet;
@@ -394,14 +569,59 @@ class ArgonRouterView {
   final int? nodesOnline;
   final int? nodesTotal;
   final DateTime? observedAt;
+  final List<ArgonClient> clients;
+  final int? knownCount;
+
+  /// Null unless Argon has live data: never inferred.
+  final int? onlineCount;
+  final int? wifiCount;
+  final int? wiredCount;
+  final num? wanDownBitsPerSec;
+  final num? wanUpBitsPerSec;
+  final List<String> ssids;
+  final List<Map<String, dynamic>> nodes;
+
+  /// 'observer', 'phone' (lease) or 'phone-snapshot'.
+  final String? controlHolder;
+  final RouterLease? lease;
+
+  /// 'estimated' for per-device usage derived from sampled rates.
+  final String? usageMethod;
+  final bool? usageStale;
+  final DateTime? usageObservedAt;
+
+  bool get live => monitoring == 'connected';
+  bool get observedByArgon => source?.startsWith('lan-observer') == true;
+
+  /// 'Dell LAN observer' for 'lan-observer:dell'.
+  String get sourceLabel {
+    final s = source;
+    if (s == null) return 'Not reported';
+    if (s.startsWith('lan-observer:')) {
+      final host = s.substring('lan-observer:'.length);
+      return '${host.isEmpty ? '' : '${host[0].toUpperCase()}${host.substring(1)} '}LAN observer';
+    }
+    if (s == 'flutter-phone') return 'Phone snapshot';
+    return s;
+  }
 
   static ArgonRouterView? parse(Object? raw) {
     final r = _map(raw);
     if (r == null) return null;
     final inner = _map(r['router']) ?? r;
     final mon = _map(r['monitoring']);
+    final counts = _map(r['counts']);
+    final wan = _map(inner['wanRate']);
+    final control = _map(r['control']);
+    final usage = _map(r['clientUsage']);
+    final rawClients = r['clients'];
+    final wifi = inner['wifi'];
+    final nodes = inner['nodes'];
     return ArgonRouterView(
       monitoring: _str(mon?['state']),
+      monitoringLabel: _str(mon?['label']),
+      monitoringDetail: _str(mon?['detail']),
+      source: _str(mon?['source']),
       name: _str(inner['name']),
       model: _str(inner['model']),
       internet: _bool(inner['internet']),
@@ -411,6 +631,29 @@ class ArgonRouterView {
       observedAt: _unix(
         mon?['snapshotAt'] ?? r['observedAt'] ?? inner['observedAt'],
       ),
+      clients: rawClients is List
+          ? [for (final c in rawClients) ?ArgonClient.parse(c)]
+          : const [],
+      knownCount: _int(counts?['known']),
+      onlineCount: _int(counts?['online']),
+      wifiCount: _int(counts?['wifi']),
+      wiredCount: _int(counts?['wired']),
+      wanDownBitsPerSec: _double(wan?['downloadBps']),
+      wanUpBitsPerSec: _double(wan?['uploadBps']),
+      ssids: wifi is List
+          ? [
+              for (final w in wifi.whereType<Map>())
+                if (_str(w['ssid']) != null) _str(w['ssid'])!,
+            ]
+          : const [],
+      nodes: nodes is List
+          ? [for (final n in nodes.whereType<Map>()) n.cast<String, dynamic>()]
+          : const [],
+      controlHolder: _str(control?['holder']),
+      lease: RouterLease.parse(control?['lease']),
+      usageMethod: _str(usage?['method']),
+      usageStale: _bool(usage?['stale']),
+      usageObservedAt: _unix(usage?['lastObservationAt']),
     );
   }
 }

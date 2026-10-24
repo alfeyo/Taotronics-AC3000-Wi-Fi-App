@@ -11,17 +11,20 @@ import '../widgets/home_sheets.dart';
 import '../services/argon_status.dart';
 import '../widgets/home_widgets.dart';
 import '../widgets/hub_widgets.dart';
+import '../widgets/managed_router.dart';
 import 'diagnostics_screen.dart';
 import 'home_screen.dart';
 import 'nodes_screen.dart';
 import 'router_settings_screens.dart';
 import 'setup_wizard_screen.dart';
 
-/// Home: router hero with live LED, live activity, network summary and
-/// quick controls. Every value comes from the router or from this
-/// session's measurements; missing values are shown as such.
-class OverviewTab extends StatelessWidget {
-  const OverviewTab({super.key});
+/// Router details (the TaoTronics dashboard that used to be Home): router
+/// hero with live LED, live activity, network summary and quick controls.
+/// Opened from Home's Managed Router card. In Argon mode the router is shown
+/// as Argon observes it and router-specific controls need Direct Router
+/// Control; every value says where it comes from.
+class RouterDetailsScreen extends StatelessWidget {
+  const RouterDetailsScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -72,14 +75,22 @@ class OverviewTab extends StatelessWidget {
                   children: [
                     _Header(provider: provider),
                     const SizedBox(height: Space.md),
-                    ConnectionStatusBanners(
-                      onOpenSetup: () => _openSetup(context),
-                    ),
-                    if (!provider.isConnected) ...[
+                    const DirectControlPanel(),
+                    if (provider.isArgonMode) ...[
+                      const ArgonRouterSummary(),
+                      const SizedBox(height: Space.md),
+                    ] else
+                      ConnectionStatusBanners(
+                        onOpenSetup: () => _openSetup(context),
+                      ),
+                    if (!provider.isConnected && provider.isDirectMode) ...[
                       _SetupCard(provider: provider),
                       const SizedBox(height: Space.md),
                     ],
-                    if (wide)
+                    if (provider.isArgonMode) ...[
+                      const SectionLabel('Router screens'),
+                      _QuickControls(provider: provider, select: select),
+                    ] else if (wide)
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -157,7 +168,9 @@ class _Header extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final connected = provider.isConnected;
-    final (text, tone) = connected
+    final (text, tone) = provider.isArgonMode
+        ? ('Observed by Argon · direct control off', Tone.info)
+        : connected
         ? (
             !provider.hasInternetStatus
                 ? 'Connected'
@@ -174,6 +187,14 @@ class _Header extends StatelessWidget {
 
     return Row(
       children: [
+        if (Navigator.canPop(context)) ...[
+          HeaderIconButton(
+            icon: Icons.arrow_back_rounded,
+            tooltip: 'Back',
+            onPressed: () => Navigator.maybePop(context),
+          ),
+          const SizedBox(width: Space.md),
+        ],
         Expanded(
           child: Semantics(
             container: true,
@@ -210,12 +231,14 @@ class _Header extends StatelessWidget {
             ),
           ),
         ),
-        HeaderIconButton(
-          icon: Icons.search_rounded,
-          tooltip: 'Search devices',
-          onPressed: () => showDeviceSearch(context, provider),
-        ),
-        const SizedBox(width: Space.sm),
+        if (provider.isDirectMode) ...[
+          HeaderIconButton(
+            icon: Icons.search_rounded,
+            tooltip: 'Search devices',
+            onPressed: () => showDeviceSearch(context, provider),
+          ),
+          const SizedBox(width: Space.sm),
+        ],
         EventsButton(provider: provider),
         const SizedBox(width: Space.sm),
         HeaderIconButton(

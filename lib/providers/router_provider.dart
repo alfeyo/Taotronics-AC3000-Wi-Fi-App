@@ -65,11 +65,16 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
     RouterGateway? gateway,
     AuthPairingService? authService,
     bool autoStart = true,
+    bool directControl = true,
     Random? random,
   }) : _discovery = discovery ?? RouterDiscoveryService(),
        _gateway = gateway ?? DirectRouterGateway(mqtt ?? MqttService()),
        _authService = authService ?? AuthPairingService(),
        _random = random ?? Random() {
+    // The app starts in Argon mode (main.dart passes false): no router
+    // discovery, MQTT session or polling until the user takes Direct Router
+    // Control. Tests default to direct control.
+    _gateway.policy.directControlEnabled = directControl;
     WidgetsBinding.instance.addObserver(this);
     _discoverySubscription = _discovery.routerStream.listen(
       _onRouterDiscovered,
@@ -349,6 +354,13 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   /// Screens stay reachable but offer no settings changes.
   bool get isReadOnly => accessPolicy.isReadOnly;
+
+  /// Default Pi-first mode: Argon monitors the router through its LAN
+  /// observer and this phone holds no router session.
+  bool get isArgonMode => !accessPolicy.directControlEnabled;
+
+  /// The user deliberately took Direct Router Control.
+  bool get isDirectMode => accessPolicy.directControlEnabled;
 
   bool get isReconnecting =>
       _authState == AuthenticationState.authenticating &&
@@ -800,7 +812,11 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
     _errorMessage = null;
     notifyListeners();
 
-    final success = await _gateway.connect(meshId, ipAddress, password: password);
+    final success = await _gateway.connect(
+      meshId,
+      ipAddress,
+      password: password,
+    );
     if (session != _sessionGeneration) return false;
 
     if (success) {
@@ -879,8 +895,7 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
     // Frequency cap: stop bidding after a handful of automatic attempts and
     // wait for the user (or a new pairing or network change) instead of
     // retrying forever. A refused phone cannot take the router by insisting.
-    if (_reconnectExhausted ||
-        _autoReconnectAttempts >= maxAutoReconnects) {
+    if (_reconnectExhausted || _autoReconnectAttempts >= maxAutoReconnects) {
       if (!_reconnectExhausted) {
         _reconnectExhausted = true;
         _addEvent(
@@ -981,6 +996,78 @@ class RouterProvider extends ChangeNotifier with WidgetsBindingObserver {
     _autoReconnectAttempts = 0;
     _reconnectExhausted = false;
     _reconnectCurrentRouter(_sessionGeneration);
+  }
+
+  /// Enables the direct MQTT path and connects with this phone's existing
+  /// router pairing (no re-pairing; credentials are untouched). Called by
+  /// PiProvider only after Argon's observer has yielded, or when the user
+  /// explicitly overrides without a handover.
+  Future<void> enterDirectMode() async {
+    if (isDirectMode &&
+        (isConnected || _authState == AuthenticationState.authenticating)) {
+      return;
+    }
+    accessPolicy.directControlEnabled = true;
+    _allowReconnect = true;
+    _errorMessage = null;
+    _addEvent(
+      'Direct router control',
+      'This phone is connecting to the TaoTronics router with its own pairing.',
+      'info',
+    );
+    if (!_discoveryRunning) {
+      _discoveryRunning = true;
+      _discoveryState = RouterDiscoveryState.scanning;
+      unawaited(_discovery.startDiscovery());
+    }
+    // The saved pairing knows the router's address; no need to wait for a
+    // discovery beacon.
+    final saved = _authService.pairedRouters.firstOrNull;
+    final router =
+        _currentRouter ??
+        _routers.firstOrNull ??
+        (saved == null || saved.ipAddress.isEmpty
+            ? null
+            : MeshEntity(
+                meshId: saved.meshId,
+                ssid: 'Router',
+                ipAddress: saved.ipAddress,
+                state: 1,
+              ));
+    notifyListeners();
+    if (router != null) await selectRouter(router);
+  }
+
+  /// Leaves Direct Router Control: stops polling, reconnects and discovery,
+  /// closes the MQTT session and returns to Argon mode. Pairing is kept.
+  Future<void> exitDirectMode() async {
+    _beginSession(); // cancels pending reconnects of the direct session
+    _allowReconnect = false;
+    _stopAutoRefresh();
+    if (_discoveryRunning) {
+      _discovery.stopDiscovery();
+      _discoveryRunning = false;
+    }
+    _discoveryState = RouterDiscoveryState.idle;
+    final wasConnected = isConnected;
+    accessPolicy.directControlEnabled = false;
+    _authState = AuthenticationState.notAuthenticated;
+    _errorMessage = null;
+    _hadDrop = false;
+    notifyListeners();
+    try {
+      await _gateway.disconnect();
+    } catch (_) {
+      // Socket already gone; the router frees the session on its own.
+    }
+    if (wasConnected) {
+      _addEvent(
+        'Returned to Argon',
+        'This phone released the router. Argon monitors it again.',
+        'success',
+      );
+    }
+    notifyListeners();
   }
 
   /// Records Argon's ownership claim and stops or resumes bidding accordingly.

@@ -9,6 +9,7 @@ import 'package:tt_router_flutter/models/mesh_entity.dart';
 import 'package:tt_router_flutter/providers/router_provider.dart';
 import 'package:tt_router_flutter/screens/devices_screen.dart';
 import 'package:tt_router_flutter/screens/home_screen.dart';
+import 'package:tt_router_flutter/screens/overview_tab.dart';
 import 'package:tt_router_flutter/services/auth_pairing_service.dart';
 import 'package:tt_router_flutter/services/credential_store.dart';
 import 'package:tt_router_flutter/services/mqtt_service.dart';
@@ -149,7 +150,7 @@ void main() {
     expect(provider.managedElsewhere, isTrue);
     expect(provider.knownOnlineDeviceCount, isNull);
 
-    await tester.pumpWidget(_app(provider, const HomeScreen()));
+    await tester.pumpWidget(_app(provider, const RouterDetailsScreen()));
     await tester.pump();
     expect(find.text('Another phone is managing the router'), findsOneWidget);
     expect(find.text('Devices: waiting'), findsOneWidget);
@@ -175,7 +176,17 @@ void main() {
       final provider = await _connectedProvider(tester);
       await tester.pumpWidget(_app(provider, const HomeScreen()));
       await tester.pump();
+      // Pi-first Home: Argon is the hero, the router a secondary card.
+      expect(find.text('Argon'), findsOneWidget);
+      expect(find.text('Managed router', skipOffstage: false), findsOneWidget);
+      expect(
+        find.byType(size.width >= 600 ? NavigationRail : FloatingNavBar),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
 
+      await tester.pumpWidget(_app(provider, const RouterDetailsScreen()));
+      await tester.pump();
       expect(find.text('My Router'), findsOneWidget);
       expect(find.text('Online'), findsOneWidget);
       expect(find.byType(RouterHero), findsOneWidget);
@@ -183,10 +194,6 @@ void main() {
       expect(find.text('x' * 8), findsNothing);
       expect(find.text('Game labs'), findsWidgets);
       expect(find.text('Router lights'), findsOneWidget);
-      expect(
-        find.byType(size.width >= 600 ? NavigationRail : FloatingNavBar),
-        findsOneWidget,
-      );
       expect(tester.takeException(), isNull);
       await tester.runAsync(() async => provider.dispose());
     });

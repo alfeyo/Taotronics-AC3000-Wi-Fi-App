@@ -176,9 +176,13 @@ class HttpPiTransport implements PiTransport, PiOperatorTransport {
     Map<String, String> headers,
     Duration timeout,
   ) async {
+    // Secrets never travel over private-LAN HTTP. An ArgonDevice v2
+    // signature carries none (a Keystore signature over this one request,
+    // replay-protected by Argon), so it may.
+    final auth =
+        headers[HttpHeaders.authorizationHeader] ?? headers['Authorization'];
     if (kind == PiTransportKind.lan &&
-        (headers.containsKey(HttpHeaders.authorizationHeader) ||
-            headers.containsKey('Authorization') ||
+        ((auth != null && !auth.startsWith('ArgonDevice v2 ')) ||
             path == '/api/v1/pairing/complete')) {
       throw const PiApiException(
         'Use Tailscale or HTTPS for phone authorization.',

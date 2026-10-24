@@ -130,7 +130,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
       _addEntry(
         DiagnosticType.info,
         'Router reachability and port probes are handled by Network Hub; '
-            'this phone did not touch the router.',
+        'this phone did not touch the router.',
       );
     }
     await _measureRouterResponse();
@@ -272,7 +272,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
       _addEntry(
         DiagnosticType.info,
         'Router response time is not measured while Network Hub controls the '
-            'router.',
+        'router.',
       );
       return;
     }

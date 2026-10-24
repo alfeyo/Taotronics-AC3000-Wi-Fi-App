@@ -6,6 +6,8 @@ import '../theme/app_theme.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/router_provider.dart';
+import '../providers/pi_provider.dart';
+import '../widgets/home_widgets.dart';
 import 'discovery_screen.dart';
 import 'home_screen.dart';
 
@@ -51,34 +53,42 @@ class _SplashScreenState extends State<SplashScreen>
 
   bool _connecting = false;
 
-  /// With a saved pairing, waits for the normal authenticated reconnect and
-  /// opens Home directly; otherwise (or on timeout) shows discovery.
+  /// Pi-first start: opens Home as soon as Argon answers (or after a short
+  /// wait, showing its honest offline state). The router is never contacted
+  /// here. Only a phone that knows neither Argon nor a router sees setup.
   Future<void> _goNext() async {
     if (!mounted) return;
-    final provider = context.read<RouterProvider>();
-    await provider.ready;
+    final router = context.read<RouterProvider>();
+    final pi = maybePiProvider(context, listen: false);
+    await router.ready;
+    if (pi != null) await pi.ready;
     if (!mounted) return;
-    var connected = provider.isConnected;
-    if (!connected && provider.hasSavedPairing) {
+    final knowsArgon = pi?.trustedId != null;
+    if (pi != null && !pi.connected) {
       setState(() => _connecting = true);
       final done = Completer<void>();
       void check() {
-        if (provider.isConnected && !done.isCompleted) done.complete();
+        if ((pi.connected || pi.state == PiLinkState.unreachable) &&
+            !done.isCompleted) {
+          done.complete();
+        }
       }
 
-      provider.addListener(check);
+      pi.addListener(check);
+      check();
       await done.future
-          .timeout(const Duration(seconds: 12), onTimeout: () {})
-          .whenComplete(() => provider.removeListener(check));
-      connected = provider.isConnected;
+          .timeout(const Duration(seconds: 8), onTimeout: () {})
+          .whenComplete(() => pi.removeListener(check));
     }
     if (!mounted) return;
+    final home =
+        (pi?.connected ?? false) || knowsArgon || router.hasSavedPairing;
     Navigator.pushReplacement(
       context,
       PageRouteBuilder(
         transitionDuration: const Duration(milliseconds: 350),
         pageBuilder: (_, _, _) =>
-            connected ? const HomeScreen() : const DiscoveryScreen(),
+            home ? const HomeScreen() : const DiscoveryScreen(),
         transitionsBuilder: (_, animation, _, child) =>
             FadeTransition(opacity: animation, child: child),
       ),
@@ -174,7 +184,7 @@ class _SplashScreenState extends State<SplashScreen>
                         ),
                         SizedBox(height: 6),
                         Text(
-                          'Mesh network control',
+                          'Household network · Argon',
                           style: TextStyle(
                             fontSize: 14,
                             color: Palette.muted,
@@ -207,7 +217,7 @@ class _SplashScreenState extends State<SplashScreen>
                   const SizedBox(height: 14),
                   Text(
                     _connecting
-                        ? 'Connecting to your router…'
+                        ? 'Connecting to Argon…'
                         : 'v${AppInfo.version}',
                     style: TextStyle(
                       color: Palette.muted,

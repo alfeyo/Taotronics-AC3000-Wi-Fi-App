@@ -1,10 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'package:provider/provider.dart';
+
+import '../providers/router_provider.dart';
 import '../theme/app_theme.dart';
+import '../widgets/home_widgets.dart';
+import 'argon_devices_view.dart';
+import 'argon_statistics_view.dart';
+import 'wifi_argon_gate.dart';
 import '../widgets/app_widgets.dart';
 import 'devices_screen.dart';
-import 'overview_tab.dart';
+import 'home_tab.dart';
 import 'settings_screen.dart';
 import 'statistics_screen.dart';
 import 'wifi_screen.dart';
@@ -67,7 +74,7 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (context) => AlertDialog(
         title: const Text('Leave TT Router?'),
         content: const Text(
-          'Your router session stays saved and reconnects when you return.',
+          'Argon keeps monitoring your network. Your pairings stay saved.',
         ),
         actions: [
           TextButton(
@@ -85,18 +92,28 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // Only the visible tab is built, so per-screen work (polling pauses,
-  // refreshes) stops when the user switches away.
-  Widget _buildTab() => KeyedSubtree(
-    key: ValueKey(_tab),
-    child: switch (_tab) {
-      HomeTab.overview => const OverviewTab(),
-      HomeTab.devices => const DevicesScreen(),
-      HomeTab.wifi => const WifiSettingsScreen(),
-      HomeTab.statistics => const StatisticsScreen(),
-      HomeTab.hub => const NetworkHubScreen(),
-      HomeTab.settings => const SettingsScreen(),
-    },
-  );
+  // refreshes) stops when the user switches away. In Argon mode (default)
+  // Devices and Statistics come from Argon and router settings wait for
+  // Direct Router Control; in Direct Control the router-backed screens return.
+  Widget _buildTab() {
+    final argon =
+        context.select<RouterProvider, bool>((r) => r.isArgonMode) &&
+        maybePiProvider(context, listen: false) != null;
+    return KeyedSubtree(
+      key: ValueKey((_tab, argon)),
+      child: switch (_tab) {
+        HomeTab.overview => const OverviewTab(),
+        HomeTab.devices =>
+          argon ? const ArgonDevicesView() : const DevicesScreen(),
+        HomeTab.wifi =>
+          argon ? const WifiArgonGate() : const WifiSettingsScreen(),
+        HomeTab.statistics =>
+          argon ? const ArgonStatisticsView() : const StatisticsScreen(),
+        HomeTab.hub => const NetworkHubScreen(),
+        HomeTab.settings => const SettingsScreen(),
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -139,7 +156,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                         padding: EdgeInsets.only(
                                           bottom: Space.lg,
                                         ),
-                                        child: IconBadge(Icons.router_rounded),
+                                        child: IconBadge(
+                                          Icons.developer_board_rounded,
+                                        ),
                                       ),
                                 destinations: [
                                   for (final tab in HomeTab.values)

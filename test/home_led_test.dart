@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tt_router_flutter/models/mesh_entity.dart';
 import 'package:tt_router_flutter/providers/router_provider.dart';
 import 'package:tt_router_flutter/screens/home_screen.dart';
+import 'package:tt_router_flutter/screens/overview_tab.dart';
 import 'package:tt_router_flutter/screens/statistics_screen.dart';
 import 'package:tt_router_flutter/services/auth_pairing_service.dart';
 import 'package:tt_router_flutter/services/credential_store.dart';
@@ -115,7 +116,7 @@ void main() {
     final provider = await _provider(tester, router);
     final requested = <int?>[];
     provider.addListener(() => requested.add(provider.ledRequested('SN1')));
-    await tester.pumpWidget(_app(provider, const HomeScreen()));
+    await tester.pumpWidget(_app(provider, const RouterDetailsScreen()));
     await tester.pump();
     return (provider, requested);
   }
@@ -199,6 +200,8 @@ void main() {
   testWidgets('five-item navigation opens Statistics', (tester) async {
     final router = _FakeRouter();
     final (provider, _) = await pumpHome(tester, router);
+    await tester.pumpWidget(_app(provider, const HomeScreen()));
+    await _settle(tester);
 
     final nav = find.byType(FloatingNavBar);
     expect(nav, findsOneWidget);

@@ -38,7 +38,10 @@ class TTRouterApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => RouterProvider()),
+        // Pi-first: no router session until Direct Router Control is taken.
+        ChangeNotifierProvider(
+          create: (_) => RouterProvider(directControl: false),
+        ),
         // Created eagerly: Argon discovery starts with the app, not with a tab.
         ChangeNotifierProvider(
           lazy: false,
