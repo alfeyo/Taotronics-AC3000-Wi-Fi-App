@@ -646,7 +646,12 @@ class _RecentEvents extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                   subtitle: Text(
-                    '${n.source} · ${formatAge(n.time)}',
+                    [
+                      if (n.message.isNotEmpty) n.message,
+                      '${n.source} · ${formatAge(n.time)}',
+                    ].join('\n'),
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.bodySmall,
                   ),
                 ),

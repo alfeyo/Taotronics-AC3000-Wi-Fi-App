@@ -786,7 +786,7 @@ void main() {
         expect(_text('Argon · Raspberry Pi 4 Model B'), findsOneWidget);
         expect(_text('Connected · Local network'), findsOneWidget);
         expect(_text('84.2 Mbps'), findsOneWidget);
-        expect(_text('9.6 KiB/s'), findsOneWidget);
+        expect(_text('78.8 kbps'), findsOneWidget);
         expect(_text('2.50 GiB'), findsOneWidget, reason: 'today total');
         expect(_text('24.0 GiB'), findsOneWidget, reason: 'last 7 days');
         expect(_text('+20% vs previous 7 days'), findsOneWidget);
@@ -803,7 +803,11 @@ void main() {
         expect(_text('tun0 · up'), findsOneWidget);
         expect(_text('52°C'), findsOneWidget);
         expect(_text('Internet uplink changed'), findsOneWidget);
-        expect(_text('Not reported'), findsNWidgets(3), reason: 'router MQTT');
+        expect(
+          _text('Not reported'),
+          findsNWidgets(4),
+          reason: 'router MQTT rows and no observer source',
+        );
         await tester.pumpWidget(const SizedBox());
         pi.dispose();
       });
@@ -818,7 +822,7 @@ void main() {
       expect(_text('Argon · Raspberry Pi'), findsOneWidget);
       expect(_text('Not reported'), findsWidgets);
       expect(_text('0 B'), findsNothing);
-      expect(_text('0 B/s'), findsNothing);
+      expect(_text('0 bps'), findsNothing);
       expect(_text('0%'), findsNothing);
       expect(
         find.textContaining('Unavailable', skipOffstage: false),

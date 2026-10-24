@@ -57,21 +57,23 @@ String formatAge(DateTime? time, {DateTime? now}) {
   return '${age.inDays} d ago';
 }
 
-/// A live link speed that Argon reports in BITS per second.
-///
-/// At or above 1 Mbit/s it reads as "x.x Mbps" (decimal, as ISPs quote
-/// speeds); below that the rate is shown in bytes with binary units so small
-/// flows stay accurate: 78 800 bit/s → "9.6 KiB/s".
+/// A live link speed that Argon reports in BITS per second, always shown in
+/// bits (decimal, as ISPs quote speeds) so one card never mixes bits and
+/// bytes: 940 bit/s → "940 bps", 78 800 → "78.8 kbps", 84 200 000 →
+/// "84.2 Mbps". Byte units are reserved for data totals ([formatBytes]).
 String formatBitRate(num bitsPerSecond) {
-  if (bitsPerSecond.isNaN || bitsPerSecond <= 0) return '0 B/s';
-  if (bitsPerSecond >= 1000000) {
-    return '${(bitsPerSecond / 1000000).toStringAsFixed(1)} Mbps';
+  if (bitsPerSecond.isNaN || bitsPerSecond <= 0) return '0 bps';
+  if (bitsPerSecond >= 1e9) {
+    return '${(bitsPerSecond / 1e9).toStringAsFixed(2)} Gbps';
   }
-  final bytes = bitsPerSecond / 8;
-  if (bytes < 1024) return '${bytes.round()} B/s';
-  final kib = bytes / 1024;
-  if (kib < 1024) return '${kib.toStringAsFixed(1)} KiB/s';
-  return '${(kib / 1024).toStringAsFixed(1)} MiB/s';
+  if (bitsPerSecond >= 999500) {
+    return '${(bitsPerSecond / 1e6).toStringAsFixed(1)} Mbps';
+  }
+  if (bitsPerSecond >= 1000) {
+    final k = bitsPerSecond / 1000;
+    return '${k >= 100 ? k.toStringAsFixed(0) : k.toStringAsFixed(1)} kbps';
+  }
+  return '${bitsPerSecond.round()} bps';
 }
 
 /// A 0..1 share as a percentage; tiny non-zero shares read "<1%".

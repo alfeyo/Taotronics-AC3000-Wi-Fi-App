@@ -160,7 +160,7 @@ class _ArgonDevicesViewState extends State<ArgonDevicesView> {
                       view == null
                           ? hubValue(pi.hubState, null)
                           : '${view.onlineCount ?? '—'} online · ${view.knownCount ?? all.length} known · '
-                                '${routerMonitoringLabel(view).toLowerCase()}'
+                                '${routerMonitoringLabel(view)}'
                                 '${view.observedAt == null ? '' : ', ${formatAge(view.observedAt)}'}',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,

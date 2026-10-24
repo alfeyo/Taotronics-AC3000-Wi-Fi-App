@@ -267,7 +267,8 @@ void main() {
     },
   );
 
-  test('a different server at the LAN address is not trusted', () async {    final first = _pi(_offlineRouter(), {
+  test('a different server at the LAN address is not trusted', () async {
+    final first = _pi(_offlineRouter(), {
       '192.168.50.1': FakePi(PiTransportKind.lan, _argon()),
     });
     await first.ready;

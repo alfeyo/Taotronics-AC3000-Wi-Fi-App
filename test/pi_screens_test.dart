@@ -151,7 +151,7 @@ void main() {
         findsOneWidget,
         reason: '8 Mi bit/s from Argon, shown as a link speed',
       );
-      expect(find.text('2.0 KiB/s'), findsOneWidget, reason: '16 384 bit/s');
+      expect(find.text('16.4 kbps'), findsOneWidget, reason: '16 384 bit/s');
       expect(find.text('3.00 GiB'), findsOneWidget, reason: 'legacy today');
       expect(find.text('100%'), findsOneWidget, reason: 'all of today via VPN');
       expect(find.text('Enable device synchronization'), findsOneWidget);

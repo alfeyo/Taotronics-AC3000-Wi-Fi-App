@@ -29,7 +29,11 @@ class VpnCard extends StatefulWidget {
       'disconnected' => 'Disconnected',
       final s => s[0].toUpperCase() + s.substring(1),
     };
-    return [?mode, ?state].join(' · ').ifEmpty('Not reported');
+    // Mode and state often agree ("off"/"off"): say it once.
+    return [
+      ?mode,
+      if (state != mode) ?state,
+    ].join(' · ').ifEmpty('Not reported');
   }
 
   /// Off: household traffic leaves directly via the ISP.

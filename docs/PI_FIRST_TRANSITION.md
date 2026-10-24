@@ -15,7 +15,7 @@ Argon /api/v1/gateway.router  →  TT Router (LAN 192.168.50.1 → Tailscale 100
 ```
 
 * Authoritative source: `lan-observer:dell`. Source priority on Argon: fresh direct adapter → fresh LAN observer → fresh phone snapshot. If none is fresh, the newest is used and labelled stale. Older snapshots never replace newer ones (409 on out-of-order).
-* Audited 16:52: snapshot 18 s old, 49 known / 23 online clients. Per-device estimated usage covered 99.2% of the day. Observer RSS 62 MB at 0.1% CPU. Household totals come from Argon eth1 nftables (SQLite history since 2026-09-25), VPN is the tun0 subset, and nothing is counted twice.
+* Audited 16:52: snapshot 18 s old, 49 known / 23 online clients. Per-device estimated usage covered 99.2% of the day. Observer RSS 62 MB at 0.1% CPU. Household totals come from Argon eth1 nftables (SQLite history stored since 2026-10-05), VPN is the tun0 subset, and nothing is counted twice.
 * Single-controller conflict seen live: 12:47–12:49, 28 reconnect cycles between the observer and another controller.
 * **Outage at close-out:** the Dell went offline at about 17:12 (Tailscale "offline", LAN unreachable). Argon's router data is therefore stale. The app says so, and nothing replaces the collector. Power the Dell on to restore it. The observer restarts from cron.
 

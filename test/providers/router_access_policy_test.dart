@@ -232,11 +232,15 @@ void main() {
 
     test('an explicit owner or control field is honoured', () {
       expect(
-        PiProvider.reportsRouterOwnership({'router': {'owner': 'argon'}}),
+        PiProvider.reportsRouterOwnership({
+          'router': {'owner': 'argon'},
+        }),
         isTrue,
       );
       expect(
-        PiProvider.reportsRouterOwnership({'router': {'control': 'argon'}}),
+        PiProvider.reportsRouterOwnership({
+          'router': {'control': 'argon'},
+        }),
         isTrue,
       );
       expect(

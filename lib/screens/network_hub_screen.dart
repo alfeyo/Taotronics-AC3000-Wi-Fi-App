@@ -12,6 +12,7 @@ import '../utils/format.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/home_widgets.dart';
 import '../widgets/hub_widgets.dart';
+import '../widgets/managed_router.dart';
 import '../widgets/pi_board.dart';
 import '../widgets/vpn_card.dart';
 import '../services/hub_links.dart';
@@ -364,7 +365,10 @@ class _SyncCard extends StatelessWidget {
     final theme = Theme.of(context);
     final muted = theme.colorScheme.onSurfaceVariant;
     if (pi.paired) {
-      final status = !pi.syncEnabled
+      final status = router.isArgonMode
+          ? 'Not needed in Argon mode: Argon\'s router observer supplies '
+                'devices. The phone shares only during Direct Router Control.'
+          : !pi.syncEnabled
           ? 'Synchronization is off'
           : pi.sharedAt != null &&
                 DateTime.now().difference(pi.sharedAt!).inSeconds < 60
@@ -839,6 +843,7 @@ class _Health extends StatelessWidget {
     final throttled = g?['activeThrottling'];
     final rv = pi.routerView;
     final connected = router.isConnected;
+    final argon = router.isArgonMode;
     final devicesAt = router.devicesUpdatedAt;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -867,22 +872,52 @@ class _Health extends StatelessWidget {
               const SizedBox(height: Space.sm),
               KvRow(
                 'App connection (MQTT)',
-                connected
-                    ? 'Connected'
+                argon
+                    ? 'Not used · Argon mode'
+                    : connected
+                    ? 'Connected · direct control'
                     : router.isReconnecting
                     ? 'Reconnecting'
                     : 'Not connected',
-                tone: connected ? Tone.success : Tone.warning,
+                tone: argon
+                    ? null
+                    : connected
+                    ? Tone.success
+                    : Tone.warning,
+              ),
+              KvRow(
+                'Router observer',
+                hubValue(
+                  state,
+                  rv?.source == null
+                      ? null
+                      : '${rv!.sourceLabel} · ${routerMonitoringLabel(rv).toLowerCase()}'
+                            '${rv.observedAt == null ? '' : ', ${formatAge(rv.observedAt)}'}',
+                ),
+                tone: rv == null ? null : routerMonitoringTone(rv),
               ),
               KvRow(
                 'Router internet report',
-                connected && router.hasInternetStatus
+                argon
+                    ? (rv?.internet == null
+                          ? 'Not relayed by the observer'
+                          : rv!.internet!
+                          ? 'Online · Argon'
+                          : 'Offline · Argon')
+                    : connected && router.hasInternetStatus
                     ? (router.internetConnected ? 'Online' : 'Offline')
                     : 'Not reported',
               ),
               KvRow(
                 'Devices online',
-                connected && devicesAt != null
+                argon
+                    ? hubValue(
+                        state,
+                        rv?.knownCount == null
+                            ? null
+                            : '${rv!.onlineCount ?? '—'} of ${rv.knownCount} · ${rv.sourceLabel}',
+                      )
+                    : connected && devicesAt != null
                     ? '${router.reportedOnlineDeviceCount} · router, ${formatAge(devicesAt)}'
                     : 'Not reported',
               ),
@@ -898,7 +933,11 @@ class _Health extends StatelessWidget {
               ),
               KvRow(
                 'Mesh nodes',
-                connected && router.reportedTotalNodeCount > 0
+                argon
+                    ? (rv?.nodesTotal == null
+                          ? 'Not relayed by the observer'
+                          : '${rv!.nodesOnline ?? '?'}/${rv.nodesTotal} online · Argon')
+                    : connected && router.reportedTotalNodeCount > 0
                     ? '${router.reportedOnlineNodeCount}/${router.reportedTotalNodeCount} online · router'
                     : 'Not reported',
                 last: true,
@@ -1272,7 +1311,10 @@ class _QuickActions extends StatelessWidget {
       OutlinedButton.icon(
         icon: const Icon(Icons.devices),
         label: const Text('Refresh devices'),
-        onPressed: !router.isConnected || router.isLivePaused
+        // Argon mode: the inventory comes from Argon, so refresh that.
+        onPressed: router.isArgonMode
+            ? pi.refreshNow
+            : !router.isConnected || router.isLivePaused
             ? null
             : router.refreshDevices,
       ),

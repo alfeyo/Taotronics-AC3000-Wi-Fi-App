@@ -11,6 +11,7 @@ import '../services/argon_device_key.dart';
 import '../services/argon_status.dart';
 import '../services/pi_api.dart';
 import '../services/pi_snapshot.dart';
+import '../utils/format.dart';
 import 'router_provider.dart';
 
 /// Connection state of the Argon (Raspberry Pi) gateway link.
@@ -887,6 +888,9 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   String _eventTitle(String? kind) {
     final k = (kind ?? '').toLowerCase();
+    if (k == 'router_control') return 'Direct router control';
+    if (k == 'router') return 'Router monitoring';
+    if (k == 'inventory') return 'Device inventory';
     if (k.contains('vpn')) return 'VPN';
     if (k.contains('uplink') || k.contains('wan')) {
       return 'Internet uplink changed';
@@ -2297,9 +2301,10 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
         final name = (a['deviceName'] as String?) ?? (a['mac'] as String?);
         final avg = a['avgBps'];
         final share = a['share'];
-        final bytes = [a['downloadBytes'], a['uploadBytes']]
-            .whereType<num>()
-            .fold<num>(0, (x, y) => x + y);
+        final bytes = [
+          a['downloadBytes'],
+          a['uploadBytes'],
+        ].whereType<num>().fold<num>(0, (x, y) => x + y);
         _events.add(
           PiEvent(
             id: 'argon:alert:$id',
@@ -2308,11 +2313,11 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
                 : _now(),
             title: 'High usage: ${name ?? 'a device'}',
             message: [
-              if (avg is num) 'averaged ${formatBitRateLabel(avg)}',
+              if (avg is num) 'averaged ${formatBitRate(avg)}',
               if (share is num)
                 '${(share * 100).toStringAsFixed(0)}% of household traffic',
               if (bytes > 0)
-                '${a['estimated'] == true ? '≈ ' : ''}${_bytesLabel(bytes.toInt())} in the window',
+                '${a['estimated'] == true ? '≈ ' : ''}${formatBytes(bytes.toInt())} in the window',
             ].join(' · '),
             severity: 'warning',
             source: 'argon',
@@ -2342,21 +2347,6 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
     } finally {
       _pollingAlerts = false;
     }
-  }
-
-  static String formatBitRateLabel(num bps) => bps >= 1e6
-      ? '${(bps / 1e6).toStringAsFixed(1)} Mbit/s'
-      : '${(bps / 1e3).toStringAsFixed(0)} kbit/s';
-
-  static String _bytesLabel(int b) {
-    const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
-    var v = b.toDouble();
-    var u = 0;
-    while (v >= 1023.5 && u < units.length - 1) {
-      v /= 1024;
-      u++;
-    }
-    return '${v >= 100 ? v.toStringAsFixed(0) : v.toStringAsFixed(1)} ${units[u]}';
   }
 
   /// Monitoring GET with the same credential rules as the gateway report.
