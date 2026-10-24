@@ -1,0 +1,93 @@
+{
+  "duringTakeover": {
+    "active": true,
+    "acquiredAt": 1792868126,
+    "expiresAt": 1792868246,
+    "ttlSeconds": 120,
+    "handover": "waiting-for-observer",
+    "observerYieldedAt": null,
+    "lastChange": {
+      "at": 1792868126,
+      "kind": "acquired",
+      "holder": "TT Router \u00b7 Router 1"
+    }
+  },
+  "observerYielded": {
+    "active": true,
+    "acquiredAt": 1792868126,
+    "expiresAt": 1792868246,
+    "ttlSeconds": 120,
+    "handover": "observer-yielded",
+    "observerYieldedAt": 1792868138,
+    "lastChange": {
+      "at": 1792868126,
+      "kind": "acquired",
+      "holder": "TT Router \u00b7 Router 1"
+    }
+  },
+  "phoneActive": {
+    "observedAt": 1792868212,
+    "lease": {
+      "active": true,
+      "acquiredAt": 1792868126,
+      "expiresAt": 1792868323,
+      "ttlSeconds": 120,
+      "handover": "observer-yielded",
+      "observerYieldedAt": 1792868138,
+      "lastChange": {
+        "at": 1792868126,
+        "kind": "acquired",
+        "holder": "TT Router \u00b7 Router 1"
+      }
+    },
+    "ui": "Direct router control; My Router Online; saved Wi-Fi and masked password displayed",
+    "writesPerformed": false
+  },
+  "returned": {
+    "active": false,
+    "acquiredAt": null,
+    "expiresAt": null,
+    "ttlSeconds": 120,
+    "handover": "none",
+    "observerYieldedAt": null,
+    "lastChange": {
+      "at": 1792868212,
+      "kind": "released",
+      "holder": "TT Router \u00b7 Router 1"
+    }
+  },
+  "resumptionCheck": {
+    "generatedAt": 1792868282,
+    "monitoring": {
+      "state": "connected",
+      "label": "Router device monitoring connected",
+      "detail": "Live data from the router's local API.",
+      "snapshotAt": 1792868281,
+      "lastSync": 1792868270,
+      "errors": [
+        "/GetSysConnectInfo: no reply"
+      ],
+      "source": "lan-observer:dell",
+      "receivedAt": 1792868281
+    },
+    "vpnMode": "off",
+    "vpnLocation": "United Kingdom \u2014 London",
+    "leaseActive": false
+  },
+  "finalMonitoring": {
+    "generatedAt": 1792868310,
+    "monitoring": {
+      "state": "connected",
+      "label": "Router device monitoring connected",
+      "detail": "Live data from the router's local API.",
+      "snapshotAt": 1792868306,
+      "lastSync": 1792868270,
+      "errors": [],
+      "source": "lan-observer:dell",
+      "receivedAt": 1792868308
+    },
+    "vpnMode": "off",
+    "vpnLocation": "United Kingdom \u2014 London",
+    "leaseActive": false
+  }
+}

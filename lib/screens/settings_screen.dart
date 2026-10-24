@@ -14,6 +14,7 @@ import '../widgets/connection_banner.dart';
 import '../widgets/feedback.dart';
 import '../widgets/led_card.dart';
 import '../widgets/managed_router.dart';
+import 'app_routes.dart';
 import 'diagnostics_screen.dart';
 import 'nodes_screen.dart';
 import 'router_settings_screens.dart';
@@ -62,8 +63,9 @@ class SettingsScreen extends StatelessWidget {
                         subtitle: provider.isConnected
                             ? provider.currentWifiName
                             : 'Names, passwords, bands',
-                        onTap: () =>
-                            _push(context, const WifiSettingsDetailScreen()),
+                        onTap: () => provider.isArgonMode
+                            ? AppRoutes.wifi(context)
+                            : _push(context, const WifiSettingsDetailScreen()),
                       ),
                       SettingsTile(
                         icon: Icons.wifi_tethering_rounded,

@@ -280,7 +280,7 @@ class DirectControlPanel extends StatelessWidget {
     };
     final message = pi.directPhase == DirectControlPhase.active
         ? [
-            'This phone holds the TaoTronics router session. Argon keeps '
+            'Controlled by ${pi.controllerName} (this phone). Argon keeps '
                 'internet, VPN and accounting running.',
             if (pi.directWithoutHandover) 'Taken without an Argon handover.',
             if (pi.leaseAtRisk)

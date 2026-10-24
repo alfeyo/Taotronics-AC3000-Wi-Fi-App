@@ -902,7 +902,7 @@ void main() {
             find.textContaining('via VPN', skipOffstage: false),
             findsWidgets,
           );
-          expect(_text('Managed router'), findsOneWidget);
+          expect(_text('Quick controls'), findsOneWidget);
           expect(_text('Recent events'), findsOneWidget);
           await tester.pumpWidget(const SizedBox());
           pi.dispose();
@@ -910,6 +910,38 @@ void main() {
       );
     }
   });
+
+  testWidgets(
+    'Home VPN quick controls retain authorization, confirmation and location picker',
+    (tester) async {
+      FlutterSecureStorage.setMockInitialValues({
+        PiProvider.companionKey: _companion,
+      });
+      _size(tester, const Size(904, 2316), 2.6);
+      final argon = HubFake();
+      final pi = await _connectedInWidget(tester, argon);
+      await tester.runAsync(pi.refreshVpnLocations);
+      await tester.pumpWidget(_app(pi, const HomeScreen()));
+      await tester.pump();
+      await tester.ensureVisible(find.text('VPN on').last);
+      await tester.pump();
+      await tester.tap(find.text('VPN on').last);
+      await _settle(tester);
+      expect(find.text('Turn VPN off?'), findsOneWidget);
+      await tester.tap(find.text('Cancel'));
+      await _settle(tester);
+      expect(argon.posts, isEmpty);
+      await tester.ensureVisible(find.text('VPN location').first);
+      await tester.pump();
+      await tester.tap(find.text('VPN location').first);
+      await _settle(tester);
+      expect(find.text('Choose exit location'), findsOneWidget);
+      expect(find.byKey(const ValueKey('vpn-location-za-jnb')), findsOneWidget);
+      expect(argon.locationPosts, isEmpty);
+      await tester.pumpWidget(const SizedBox());
+      pi.dispose();
+    },
+  );
 
   group('VPN control (UI)', () {
     Future<void> tapToggle(WidgetTester tester) async {

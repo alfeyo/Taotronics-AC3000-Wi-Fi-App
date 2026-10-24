@@ -351,7 +351,7 @@ Future<void> showArgonClientDetails(
     builder: (context) {
       final theme = Theme.of(context);
       final muted = theme.colorScheme.onSurfaceVariant;
-      final maxDay = c.days
+      final maxDay = c.usageDays
           .map((d) => d.totalBytes ?? 0)
           .fold<int>(1, (a, b) => a > b ? a : b);
       return DraggableScrollableSheet(
@@ -412,7 +412,7 @@ Future<void> showArgonClientDetails(
               style: theme.textTheme.bodySmall?.copyWith(color: muted),
             ),
             const SizedBox(height: Space.sm),
-            if (c.days.isEmpty)
+            if (c.usageDays.isEmpty)
               Text(
                 'No usage recorded for this device.',
                 style: theme.textTheme.bodySmall,
@@ -421,7 +421,7 @@ Future<void> showArgonClientDetails(
               PanelCard(
                 child: Column(
                   children: [
-                    for (final d in c.days.reversed)
+                    for (final d in c.usageDays.reversed)
                       Padding(
                         padding: const EdgeInsets.symmetric(vertical: Space.xs),
                         child: Column(

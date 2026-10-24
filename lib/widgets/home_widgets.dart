@@ -324,6 +324,48 @@ class _RouterHeroState extends State<RouterHero>
   }
 }
 
+/// The TaoTronics router image from the original My Router hero. The LED ring
+/// glows only when [ledOn] is true (a fresh report); [dim] mutes it when the
+/// router is not being observed.
+class RouterImage extends StatelessWidget {
+  const RouterImage({
+    super.key,
+    this.ledOn,
+    this.dim = false,
+    this.height = 246,
+  });
+
+  final bool? ledOn;
+  final bool dim;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    final width = height * 186 / 246;
+    return SizedBox(
+      width: width,
+      height: height,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          ColorFiltered(
+            colorFilter: ColorFilter.mode(
+              dim ? const Color(0xff4a4d55) : const Color(0xff767b86),
+              BlendMode.modulate,
+            ),
+            child: Image.asset(
+              'assets/original_setup/ic_guide_need.png',
+              fit: BoxFit.contain,
+            ),
+          ),
+          if (ledOn == true && !dim)
+            CustomPaint(painter: _LedRingPainter(intensity: 1)),
+        ],
+      ),
+    );
+  }
+}
+
 /// Glow over the router's top LED ring (geometry measured from the asset:
 /// the rim sits at ~7% of the image height and spans ~52% of its width).
 class _LedRingPainter extends CustomPainter {
@@ -608,7 +650,10 @@ class EventsButton extends StatelessWidget {
     return items;
   }
 
-  void _open(BuildContext context) {
+  void _open(BuildContext context) => show(context, provider);
+
+  /// Opens the notification center (router, Argon and phone events).
+  static void show(BuildContext context, RouterProvider provider) {
     final pi = maybePiProvider(context, listen: false);
     provider.markEventsRead();
     pi?.markEventsRead();

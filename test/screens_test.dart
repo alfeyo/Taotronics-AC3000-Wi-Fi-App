@@ -178,7 +178,7 @@ void main() {
       await tester.pump();
       // Pi-first Home: Argon is the hero, the router a secondary card.
       expect(find.text('Argon'), findsOneWidget);
-      expect(find.text('Managed router', skipOffstage: false), findsOneWidget);
+      expect(find.text('Quick controls', skipOffstage: false), findsOneWidget);
       expect(
         find.byType(size.width >= 600 ? NavigationRail : FloatingNavBar),
         findsOneWidget,

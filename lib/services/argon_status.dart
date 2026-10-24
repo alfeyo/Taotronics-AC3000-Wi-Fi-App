@@ -406,6 +406,82 @@ class ClientUsageDay {
   }
 }
 
+/// A device's transfer over the last seven local days, summed only from the
+/// intervals Argon's observer actually sampled. [coverage] is observed time
+/// over the time that has elapsed in that window (gaps stay gaps).
+class WeeklyUsage {
+  const WeeklyUsage({
+    required this.days,
+    this.totalBytes,
+    this.downloadBytes,
+    this.uploadBytes,
+    this.coverage,
+    this.daysWithData = 0,
+  });
+
+  /// Oldest first, exactly seven entries; a day without data is null.
+  final List<ClientUsageDay?> days;
+  final int? totalBytes;
+  final int? downloadBytes;
+  final int? uploadBytes;
+  final double? coverage;
+  final int daysWithData;
+
+  static String _key(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  /// Aggregates [rows] for the seven days ending [today] (a local
+  /// 'YYYY-MM-DD'; defaults to the newest row's day).
+  static WeeklyUsage of(List<ClientUsageDay> rows, {String? today}) {
+    final byDay = {for (final r in rows) r.day: r};
+    final end = DateTime.tryParse(
+      today ??
+          (rows.isEmpty ? '' : (rows.map((r) => r.day).toList()..sort()).last),
+    );
+    if (end == null) {
+      return const WeeklyUsage(
+        days: [null, null, null, null, null, null, null],
+      );
+    }
+    final days = [
+      for (var i = 6; i >= 0; i--)
+        byDay[_key(DateTime(end.year, end.month, end.day - i))],
+    ];
+    int? sum(int? Function(ClientUsageDay) f) {
+      final v = days.whereType<ClientUsageDay>().map(f).whereType<int>();
+      return v.isEmpty ? null : v.fold<int>(0, (a, b) => a + b);
+    }
+
+    // Elapsed time: six full days plus however much of today has passed,
+    // which Argon implies through today's observed seconds and coverage.
+    final t = days.last;
+    final todayElapsed = t?.observedSeconds != null && (t?.coverage ?? 0) > 0
+        ? t!.observedSeconds! / t.coverage!
+        : null;
+    double observed = 0;
+    var any = false;
+    for (final d in days.whereType<ClientUsageDay>()) {
+      final secs =
+          d.observedSeconds?.toDouble() ??
+          (d.coverage == null ? null : d.coverage! * 86400);
+      if (secs != null) {
+        observed += secs;
+        any = true;
+      }
+    }
+    return WeeklyUsage(
+      days: days,
+      totalBytes: sum((d) => d.totalBytes),
+      downloadBytes: sum((d) => d.downloadBytes),
+      uploadBytes: sum((d) => d.uploadBytes),
+      coverage: any && todayElapsed != null
+          ? (observed / (6 * 86400 + todayElapsed)).clamp(0.0, 1.0)
+          : null,
+      daysWithData: days.whereType<ClientUsageDay>().length,
+    );
+  }
+}
+
 /// One household device from Argon's normalized router-client inventory.
 /// Rates are bits per second (Argon converts the router's bytes/s x8).
 class ArgonClient {
@@ -460,6 +536,15 @@ class ArgonClient {
   bool get isOnline => online == true;
   bool get isWired => connectionType == 'wired';
   num get totalBitsPerSec => (downBitsPerSec ?? 0) + (upBitsPerSec ?? 0);
+
+  /// Estimated transfer over the last seven days (observed intervals only).
+  List<ClientUsageDay> get usageDays {
+    final byDay = {for (final d in days) d.day: d};
+    if (today != null) byDay[today!.day] = today!;
+    return byDay.values.toList()..sort((a, b) => b.day.compareTo(a.day));
+  }
+
+  WeeklyUsage get week => WeeklyUsage.of(usageDays, today: today?.day);
 
   static ArgonClient? parse(Object? raw) {
     final c = _map(raw);
@@ -552,7 +637,23 @@ class ArgonRouterView {
     this.usageMethod,
     this.usageStale,
     this.usageObservedAt,
+    this.ledOn,
+    this.responseMs,
   });
+
+  /// Router LED as last relayed; only meaningful while [live].
+  final bool? ledOn;
+
+  /// How long the router took to answer the observer, in milliseconds.
+  final int? responseMs;
+
+  /// The main node's uptime, when the observer relays nodes.
+  int? get uptimeSeconds {
+    final main =
+        nodes.where((n) => n['main'] == true).firstOrNull ?? nodes.firstOrNull;
+    final v = main?['uptimeSeconds'];
+    return v is num && v > 0 ? v.round() : null;
+  }
 
   /// Argon's own description of its router monitoring: 'connected', 'stale',
   /// 'unreachable', 'not-connected' or 'direct-control'.
@@ -654,6 +755,8 @@ class ArgonRouterView {
       usageMethod: _str(usage?['method']),
       usageStale: _bool(usage?['stale']),
       usageObservedAt: _unix(usage?['lastObservationAt']),
+      ledOn: _bool(inner['ledOn']),
+      responseMs: _int(inner['responseMs']),
     );
   }
 }

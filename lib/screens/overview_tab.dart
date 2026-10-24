@@ -12,6 +12,7 @@ import '../services/argon_status.dart';
 import '../widgets/home_widgets.dart';
 import '../widgets/hub_widgets.dart';
 import '../widgets/managed_router.dart';
+import 'app_routes.dart';
 import 'diagnostics_screen.dart';
 import 'home_screen.dart';
 import 'nodes_screen.dart';
@@ -20,7 +21,7 @@ import 'setup_wizard_screen.dart';
 
 /// Router details (the TaoTronics dashboard that used to be Home): router
 /// hero with live LED, live activity, network summary and quick controls.
-/// Opened from Home's Managed Router card. In Argon mode the router is shown
+/// Used by the dedicated Router tab during Direct Router Control. In Argon mode the router is shown
 /// as Argon observes it and router-specific controls need Direct Router
 /// Control; every value says where it comes from.
 class RouterDetailsScreen extends StatelessWidget {
@@ -545,7 +546,7 @@ class _HubStrip extends StatelessWidget {
         vpn!.connected ? 'VPN on' : 'VPN ${vpn.state ?? 'on'}',
     ];
     return PanelCard(
-      onTap: () => select(HomeTab.hub),
+      onTap: () => AppRoutes.networkHub(context),
       padding: const EdgeInsets.fromLTRB(
         Space.lg,
         Space.md,
@@ -694,7 +695,7 @@ class _NetworkTiles extends StatelessWidget {
               ? '$wifiOn/${networks.length}'
               : null,
           label: 'Wi-Fi networks on',
-          onTap: () => select(HomeTab.wifi),
+          onTap: () => AppRoutes.wifi(context),
         ),
         StatTile(
           icon: Icons.hub_rounded,
@@ -746,7 +747,7 @@ class _QuickControls extends StatelessWidget {
           tone: Tone.brand,
           title: 'Wi-Fi networks',
           subtitle: 'Bands, names, passwords, guest',
-          onTap: () => select(HomeTab.wifi),
+          onTap: () => AppRoutes.wifi(context),
         ),
         ActionTile(
           icon: Icons.lightbulb_outline_rounded,

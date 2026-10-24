@@ -1,0 +1,38 @@
+00:00 +0: loading /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/pi_first_test.dart
+00:00 +0: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/pi_first_test.dart: Argon mode: the router is never contacted
+00:00 +1: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/pi_first_test.dart: Argon mode: the router is never contacted
+00:00 +2: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/pi_first_test.dart: Argon mode: the router is never contacted
+00:00 +3: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/pi_first_test.dart: Argon mode: the router is never contacted
+00:00 +4: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/pi_first_test.dart: parses the live router view: clients, estimated usage, control
+00:00 +5: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/pi_first_test.dart: device list filters, searches and sorts by usage
+00:00 +6: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/pi_first_test.dart: direct control: lease, observer handover, connect with the saved pairing, return releases
+RouterDiscovery: Listening on port 52011
+MqttService: Connecting to 192.168.10.1:25678
+MqttService: Connected
+MqttService: /GetSystemState replied in 0 ms
+MqttService: publish failed - Bad state: Not connected
+00:00 +7: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/pi_first_test.dart: direct control: a held lease is reported, nothing connects
+00:00 +8: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/pi_first_test.dart: direct control: an observer that never yields times out and the lease is released
+00:00 +9: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/pi_first_test.dart: direct control without a pairing shows the real blocker
+RouterDiscovery: Listening on port 52011
+MqttService: Connecting to 192.168.10.1:25678
+MqttService: Connected
+MqttService: /GetSystemState replied in 0 ms
+00:00 +10: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/pi_first_test.dart: background release closes MQTT and releases the lease, preserving pairing
+RouterDiscovery: Listening on port 52011
+MqttService: Connecting to 192.168.10.1:25678
+MqttService: Connected
+MqttService: /GetSystemState replied in 0 ms
+00:00 +11: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/pi_first_test.dart: cancelling an in-flight acquisition releases it after the reply
+00:00 +12: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/pi_first_test.dart: device refresh awaits an existing gateway request and never contacts the router
+00:00 +13: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/pi_first_test.dart: Home quick controls open their destinations without a router session
+00:01 +14: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/pi_first_test.dart: expired lease closes direct access before the observer resumes
+RouterDiscovery: Listening on port 52011
+MqttService: Connecting to 192.168.10.1:25678
+MqttService: Connected
+MqttService: /GetSystemState replied in 0 ms
+00:01 +15: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/pi_first_test.dart: usage alerts: signed fetch, shown once, then acknowledged
+00:01 +16: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/pi_first_test.dart: Pi-first screens render on Fold4 cover
+00:02 +17: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/pi_first_test.dart: Pi-first screens render on Fold4 unfolded
+00:02 +18: /Users/alfeyokatebe/projects/Taotronics-AC3000-Wi-Fi-App/test/pi_first_test.dart: Pi-first screens render on OnePlus portrait
+00:02 +19: All tests passed!

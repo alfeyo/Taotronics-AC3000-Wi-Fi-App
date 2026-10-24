@@ -1,0 +1,11 @@
+{
+  "package": "com.ttrouter.tt_router_flutter",
+  "version": "1.11.1+25",
+  "install": "adb install -r succeeded",
+  "priorAndInstalledBackupMatch": true,
+  "startupAndOrdinaryNavigationMqttLines": 0,
+  "mqttConnectionsDuringExplicitTakeover": 1,
+  "routerManagementBecameAvailable": true,
+  "flutterErrors": [],
+  "onePlusConnected": false
+}

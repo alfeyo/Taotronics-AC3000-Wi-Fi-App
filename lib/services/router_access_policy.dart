@@ -7,9 +7,9 @@
 ///
 /// This policy is the single decision point the app consults before it
 /// discovers, connects to, authenticates with, reads from or writes to the
-/// router. Phase 1 of `docs/ROUTER_CONTROL_MIGRATION_PLAN.md` keeps direct
-/// control available by default and yields only when Argon (the Raspberry Pi)
-/// reports that it owns the router.
+/// router. App startup explicitly disables direct control; only a deliberate
+/// PiProvider takeover enables it after observer handover (or the user
+/// explicitly chooses the uncoordinated override).
 class RouterAccessPolicy {
   RouterAccessPolicy({
     this.directControlEnabled = true,

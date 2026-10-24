@@ -1,5 +1,7 @@
 # Pi-first transition (1.11.0+22, 24 October 2026)
 
+**Update, 1.11.1+25:** The Dell is online with the handover-capable observer. Live Fold4 takeover and return have been verified; Home quick controls and the dedicated Router tab are complete. See [release notes](RELEASE_1.11.1.md) for current validation and rollback. The outage notes below describe the earlier 1.11.0 close-out.
+
 TT Router now opens on **Argon** (the Raspberry Pi gateway) and takes all monitoring, statistics, devices and notifications from it. The TaoTronics router is a secondary *Managed router*. The phone touches the router only after the user deliberately takes **Direct Router Control**.
 
 ## Verified router → Argon data path

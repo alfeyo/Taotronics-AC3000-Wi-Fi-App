@@ -58,81 +58,11 @@ class _VpnCardState extends State<VpnCard> {
     });
   }
 
-  /// Ensures this phone holds the owner's VPN grant; explains why not.
-  Future<bool> _ensureAllowed(BuildContext context) async {
-    if (pi.paired && pi.vpnDeviceAllowed) return true;
-    await pi.refreshVpnPermission();
-    if (!context.mounted) return false;
-    if (pi.vpnDeviceAllowed) return true;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          pi.vpnPermissionError ??
-              (pi.paired
-                  ? pi.vpnNotGrantedMessage
-                  : 'Pair this phone once, then ask the Argon owner to allow VPN control.'),
-        ),
-      ),
-    );
-    return false;
-  }
+  Future<void> _request(BuildContext context, bool on) =>
+      requestVpnMode(context, pi, on);
 
-  Future<void> _request(BuildContext context, bool on) async {
-    if (pi.vpnInFlight || pi.locationInFlight || pi.vpnPrompting) return;
-    if (!pi.vpnControlRoute) {
-      // Explains Bluetooth / unreachable without asking for anything.
-      await pi.setVpnMode(on);
-      return;
-    }
-    pi.setVpnPrompting(true);
-    try {
-      if (!await _ensureAllowed(context) || !context.mounted) return;
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (context) => _ConfirmVpnDialog(on: on, vpn: pi.vpn),
-      );
-      if (confirmed != true) return;
-      pi.setVpnPrompting(false);
-      await pi.setVpnMode(on);
-    } finally {
-      pi.setVpnPrompting(false);
-    }
-  }
-
-  Future<void> _changeLocation(BuildContext context) async {
-    if (pi.vpnInFlight || pi.locationInFlight || pi.vpnPrompting) return;
-    if (!pi.vpnControlRoute) {
-      // Explains Bluetooth / unreachable without asking for anything.
-      await pi.setVpnLocation(pi.vpnLocations?.current?.id ?? '');
-      return;
-    }
-    pi.setVpnPrompting(true);
-    try {
-      if (!await _ensureAllowed(context) || !context.mounted) return;
-      final picked = await showModalBottomSheet<VpnLocation>(
-        context: context,
-        isScrollControlled: true,
-        useSafeArea: true,
-        builder: (_) => VpnLocationSheet(pi: pi),
-      );
-      if (picked == null || !context.mounted) return;
-      final locs = pi.vpnLocations;
-      if (picked.id == locs?.current?.id) return;
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (_) => ConfirmLocationDialog(
-          target: picked,
-          current: locs?.current,
-          vpnOn: !(locs?.vpnOff ?? pi.vpn?.isOff ?? false),
-        ),
-      );
-      if (confirmed != true) return;
-      pi.setVpnPrompting(false);
-      await pi.setVpnLocation(picked.id);
-    } finally {
-      pi.setVpnPrompting(false);
-    }
-  }
+  Future<void> _changeLocation(BuildContext context) =>
+      requestVpnLocation(context, pi);
 
   @override
   Widget build(BuildContext context) {
@@ -500,5 +430,89 @@ class _ConfirmVpnDialog extends StatelessWidget {
         ),
       ],
     );
+  }
+}
+
+/// Ensures this phone holds the owner's VPN grant; explains why not.
+Future<bool> _ensureAllowed(BuildContext context, PiProvider pi) async {
+  if (pi.paired && pi.vpnDeviceAllowed) return true;
+  await pi.refreshVpnPermission();
+  if (!context.mounted) return false;
+  if (pi.vpnDeviceAllowed) return true;
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(
+        pi.vpnPermissionError ??
+            (pi.paired
+                ? pi.vpnNotGrantedMessage
+                : 'Pair this phone once, then ask the Argon owner to allow VPN control.'),
+      ),
+    ),
+  );
+  return false;
+}
+
+/// Turns the household VPN on or off from any screen: checks this phone's
+/// owner grant, asks for confirmation, sends the signed command and lets
+/// PiProvider confirm it by reading Argon back. Never overlaps.
+Future<void> requestVpnMode(
+  BuildContext context,
+  PiProvider pi,
+  bool on,
+) async {
+  if (pi.vpnInFlight || pi.locationInFlight || pi.vpnPrompting) return;
+  if (!pi.vpnControlRoute) {
+    // Explains Bluetooth / unreachable without asking for anything.
+    await pi.setVpnMode(on);
+    return;
+  }
+  pi.setVpnPrompting(true);
+  try {
+    if (!await _ensureAllowed(context, pi) || !context.mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => _ConfirmVpnDialog(on: on, vpn: pi.vpn),
+    );
+    if (confirmed != true) return;
+    pi.setVpnPrompting(false);
+    await pi.setVpnMode(on);
+  } finally {
+    pi.setVpnPrompting(false);
+  }
+}
+
+/// Picks and confirms a VPN exit location, then switches with read-back.
+Future<void> requestVpnLocation(BuildContext context, PiProvider pi) async {
+  if (pi.vpnInFlight || pi.locationInFlight || pi.vpnPrompting) return;
+  if (!pi.vpnControlRoute) {
+    // Explains Bluetooth / unreachable without asking for anything.
+    await pi.setVpnLocation(pi.vpnLocations?.current?.id ?? '');
+    return;
+  }
+  pi.setVpnPrompting(true);
+  try {
+    if (!await _ensureAllowed(context, pi) || !context.mounted) return;
+    final picked = await showModalBottomSheet<VpnLocation>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => VpnLocationSheet(pi: pi),
+    );
+    if (picked == null || !context.mounted) return;
+    final locs = pi.vpnLocations;
+    if (picked.id == locs?.current?.id) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => ConfirmLocationDialog(
+        target: picked,
+        current: locs?.current,
+        vpnOn: !(locs?.vpnOff ?? pi.vpn?.isOff ?? false),
+      ),
+    );
+    if (confirmed != true) return;
+    pi.setVpnPrompting(false);
+    await pi.setVpnLocation(picked.id);
+  } finally {
+    pi.setVpnPrompting(false);
   }
 }

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -11,6 +12,10 @@ import 'package:tt_router_flutter/providers/router_provider.dart';
 import 'package:tt_router_flutter/screens/argon_devices_view.dart';
 import 'package:tt_router_flutter/screens/argon_statistics_view.dart';
 import 'package:tt_router_flutter/screens/home_screen.dart';
+import 'package:tt_router_flutter/screens/router_tab.dart';
+import 'package:tt_router_flutter/screens/network_hub_screen.dart';
+import 'package:tt_router_flutter/screens/nokia_mesh_screen.dart';
+import 'package:tt_router_flutter/widgets/speed_gauge.dart';
 import 'package:tt_router_flutter/screens/wifi_argon_gate.dart';
 import 'package:tt_router_flutter/services/argon_device_key.dart';
 import 'package:tt_router_flutter/services/argon_status.dart';
@@ -131,6 +136,7 @@ class ArgonFake implements PiTransport, PiOperatorTransport {
   /// Lease polls before the observer reports having yielded (-1: never).
   int yieldAfterPolls;
   int leaseStatus;
+  Completer<void>? acquireGate, gatewayGate;
   final log = <String>[];
   final signedPaths = <String>[];
   bool leaseActive = false;
@@ -140,7 +146,9 @@ class ArgonFake implements PiTransport, PiOperatorTransport {
   Map<String, dynamic> get _lease => {
     'active': leaseActive,
     'holder': leaseActive ? {'id': _device, 'name': 'Galaxy Z Fold4'} : null,
-    'expiresAt': leaseActive ? 1792853700 : null,
+    'expiresAt': leaseActive
+        ? DateTime.now().millisecondsSinceEpoch ~/ 1000 + 120
+        : null,
     'handover': !leaseActive
         ? 'none'
         : (yieldAfterPolls >= 0 && _polls >= yieldAfterPolls)
@@ -160,6 +168,7 @@ class ArgonFake implements PiTransport, PiOperatorTransport {
     Duration? timeout,
   }) async {
     log.add('GET $path');
+    if (path == '/api/v1/gateway') await gatewayGate?.future;
     return switch (path) {
       '/api/v1/identity' => {
         'version': 1,
@@ -256,6 +265,7 @@ class ArgonFake implements PiTransport, PiOperatorTransport {
     }
     switch (action) {
       case 'acquire':
+        await acquireGate?.future;
         leaseActive = true;
         _polls = 0;
       case 'release':
@@ -480,6 +490,161 @@ void main() {
     pi.dispose();
   });
 
+  test(
+    'background release closes MQTT and releases the lease, preserving pairing',
+    () async {
+      final (pi, router, factory, argon, _) = await _setup();
+      await pi.takeDirectControl();
+      pi.didChangeAppLifecycleState(AppLifecycleState.paused);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(pi.directPhase, DirectControlPhase.off);
+      expect(router.isArgonMode, isTrue);
+      expect(factory.last.disconnectCalled, isTrue);
+      expect(argon.leaseActive, isFalse);
+      expect(router.hasSavedPairing, isTrue);
+      pi.dispose();
+    },
+  );
+
+  test(
+    'cancelling an in-flight acquisition releases it after the reply',
+    () async {
+      final (pi, router, factory, argon, _) = await _setup();
+      argon.acquireGate = Completer<void>();
+      final taking = pi.takeDirectControl();
+      await Future<void>.delayed(Duration.zero);
+      final returning = pi.returnToArgon();
+      argon.acquireGate!.complete();
+      expect(await taking, isFalse);
+      await returning;
+      expect(argon.log.where((s) => s.startsWith('lease ')), [
+        'lease acquire',
+        'lease release',
+      ]);
+      expect(argon.leaseActive, isFalse);
+      expect(router.isArgonMode, isTrue);
+      expect(factory.created, isEmpty);
+      pi.dispose();
+    },
+  );
+
+  test(
+    'device refresh awaits an existing gateway request and never contacts the router',
+    () async {
+      final (pi, _, factory, argon, _) = await _setup();
+      argon.gatewayGate = Completer<void>();
+      final before = argon.log.where((s) => s == 'GET /api/v1/gateway').length;
+      var completed = false;
+      final first = pi.refreshDevices();
+      final second = pi.refreshDevices().then((_) => completed = true);
+      await Future<void>.delayed(Duration.zero);
+      expect(completed, isFalse);
+      argon.gatewayGate!.complete();
+      await Future.wait([first, second]);
+      expect(
+        argon.log.where((s) => s == 'GET /api/v1/gateway').length,
+        before + 1,
+      );
+      expect(factory.created, isEmpty);
+      pi.dispose();
+    },
+  );
+
+  testWidgets(
+    'Home quick controls open their destinations without a router session',
+    (tester) async {
+      tester.view.physicalSize = const Size(420, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      late PiProvider pi;
+      late RouterProvider router;
+      late FakeTransportFactory factory;
+      late ArgonFake argon;
+      await tester.runAsync(() async {
+        (pi, router, factory, argon, _) = await _setup();
+      });
+      Widget app() => MultiProvider(
+        providers: [
+          ChangeNotifierProvider.value(value: router),
+          ChangeNotifierProvider.value(value: pi),
+        ],
+        child: MaterialApp(theme: AppTheme.dark(), home: const HomeScreen()),
+      );
+      Future<void> tapLabel(String text) async {
+        final target = find.text(text).first;
+        await tester.ensureVisible(target);
+        await tester.tap(target);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
+      }
+
+      await tester.pumpWidget(app());
+      for (final label in ['Refresh statistics', 'Refresh devices']) {
+        await tester.ensureVisible(find.text(label));
+        await tester.runAsync(() async {
+          await tester.tap(find.text(label));
+          await Future<void>.delayed(const Duration(milliseconds: 30));
+        });
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
+        expect(
+          find.textContaining(
+            label == 'Refresh statistics'
+                ? 'Household statistics refreshed'
+                : 'Devices refreshed',
+          ),
+          findsOneWidget,
+        );
+      }
+      final events = find.textContaining(RegExp(r'^Events(?: \(|$)')).first;
+      await tester.ensureVisible(events);
+      await tester.pump();
+      await tester.tap(events);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.text('Notifications'), findsOneWidget);
+      Navigator.of(tester.element(find.text('Notifications'))).pop();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      await tapLabel('Diagnostics');
+      expect(find.byType(NetworkHubScreen), findsOneWidget);
+      await tester.pageBack();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      await tapLabel('Nokia Mesh');
+      expect(find.byType(NokiaMeshScreen), findsOneWidget);
+      await tester.pageBack();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      // Use the quick control, not the persistent navigation item.
+      await tapLabel('Router');
+      expect(find.byType(RouterTab), findsOneWidget);
+      expect(find.text('Take Direct Control'), findsOneWidget);
+      expect(factory.created, isEmpty);
+      expect(argon.log.any((s) => s == 'lease acquire'), isFalse);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      pi.dispose();
+    },
+  );
+
+  test(
+    'expired lease closes direct access before the observer resumes',
+    () async {
+      final (pi, router, factory, _, _) = await _setup();
+      await pi.takeDirectControl();
+      pi.lease = RouterLease(
+        active: true,
+        expiresAt: DateTime.now().subtract(const Duration(seconds: 1)),
+      );
+      await pi.tick();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(router.isArgonMode, isTrue);
+      expect(factory.last.disconnectCalled, isTrue);
+      pi.dispose();
+    },
+  );
+
   test('usage alerts: signed fetch, shown once, then acknowledged', () async {
     final argon = ArgonFake()
       ..alerts = [
@@ -514,6 +679,7 @@ void main() {
   for (final (name, size) in [
     ('Fold4 cover', const Size(344, 882)),
     ('Fold4 unfolded', const Size(690, 829)),
+    ('OnePlus portrait', const Size(412, 915)),
   ]) {
     testWidgets('Pi-first screens render on $name', (tester) async {
       tester.view.physicalSize = size;
@@ -549,7 +715,18 @@ void main() {
 
       await tester.pumpWidget(app(const ArgonStatisticsView()));
       await tester.pump();
-      expect(find.text('Real-time'), findsOneWidget);
+      expect(find.text('Live speed'), findsOneWidget);
+      expect(find.byType(SpeedGauge), findsOneWidget);
+      expect(find.text('Today'), findsOneWidget);
+      expect(find.text('Yesterday'), findsNWidgets(2));
+      await tester.ensureVisible(find.text('More history'));
+      await tester.pump();
+      await tester.tap(find.text('More history'));
+      await tester.pumpAndSettle();
+      expect(find.text('Last month'), findsOneWidget);
+      await tester.ensureVisible(find.text('Monitoring coverage'));
+      await tester.pump();
+      expect(find.text(monitoringCoverageExplanation), findsOneWidget);
       expect(tester.takeException(), isNull);
 
       await tester.pumpWidget(app(const WifiArgonGate()));

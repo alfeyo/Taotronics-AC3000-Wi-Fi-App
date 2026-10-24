@@ -1,0 +1,39 @@
+[
+  {
+    "path": "/api/v1/identity",
+    "status": 200,
+    "ok": true
+  },
+  {
+    "path": "/api/v1/live",
+    "status": 200,
+    "ok": true
+  },
+  {
+    "path": "/api/v1/gateway",
+    "status": 200,
+    "ok": true,
+    "monitoring": "connected",
+    "source": "lan-observer:dell",
+    "leaseActive": false,
+    "vpnMode": "off",
+    "usageTimeZone": "Africa/Lusaka"
+  },
+  {
+    "path": "/api/v1/router/lease",
+    "status": 200,
+    "ok": true
+  },
+  {
+    "path": "/api/v1/vpn",
+    "anonymousPostStatus": 403
+  },
+  {
+    "path": "/api/v1/router/lease",
+    "anonymousPostStatus": 400
+  },
+  {
+    "path": "/api/v1/router/control",
+    "anonymousPostStatus": 403
+  }
+]

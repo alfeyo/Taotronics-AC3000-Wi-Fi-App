@@ -3,8 +3,6 @@ import 'package:provider/provider.dart';
 
 import '../providers/pi_provider.dart';
 import '../providers/router_provider.dart';
-import '../services/argon_status.dart';
-import '../services/hub_links.dart';
 import '../services/pi_api.dart';
 import '../theme/app_theme.dart';
 import '../utils/format.dart';
@@ -14,13 +12,12 @@ import '../widgets/hub_widgets.dart';
 import '../widgets/managed_router.dart';
 import '../widgets/pi_board.dart';
 import '../widgets/vpn_card.dart';
+import 'app_routes.dart';
 import 'home_screen.dart';
 import 'network_hub_screen.dart';
-import 'overview_tab.dart';
 
 /// Home (Pi-first): Argon, the Raspberry Pi gateway, and the household
-/// network it measures. The TaoTronics router appears as a secondary Managed
-/// Router card. Every figure is Argon's own measurement or observation, and
+/// network it measures. The TaoTronics router has its own Router tab. Every figure is Argon's own measurement or observation, and
 /// says so; missing values are shown as missing, never as zero.
 class OverviewTab extends StatelessWidget {
   const OverviewTab({super.key});
@@ -31,35 +28,31 @@ class OverviewTab extends StatelessWidget {
     final router = context.watch<RouterProvider>();
     final wide = MediaQuery.sizeOf(context).width >= Breakpoints.medium;
     void select(HomeTab tab) => HomeNavigation.maybeOf(context)?.select(tab);
-    void openRouter() => Navigator.push(
-      context,
-      MaterialPageRoute<void>(builder: (_) => const RouterDetailsScreen()),
-    );
 
     final hero = _PiHero(pi: pi);
     final details = <Widget>[
+      const SectionLabel('Quick controls'),
+      _QuickControls(pi: pi, router: router, select: select),
       SectionLabel(
         'Household traffic',
         trailing: DataStateChip(state: pi.liveState, at: pi.liveAt),
       ),
       _LiveRates(pi: pi),
       const SizedBox(height: Space.md),
-      _Today(pi: pi),
-      SectionLabel(
-        'Activity · 14 days',
-        trailing: TextButton(
-          onPressed: () => select(HomeTab.statistics),
-          child: const Text('Statistics'),
-        ),
-      ),
-      _Activity(pi: pi),
-      const SectionLabel('Network'),
+      _Today(pi: pi, onOpen: () => select(HomeTab.statistics)),
+      const SectionLabel('Network status'),
       _NetworkStats(pi: pi, select: select),
-      const SectionLabel('Managed router'),
-      ManagedRouterCard(onOpen: openRouter),
       _RecentEvents(router: router, pi: pi),
-      const SectionLabel('Controls'),
-      _Controls(pi: pi, select: select),
+      const SizedBox(height: Space.md),
+      ActionTile(
+        icon: Icons.hub_outlined,
+        tone: Tone.info,
+        title: 'Network diagnostics',
+        subtitle:
+            'WAN, CPU and memory, observer health, VPN details, '
+            'backup uplink, events',
+        onTap: () => AppRoutes.networkHub(context),
+      ),
     ];
 
     return Scaffold(
@@ -304,34 +297,64 @@ class _PiHero extends StatelessWidget {
         ),
         const SizedBox(height: Space.md),
         PanelCard(
+          padding: const EdgeInsets.symmetric(horizontal: Space.sm),
           child: Column(
             children: [
-              KvRow(
-                'Internet source',
-                hubValue(pi.hubState, source.isEmpty ? null : source),
-              ),
-              KvRow(
-                'VPN',
-                hubValue(
-                  pi.hubState,
-                  vpn == null
-                      ? null
-                      : vpn.isOff
-                      ? 'Off · next location ${vpn.location ?? 'not set'}'
-                      : '${VpnCard.stateLabel(vpn)} · ${vpn.location ?? 'location not reported'}',
+              Theme(
+                data: theme.copyWith(dividerColor: Colors.transparent),
+                child: ExpansionTile(
+                  tilePadding: const EdgeInsets.symmetric(horizontal: Space.sm),
+                  childrenPadding: const EdgeInsets.fromLTRB(
+                    Space.sm,
+                    0,
+                    Space.sm,
+                    Space.md,
+                  ),
+                  title: Text(
+                    'Gateway details',
+                    style: theme.textTheme.titleSmall,
+                  ),
+                  subtitle: Text(
+                    [
+                      if (source.isNotEmpty) source,
+                      if (uptime is num) 'up ${formatUptime(uptime.round())}',
+                      if (lastUpdate != null)
+                        'updated ${formatAge(lastUpdate)}',
+                    ].join(' · ').ifEmptyOr(hubValue(pi.hubState, null)),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  children: [
+                    KvRow(
+                      'Internet source',
+                      hubValue(pi.hubState, source.isEmpty ? null : source),
+                    ),
+                    KvRow(
+                      'VPN',
+                      hubValue(
+                        pi.hubState,
+                        vpn == null
+                            ? null
+                            : vpn.isOff
+                            ? 'Off · next location ${vpn.location ?? 'not set'}'
+                            : '${VpnCard.stateLabel(vpn)} · ${vpn.location ?? 'location not reported'}',
+                      ),
+                    ),
+                    KvRow(
+                      'Gateway uptime',
+                      hubValue(
+                        pi.hubState,
+                        uptime is num ? formatUptime(uptime.round()) : null,
+                      ),
+                    ),
+                    KvRow(
+                      'Last monitoring update',
+                      lastUpdate == null ? 'Not yet' : formatAge(lastUpdate),
+                      last: true,
+                    ),
+                  ],
                 ),
-              ),
-              KvRow(
-                'Gateway uptime',
-                hubValue(
-                  pi.hubState,
-                  uptime is num ? formatUptime(uptime.round()) : null,
-                ),
-              ),
-              KvRow(
-                'Last monitoring update',
-                lastUpdate == null ? 'Not yet' : formatAge(lastUpdate),
-                last: true,
               ),
               if (!pi.connected && pi.lastError != null) ...[
                 const SizedBox(height: Space.sm),
@@ -419,8 +442,9 @@ class _LiveRates extends StatelessWidget {
 
 /// Today's household download, upload and total, with collection coverage.
 class _Today extends StatelessWidget {
-  const _Today({required this.pi});
+  const _Today({required this.pi, this.onOpen});
   final PiProvider pi;
+  final VoidCallback? onOpen;
 
   @override
   Widget build(BuildContext context) {
@@ -454,6 +478,7 @@ class _Today extends StatelessWidget {
         );
     final coverage = today?.coverage;
     return PanelCard(
+      onTap: onOpen,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -508,46 +533,6 @@ class _Today extends StatelessWidget {
   }
 }
 
-class _Activity extends StatelessWidget {
-  const _Activity({required this.pi});
-  final PiProvider pi;
-
-  @override
-  Widget build(BuildContext context) {
-    final usage = pi.usage;
-    final days = usage?.days ?? const <UsageDay>[];
-    if (days.isEmpty) {
-      return PanelCard(
-        child: Text(
-          hubValue(pi.hubState, 'No daily history reported yet.'),
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-      );
-    }
-    final week = usage?.last7;
-    return PanelCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          DailyUsageChart(days: days),
-          if (week?.total != null) ...[
-            const SizedBox(height: Space.sm),
-            Text(
-              'Last 7 days ${formatBytes(week!.total!)}'
-              '${week.measured == false ? ' (partly measured)' : ''}'
-              '${usage?.thisMonth?.total == null ? '' : ' · this month ${formatBytes(usage!.thisMonth!.total!)}'}',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
 class _NetworkStats extends StatelessWidget {
   const _NetworkStats({required this.pi, required this.select});
   final PiProvider pi;
@@ -558,10 +543,12 @@ class _NetworkStats extends StatelessWidget {
     final view = pi.routerView;
     final g = pi.gatewayInfo;
     final temp = g?['temperatureC'];
+    final cpu = g?['cpuPercent'];
     final throttled = g?['activeThrottling'] == true;
+    final hot = throttled || (temp is num && temp >= 70);
     return ResponsiveGrid(
       minTileWidth: 140,
-      maxColumns: 4,
+      maxColumns: 3,
       spacing: Space.md,
       children: [
         StatTile(
@@ -576,27 +563,269 @@ class _NetworkStats extends StatelessWidget {
         StatTile(
           icon: Icons.router_rounded,
           tone: routerMonitoringTone(view),
-          value: view?.observedAt == null ? null : formatAge(view!.observedAt),
-          label: 'Router observed',
+          value: view == null
+              ? null
+              : view.live
+              ? (view.internet == false ? 'No internet' : 'Online')
+              : routerMonitoringLabel(view),
+          label: view?.observedAt == null
+              ? 'TaoTronics router'
+              : 'TaoTronics · ${formatAge(view!.observedAt)}',
+          onTap: () => select(HomeTab.router),
         ),
         StatTile(
           icon: Icons.thermostat_rounded,
-          tone: throttled
-              ? Tone.warning
-              : temp is num && temp >= 70
-              ? Tone.warning
-              : Tone.success,
+          tone: hot ? Tone.warning : Tone.success,
           value: temp is num ? '${temp.toStringAsFixed(0)}°C' : null,
-          label: throttled ? 'Pi temperature · throttling' : 'Pi temperature',
-          onTap: () => select(HomeTab.hub),
-        ),
-        StatTile(
-          icon: Icons.notifications_active_outlined,
-          tone: Tone.info,
-          value: '${pi.events.where((e) => e.source == 'argon').length}',
-          label: 'Network events',
+          label: [
+            'Pi',
+            if (cpu is num) 'CPU ${cpu.round()}%',
+            if (throttled) 'throttling',
+          ].join(' · '),
+          onTap: () => AppRoutes.networkHub(context),
         ),
       ],
+    );
+  }
+}
+
+/// One compact, real action. [busy] shows progress; a null [onTap] disables.
+class _QuickControl extends StatelessWidget {
+  const _QuickControl({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.tone = Tone.neutral,
+    this.active = false,
+    this.busy = false,
+  });
+  final IconData icon;
+  final String label;
+  final VoidCallback? onTap;
+  final Tone tone;
+  final bool active;
+  final bool busy;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = context.tone(tone);
+    final enabled = onTap != null && !busy;
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: label,
+      child: ExcludeSemantics(
+        child: InkWell(
+          borderRadius: BorderRadius.circular(Radii.md),
+          onTap: enabled ? onTap : null,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: Space.sm),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: active ? colors.foreground : colors.container,
+                  ),
+                  child: busy
+                      ? Padding(
+                          padding: const EdgeInsets.all(15),
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.2,
+                            color: active
+                                ? colors.container
+                                : colors.foreground,
+                          ),
+                        )
+                      : Icon(
+                          icon,
+                          size: 24,
+                          color: !enabled
+                              ? theme.disabledColor
+                              : active
+                              ? colors.container
+                              : colors.foreground,
+                        ),
+                ),
+                const SizedBox(height: Space.xs),
+                Text(
+                  label,
+                  maxLines: 2,
+                  textAlign: TextAlign.center,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: enabled
+                        ? theme.colorScheme.onSurface
+                        : theme.disabledColor,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Frequently used, allowlisted actions. VPN changes use this phone's owner
+/// grant, a confirmation and Argon read-back (the same flow as the VPN card);
+/// no router reboot, Wi-Fi or system commands live here.
+class _QuickControls extends StatelessWidget {
+  const _QuickControls({
+    required this.pi,
+    required this.router,
+    required this.select,
+  });
+  final PiProvider pi;
+  final RouterProvider router;
+  final ValueChanged<HomeTab> select;
+
+  void _done(BuildContext context, String text) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context)
+      ..removeCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(text)));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final vpn = pi.vpn;
+    final vpnKnown = vpn?.mode != null;
+    final vpnBusy = pi.vpnInFlight;
+    final controls = <Widget>[
+      _QuickControl(
+        icon: Icons.shield_rounded,
+        label: vpnBusy
+            ? (pi.vpnTarget == 'on' ? 'Turning on…' : 'Turning off…')
+            : !vpnKnown
+            ? 'VPN'
+            : vpn!.isOn
+            ? 'VPN on'
+            : 'VPN off',
+        tone: Tone.success,
+        active: vpn?.isOn == true,
+        busy: vpnBusy,
+        onTap:
+            vpnKnown &&
+                pi.connected &&
+                !pi.locationInFlight &&
+                !pi.vpnPrompting &&
+                vpn?.busy != true
+            ? () async {
+                await requestVpnMode(context, pi, !vpn!.isOn);
+                if (context.mounted &&
+                    pi.vpnMessage != null &&
+                    !pi.vpnInFlight) {
+                  _done(context, pi.vpnMessage!);
+                }
+              }
+            : null,
+      ),
+      _QuickControl(
+        icon: Icons.public_rounded,
+        label: pi.locationInFlight ? 'Switching…' : 'VPN location',
+        tone: Tone.info,
+        busy: pi.locationInFlight,
+        onTap: pi.connected && !vpnBusy && !pi.vpnPrompting && vpn?.busy != true
+            ? () async {
+                await pi.refreshVpnLocations(force: false);
+                if (context.mounted) await requestVpnLocation(context, pi);
+                if (context.mounted &&
+                    pi.locationMessage != null &&
+                    !pi.locationInFlight) {
+                  _done(context, pi.locationMessage!);
+                }
+              }
+            : null,
+      ),
+      _QuickControl(
+        icon: Icons.insights_rounded,
+        label: 'Refresh statistics',
+        tone: Tone.brand,
+        onTap: () async {
+          final before = pi.liveAt;
+          await pi.refreshNow();
+          if (context.mounted) {
+            _done(
+              context,
+              pi.liveFresh && pi.liveAt != before
+                  ? 'Household statistics refreshed'
+                  : 'Argon did not answer; showing the last data',
+            );
+          }
+        },
+      ),
+      _QuickControl(
+        icon: Icons.devices_other_rounded,
+        label: 'Refresh devices',
+        tone: Tone.brand,
+        onTap: () async {
+          final before = pi.gatewayAt;
+          await pi.refreshDevices();
+          if (context.mounted) {
+            final v = pi.routerView;
+            _done(
+              context,
+              pi.gatewayAt == before
+                  ? 'Argon did not answer; showing the last device list'
+                  : v?.knownCount == null
+                  ? 'Device list unavailable from Argon'
+                  : v?.live != true
+                  ? 'Argon refreshed; device observations are not current'
+                  : 'Devices refreshed · ${v!.onlineCount ?? '—'} online',
+            );
+          }
+        },
+      ),
+      _QuickControl(
+        icon: Icons.router_rounded,
+        label: 'Router',
+        tone: Tone.accent,
+        onTap: () => select(HomeTab.router),
+      ),
+      _QuickControl(
+        icon: Icons.monitor_heart_outlined,
+        label: 'Diagnostics',
+        tone: Tone.info,
+        onTap: () => AppRoutes.networkHub(context),
+      ),
+      _QuickControl(
+        icon: Icons.settings_input_antenna_rounded,
+        label: 'Nokia Mesh',
+        tone: Tone.neutral,
+        onTap: () => AppRoutes.nokiaMesh(context),
+      ),
+      _QuickControl(
+        icon: Icons.notifications_none_rounded,
+        label: pi.unreadEvents + router.unreadEvents > 0
+            ? 'Events (${pi.unreadEvents + router.unreadEvents})'
+            : 'Events',
+        tone: Tone.neutral,
+        onTap: () => EventsButton.show(context, router),
+      ),
+    ];
+    return PanelCard(
+      padding: const EdgeInsets.symmetric(
+        horizontal: Space.sm,
+        vertical: Space.sm,
+      ),
+      child: LayoutBuilder(
+        builder: (context, c) {
+          final columns = c.maxWidth >= 520 ? 8 : 4;
+          final width = c.maxWidth / columns;
+          return Wrap(
+            children: [
+              for (final w in controls) SizedBox(width: width, child: w),
+            ],
+          );
+        },
+      ),
     );
   }
 }
@@ -663,89 +892,6 @@ class _RecentEvents extends StatelessWidget {
   }
 }
 
-/// Safe, allowlisted Argon actions. No router reboot, Wi-Fi or system
-/// commands here: VPN changes go through the confirmed, signed VPN card.
-class _Controls extends StatelessWidget {
-  const _Controls({required this.pi, required this.select});
-  final PiProvider pi;
-  final ValueChanged<HomeTab> select;
-
-  @override
-  Widget build(BuildContext context) {
-    final vpn = pi.vpn;
-    return ResponsiveGrid(
-      minTileWidth: 260,
-      maxColumns: 2,
-      spacing: Space.sm,
-      children: [
-        ActionTile(
-          icon: Icons.shield_outlined,
-          tone: vpn?.isOn == true ? Tone.success : Tone.neutral,
-          title: 'VPN',
-          subtitle: vpn == null
-              ? 'On/off and exit location'
-              : '${VpnCard.stateLabel(vpn)}${vpn.location == null ? '' : ' · ${vpn.location}'}',
-          onTap: () => showModalBottomSheet<void>(
-            context: context,
-            isScrollControlled: true,
-            useSafeArea: true,
-            builder: (c) => SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(
-                Space.lg,
-                0,
-                Space.lg,
-                Space.xl,
-              ),
-              child: Consumer<PiProvider>(
-                builder: (_, live, _) => VpnCard(pi: live),
-              ),
-            ),
-          ),
-        ),
-        ActionTile(
-          icon: Icons.refresh_rounded,
-          tone: Tone.brand,
-          title: 'Refresh',
-          subtitle: 'Network statistics and device inventory',
-          onTap: pi.refreshNow,
-        ),
-        ActionTile(
-          icon: Icons.monitor_heart_outlined,
-          tone: Tone.info,
-          title: 'Diagnostics',
-          subtitle: 'Collector, health, uplink and logs',
-          onTap: () => select(HomeTab.hub),
-        ),
-        ActionTile(
-          icon: Icons.open_in_new_rounded,
-          tone: Tone.neutral,
-          title: 'Argon dashboard',
-          subtitle: 'Opens over Tailscale',
-          onTap: () async {
-            try {
-              await HubLinks.open(PiProvider.tailscaleDefault.toString());
-            } catch (_) {
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      'Could not open Argon. Enable Tailscale and retry.',
-                    ),
-                  ),
-                );
-              }
-            }
-          },
-        ),
-        if (!pi.connected)
-          ActionTile(
-            icon: Icons.sync_rounded,
-            tone: Tone.warning,
-            title: 'Retry Argon connection',
-            subtitle: pi.lastError ?? 'Looks for Argon on LAN, then Tailscale',
-            onTap: pi.reconnect,
-          ),
-      ],
-    );
-  }
+extension on String {
+  String ifEmptyOr(String other) => isEmpty ? other : this;
 }

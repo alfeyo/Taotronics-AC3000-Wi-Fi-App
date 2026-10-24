@@ -8,22 +8,19 @@ import '../theme/app_theme.dart';
 import '../widgets/home_widgets.dart';
 import 'argon_devices_view.dart';
 import 'argon_statistics_view.dart';
-import 'wifi_argon_gate.dart';
+import 'router_tab.dart';
 import '../widgets/app_widgets.dart';
 import 'devices_screen.dart';
 import 'home_tab.dart';
 import 'settings_screen.dart';
 import 'statistics_screen.dart';
-import 'wifi_screen.dart';
-import 'network_hub_screen.dart';
 
 /// Top-level destinations of the signed-in app.
 enum HomeTab {
   overview('Home', Icons.home_outlined, Icons.home_rounded),
+  router('Router', Icons.router_outlined, Icons.router_rounded),
   devices('Devices', Icons.devices_other_outlined, Icons.devices_other_rounded),
-  wifi('Wi-Fi', Icons.wifi_rounded, Icons.wifi_rounded),
   statistics('Statistics', Icons.insights_outlined, Icons.insights_rounded),
-  hub('Network Hub', Icons.hub_outlined, Icons.hub_rounded),
   settings('Settings', Icons.settings_outlined, Icons.settings_rounded);
 
   const HomeTab(this.label, this.icon, this.selectedIcon);
@@ -103,13 +100,11 @@ class _HomeScreenState extends State<HomeScreen> {
       key: ValueKey((_tab, argon)),
       child: switch (_tab) {
         HomeTab.overview => const OverviewTab(),
+        HomeTab.router => const RouterTab(),
         HomeTab.devices =>
           argon ? const ArgonDevicesView() : const DevicesScreen(),
-        HomeTab.wifi =>
-          argon ? const WifiArgonGate() : const WifiSettingsScreen(),
         HomeTab.statistics =>
           argon ? const ArgonStatisticsView() : const StatisticsScreen(),
-        HomeTab.hub => const NetworkHubScreen(),
         HomeTab.settings => const SettingsScreen(),
       },
     );

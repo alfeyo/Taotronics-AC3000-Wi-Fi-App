@@ -1306,14 +1306,14 @@ class _QuickActions extends StatelessWidget {
       OutlinedButton.icon(
         icon: const Icon(Icons.refresh),
         label: const Text('Refresh statistics'),
-        onPressed: pi.reconnect,
+        onPressed: pi.refreshNow,
       ),
       OutlinedButton.icon(
         icon: const Icon(Icons.devices),
         label: const Text('Refresh devices'),
         // Argon mode: the inventory comes from Argon, so refresh that.
         onPressed: router.isArgonMode
-            ? pi.refreshNow
+            ? pi.refreshDevices
             : !router.isConnected || router.isLivePaused
             ? null
             : router.refreshDevices,

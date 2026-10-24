@@ -1,7 +1,7 @@
 name: tt_router_flutter
 description: "TT Router - Local Control for TaoTronics Mesh Routers"
 publish_to: 'none'
-version: 1.11.0+24
+version: 1.11.1+25
 
 environment:
   sdk: ^3.12.0

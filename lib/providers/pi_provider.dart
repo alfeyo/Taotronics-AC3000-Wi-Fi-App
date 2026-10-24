@@ -286,6 +286,12 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
   /// monitoring again (or after [resumeWatch]).
   DateTime? monitoringResumeSince;
   static const leaseRenewEvery = Duration(seconds: 30);
+
+  /// How long an established direct session may stay disconnected.
+  static const directLossGrace = Duration(seconds: 45);
+  DateTime? _routerLostAt;
+  Future<PiRawResponse?>? _pendingLeaseAcquire;
+  Future<void>? _livePoll, _gatewayPoll;
   static const observerHandoverTimeout = Duration(seconds: 45);
   static const routerConnectTimeout = Duration(seconds: 60);
   static const resumeWatch = Duration(minutes: 3);
@@ -537,6 +543,17 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
       case AppLifecycleState.paused:
       case AppLifecycleState.hidden:
       case AppLifecycleState.detached:
+        // Direct control never outlives the foreground: release the router
+        // and the lease now rather than leaving the observer paused.
+        if (directInProgress && directPhase != DirectControlPhase.returning) {
+          unawaited(
+            returnToArgon(
+              reason:
+                  'Direct control was released because TT Router went to '
+                  'the background. Argon monitors the router again.',
+            ),
+          );
+        }
         // No background work: stop timers and discard in-flight results.
         _foreground = false;
         _invalidateConnection();
@@ -603,9 +620,18 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
   /// Refresh network statistics and device inventory now (both come from
   /// the gateway report and the live sample).
   Future<void> refreshNow() async {
-    if (transport == null) return reconnect();
+    if (transport == null) await reconnect();
     _lastLive = _lastGateway = null;
     await tick();
+    await Future.wait([?_livePoll, ?_gatewayPoll]);
+  }
+
+  /// Re-reads Argon's device inventory (part of the gateway report).
+  Future<void> refreshDevices() async {
+    if (transport == null) await reconnect();
+    _lastGateway = null;
+    await tick();
+    if (_gatewayPoll != null) await _gatewayPoll;
   }
 
   // -------------------------------------------------------------- discovery
@@ -789,7 +815,10 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   // ---------------------------------------------------------------- polling
 
-  Future<void> _pollLive() async {
+  Future<void> _pollLive() =>
+      _livePoll ??= _pollLiveOnce().whenComplete(() => _livePoll = null);
+
+  Future<void> _pollLiveOnce() async {
     final t = transport;
     if (_pollingLive || t == null) return;
     _pollingLive = true;
@@ -823,7 +852,10 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _pollGateway() async {
+  Future<void> _pollGateway() => _gatewayPoll ??= _pollGatewayOnce()
+      .whenComplete(() => _gatewayPoll = null);
+
+  Future<void> _pollGatewayOnce() async {
     final t = transport;
     if (_pollingGateway || t == null) return;
     _pollingGateway = true;
@@ -1880,6 +1912,9 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   // --------------------------------------------------- Direct Router Control
 
+  /// This phone's name as paired with Argon (shown as the controller).
+  String get controllerName => pairedName ?? 'This phone';
+
   /// A handover can be coordinated: Argon reachable over IP and this phone
   /// paired with an enrolled key.
   bool get canCoordinateHandover =>
@@ -1949,7 +1984,8 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
       _emit();
       final PiRawResponse? r;
       try {
-        r = await _leaseCommand('acquire');
+        _pendingLeaseAcquire = _leaseCommand('acquire');
+        r = await _pendingLeaseAcquire;
       } on PiApiException catch (e) {
         if (gen != _directGeneration) return false;
         _directFail(e.message, release: false);
@@ -2038,16 +2074,22 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
     directMessage = 'Releasing the router…';
     _emit();
     await _router.exitDirectMode();
-    if (lease != null && !directWithoutHandover) {
+    if (!directWithoutHandover &&
+        (lease != null || _pendingLeaseAcquire != null)) {
       try {
+        try {
+          await _pendingLeaseAcquire;
+        } catch (_) {}
         await _leaseCommand('release').timeout(const Duration(seconds: 10));
       } catch (_) {
         // The lease expires on its own within two minutes.
       }
     }
     lease = null;
+    _pendingLeaseAcquire = null;
     directWithoutHandover = false;
     _leaseRenewedAt = _leaseRenewFailingSince = _directDeadline = null;
+    _routerLostAt = null;
     directPhase = DirectControlPhase.off;
     directMessage = null;
     monitoringResumeSince = _now();
@@ -2078,7 +2120,34 @@ class PiProvider extends ChangeNotifier with WidgetsBindingObserver {
       _emit();
       return;
     }
+    final expiry = lease?.expiresAt;
+    if (!directWithoutHandover && expiry != null && !now.isBefore(expiry)) {
+      unawaited(
+        returnToArgon(
+          reason: 'Direct control ended because its Argon lease expired.',
+        ),
+      );
+      return;
+    }
     final before = directPhase;
+    if (_router.isConnected) {
+      _routerLostAt = null;
+    } else if (before != DirectControlPhase.connecting) {
+      // An established direct session dropped: give the bounded reconnect a
+      // chance, then hand the router back instead of holding the lease.
+      _routerLostAt ??= now;
+      if (now.difference(_routerLostAt!) >= directLossGrace &&
+          !_router.isReconnecting) {
+        unawaited(
+          returnToArgon(
+            reason:
+                'Direct control ended because the router connection was '
+                'lost. Argon monitors the router again.',
+          ),
+        );
+        return;
+      }
+    }
     if (_router.isConnected && !_router.managedElsewhere) {
       directPhase = DirectControlPhase.active;
       directMessage = null;
